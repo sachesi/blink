@@ -148,6 +148,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .margin_top(12)
                         .margin_bottom(12)
                         .hexpand(true)
+                        .width_request(630)
                         .build();
                     grid.add_css_class("card");
                     
