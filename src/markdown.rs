@@ -147,23 +147,46 @@ pub fn render_markdown(view: &TextView, text: &str) {
                     let grid = Grid::builder()
                         .margin_top(12)
                         .margin_bottom(12)
-                        .column_spacing(16)
-                        .row_spacing(8)
+                        .hexpand(true)
                         .build();
                     grid.add_css_class("card");
                     
+                    let num_cols = table_rows.first().map_or(1, |r| r.len());
+                    let grid_cols = (num_cols * 2).saturating_sub(1) as i32;
+
                     for (row_idx, row) in table_rows.iter().enumerate() {
+                        let text_row = (row_idx * 2) as i32;
+
+                        if row_idx > 0 {
+                            let hsep = gtk::Separator::builder()
+                                .orientation(gtk::Orientation::Horizontal)
+                                .hexpand(true)
+                                .build();
+                            grid.attach(&hsep, 0, text_row - 1, grid_cols, 1);
+                        }
+
                         for (col_idx, cell_text) in row.iter().enumerate() {
+                            let text_col = (col_idx * 2) as i32;
+                            
                             let label = Label::builder()
-                                .margin_top(8).margin_bottom(8).margin_start(8).margin_end(8)
+                                .margin_top(10).margin_bottom(10).margin_start(12).margin_end(12)
                                 .wrap(true)
                                 .xalign(0.0)
+                                .hexpand(true)
                                 .build();
                             label.set_markup(cell_text);
                             if row_idx == 0 {
                                 label.add_css_class("heading");
                             }
-                            grid.attach(&label, col_idx as i32, row_idx as i32, 1, 1);
+                            grid.attach(&label, text_col, text_row, 1, 1);
+
+                            if col_idx > 0 {
+                                let vsep = gtk::Separator::builder()
+                                    .orientation(gtk::Orientation::Vertical)
+                                    .vexpand(true)
+                                    .build();
+                                grid.attach(&vsep, text_col - 1, text_row, 1, 1);
+                            }
                         }
                     }
                     let anchor = buffer.create_child_anchor(&mut iter);
