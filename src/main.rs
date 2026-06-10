@@ -159,16 +159,36 @@ fn build_ui(app: &Application) {
     let preview_view_clone = preview_view.clone();
     let status_label_clone = status_label.clone();
     let preview_scroll_clone_for_render = preview_scroll.clone();
+    
+    let render_source_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+    
     edit_buffer.connect_changed(move |b| {
-        let text = b.text(&b.start_iter(), &b.end_iter(), false);
-        let adj = preview_scroll_clone_for_render.hadjustment();
-        markdown::render_markdown(&preview_view_clone, text.as_str(), &adj);
-        let chars = text.chars().count();
-        let words = text.split_whitespace().count();
-        let status_str = gettext("{} words, {} chars")
-            .replacen("{}", &words.to_string(), 1)
-            .replacen("{}", &chars.to_string(), 1);
-        status_label_clone.set_label(&status_str);
+        if let Some(source_id) = render_source_id.borrow_mut().take() {
+            source_id.remove();
+        }
+        
+        let preview_view_inner = preview_view_clone.clone();
+        let status_label_inner = status_label_clone.clone();
+        let preview_scroll_inner = preview_scroll_clone_for_render.clone();
+        let b_clone = b.clone();
+        let source_id_ref = render_source_id.clone();
+        
+        let id = glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
+            let text = b_clone.text(&b_clone.start_iter(), &b_clone.end_iter(), false);
+            let adj = preview_scroll_inner.hadjustment();
+            markdown::render_markdown(&preview_view_inner, text.as_str(), &adj);
+            let chars = text.chars().count();
+            let words = text.split_whitespace().count();
+            let status_str = gettext("{} words, {} chars")
+                .replacen("{}", &words.to_string(), 1)
+                .replacen("{}", &chars.to_string(), 1);
+            status_label_inner.set_label(&status_str);
+            
+            *source_id_ref.borrow_mut() = None;
+            glib::ControlFlow::Break
+        });
+        
+        *render_source_id.borrow_mut() = Some(id);
     });
 
     let menu = gio::Menu::new();
