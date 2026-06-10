@@ -9,14 +9,27 @@ pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("h4"), &[("scale", &1.2), ("weight", &700)]);
     buffer.create_tag(Some("bold"), &[("weight", &700)]);
     buffer.create_tag(Some("italic"), &[("style", &gtk::pango::Style::Italic)]);
-    buffer.create_tag(Some("code"), &[("family", &"Monospace")]);
+    buffer.create_tag(Some("strikethrough"), &[("strikethrough", &true)]);
+    buffer.create_tag(Some("link"), &[
+        ("foreground", &"#3584e4"),
+        ("underline", &gtk::pango::Underline::Single),
+    ]);
+    buffer.create_tag(Some("code"), &[
+        ("family", &"Monospace"),
+        ("background", &"rgba(128, 128, 128, 0.15)"),
+    ]);
     buffer.create_tag(Some("code_block"), &[
         ("family", &"Monospace"),
-        ("indent", &16),
+        ("paragraph-background", &"rgba(128, 128, 128, 0.15)"),
+        ("left-margin", &16),
+        ("right-margin", &16),
+        ("pixels-above-lines", &8),
+        ("pixels-below-lines", &8),
     ]);
     buffer.create_tag(Some("blockquote"), &[
         ("indent", &24),
         ("style", &gtk::pango::Style::Italic),
+        ("foreground", &"rgba(128, 128, 128, 0.9)"),
     ]);
     buffer.create_tag(Some("list"), &[("indent", &16)]);
 }
@@ -45,6 +58,8 @@ pub fn render_markdown(buffer: &TextBuffer, text: &str) {
                 }
                 Tag::Strong => current_tags.push("bold"),
                 Tag::Emphasis => current_tags.push("italic"),
+                Tag::Strikethrough => current_tags.push("strikethrough"),
+                Tag::Link { .. } => current_tags.push("link"),
                 Tag::CodeBlock(_) => current_tags.push("code_block"),
                 Tag::BlockQuote(_) => current_tags.push("blockquote"),
                 Tag::List(_) => {
@@ -64,6 +79,8 @@ pub fn render_markdown(buffer: &TextBuffer, text: &str) {
                 TagEnd::Heading(_) => { current_tags.retain(|&t| t != "h1" && t != "h2" && t != "h3" && t != "h4"); buffer.insert(&mut iter, "\n\n"); },
                 TagEnd::Strong => { current_tags.retain(|&t| t != "bold"); },
                 TagEnd::Emphasis => { current_tags.retain(|&t| t != "italic"); },
+                TagEnd::Strikethrough => { current_tags.retain(|&t| t != "strikethrough"); },
+                TagEnd::Link => { current_tags.retain(|&t| t != "link"); },
                 TagEnd::CodeBlock => { current_tags.retain(|&t| t != "code_block"); buffer.insert(&mut iter, "\n\n"); },
                 TagEnd::BlockQuote(_) => { current_tags.retain(|&t| t != "blockquote"); buffer.insert(&mut iter, "\n\n"); },
                 TagEnd::List(_) => { current_tags.retain(|&t| t != "list"); list_depth -= 1; },
