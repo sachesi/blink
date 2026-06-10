@@ -143,23 +143,6 @@ fn build_ui(app: &Application) {
         .wide_handle(true)
         .build();
 
-    let sidebar_list = gtk::ListBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .css_classes(["navigation-sidebar"])
-        .build();
-
-    let sidebar_scroll = ScrolledWindow::builder()
-        .child(&sidebar_list)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .width_request(250)
-        .build();
-
-    let split_view = adw::OverlaySplitView::builder()
-        .sidebar(&sidebar_scroll)
-        .content(&paned)
-        .show_sidebar(false)
-        .build();
-
     let adj = edit_scroll.vadjustment();
     preview_scroll.set_vadjustment(Some(&adj));
 
@@ -177,7 +160,6 @@ fn build_ui(app: &Application) {
     let preview_view_clone = preview_view.clone();
     let status_label_clone = status_label.clone();
     let preview_scroll_clone_for_render = preview_scroll.clone();
-    let sidebar_list_clone = sidebar_list.clone();
     
     let render_source_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
     
@@ -189,14 +171,13 @@ fn build_ui(app: &Application) {
         let preview_view_inner = preview_view_clone.clone();
         let status_label_inner = status_label_clone.clone();
         let preview_scroll_inner = preview_scroll_clone_for_render.clone();
-        let sidebar_list_inner = sidebar_list_clone.clone();
         let b_clone = b.clone();
         let source_id_ref = render_source_id.clone();
         
         let id = glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
             let text = b_clone.text(&b_clone.start_iter(), &b_clone.end_iter(), false);
             let adj = preview_scroll_inner.hadjustment();
-            markdown::render_markdown(&preview_view_inner, text.as_str(), &adj, Some(&sidebar_list_inner));
+            markdown::render_markdown(&preview_view_inner, text.as_str(), &adj);
             let chars = text.chars().count();
             let words = text.split_whitespace().count();
             let status_str = gettext("{} words, {} chars")
@@ -287,15 +268,6 @@ fn build_ui(app: &Application) {
 
     let header_bar = adw::HeaderBar::new();
 
-    let sidebar_toggle = ToggleButton::builder()
-        .icon_name("sidebar-show-symbolic")
-        .tooltip_text(&gettext("Toggle Outline"))
-        .build();
-    split_view.bind_property("show-sidebar", &sidebar_toggle, "active")
-        .bidirectional()
-        .sync_create()
-        .build();
-
     let open_btn = gtk::Button::builder()
         .icon_name("document-open-symbolic")
         .tooltip_text(&gettext("Open Document"))
@@ -308,7 +280,6 @@ fn build_ui(app: &Application) {
         .action_name("app.save")
         .build();
 
-    header_bar.pack_start(&sidebar_toggle);
     header_bar.pack_start(&open_btn);
     header_bar.pack_start(&save_btn);
     header_bar.pack_end(&menu_button);
@@ -337,7 +308,7 @@ fn build_ui(app: &Application) {
         search_settings.set_search_text(Some(entry.text().as_str()));
     });
 
-    let toolbar_view = adw::ToolbarView::builder().content(&split_view).build();
+    let toolbar_view = adw::ToolbarView::builder().content(&paned).build();
     toolbar_view.add_top_bar(&header_bar);
     toolbar_view.add_top_bar(&search_bar);
     toolbar_view.add_bottom_bar(&bottom_box);

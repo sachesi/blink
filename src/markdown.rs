@@ -1,7 +1,6 @@
 use gtk::prelude::*;
 use gtk::{Grid, Label, TextBuffer, TextView};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
-use sourceview5::prelude::*;
 
 pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("h1"), &[("scale", &2.0), ("weight", &700)]);
@@ -43,7 +42,7 @@ pub fn setup_tags(buffer: &TextBuffer) {
 
 
 
-pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, sidebar_list: Option<&gtk::ListBox>) {
+pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
     let buffer = view.buffer();
     let mut iter = buffer.bounds().0;
     buffer.delete(&mut iter, &mut buffer.bounds().1);
@@ -57,12 +56,6 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, side
     let mut current_tags: Vec<&'static str> = Vec::new();
     let mut iter = buffer.end_iter();
 
-    if let Some(list) = sidebar_list {
-        while let Some(child) = list.first_child() {
-            list.remove(&child);
-        }
-    }
-
     let mut list_depth = 0;
 
     let mut in_table = false;
@@ -73,12 +66,8 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, side
 
     let mut in_code_block = false;
     let mut current_code = String::new();
-    let mut current_code_lang = String::new();
 
     let mut in_image = false;
-    let mut in_heading = false;
-    let mut current_heading_text = String::new();
-    let mut current_heading_level = 0;
 
     for event in parser {
         if in_code_block {
@@ -100,20 +89,8 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, side
 
                     let clean_code = current_code.trim_end_matches('\n');
 
-                    let lang_manager = sourceview5::LanguageManager::default();
-                    let code_buffer = sourceview5::Buffer::builder().text(clean_code).build();
-                    if !current_code_lang.is_empty() {
-                        if let Some(lang) = lang_manager.language(&current_code_lang) {
-                            code_buffer.set_language(Some(&lang));
-                        }
-                    }
-                    let scheme_manager = sourceview5::StyleSchemeManager::default();
-                    let is_dark = adw::StyleManager::default().is_dark();
-                    if let Some(scheme) = scheme_manager.scheme(if is_dark { "Adwaita-dark" } else { "Adwaita" }) {
-                        code_buffer.set_style_scheme(Some(&scheme));
-                    }
-
-                    let code_view = sourceview5::View::builder()
+                    let code_buffer = TextBuffer::builder().text(clean_code).build();
+                    let code_view = TextView::builder()
                         .buffer(&code_buffer)
                         .editable(false)
                         .cursor_visible(false)
@@ -247,22 +224,15 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, side
 
         match event {
             Event::Start(tag) => match tag {
-                Tag::CodeBlock(kind) => {
+                Tag::CodeBlock(_) => {
                     in_code_block = true;
                     current_code.clear();
-                    current_code_lang = match kind {
-                        pulldown_cmark::CodeBlockKind::Fenced(lang) => lang.to_string(),
-                        _ => String::new(),
-                    };
                 }
                 Tag::Table(_) => {
                     in_table = true;
                     table_rows.clear();
                 }
                 Tag::Heading { level, .. } => {
-                    in_heading = true;
-                    current_heading_text.clear();
-                    current_heading_level = level as u8;
                     let level_num = level as u8;
                     current_tags.push(match level_num {
                         1 => "h1",
@@ -311,29 +281,6 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, side
             },
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
-                    in_heading = false;
-                    if let Some(list) = sidebar_list {
-                        let text = current_heading_text.clone();
-                        let row = gtk::ListBoxRow::builder().build();
-                        let label = gtk::Label::builder()
-                            .label(&text)
-                            .xalign(0.0)
-                            .margin_start(12 * current_heading_level as i32)
-                            .margin_top(6)
-                            .margin_bottom(6)
-                            .margin_end(12)
-                            .build();
-                        row.set_child(Some(&label));
-                        
-                        let offset = iter.offset();
-                        let view_clone = view.clone();
-                        // wait, ListBoxRow click needs gesture click or connect_activate
-                        row.connect_activate(move |_| {
-                            let mut iter = view_clone.buffer().iter_at_offset(offset);
-                            view_clone.scroll_to_iter(&mut iter, 0.0, true, 0.0, 0.0);
-                        });
-                        list.append(&row);
-                    }
                     current_tags.retain(|&t| t != "h1" && t != "h2" && t != "h3" && t != "h4");
                     buffer.insert(&mut iter, "\n\n");
                 }
@@ -371,9 +318,6 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, side
             Event::Text(t) => {
                 if in_image {
                     continue;
-                }
-                if in_heading {
-                    current_heading_text.push_str(&t);
                 }
                 let start_offset = iter.offset();
                 buffer.insert(&mut iter, &t);
