@@ -27,16 +27,6 @@ fn build_ui(app: &Application) {
     let provider = gtk::CssProvider::new();
     provider.load_from_data("
         textview { background: transparent; }
-        .code-overlay button.copy-btn {
-            opacity: 0;
-            transition: opacity 200ms ease-in-out;
-            min-width: 24px;
-            min-height: 24px;
-            padding: 4px;
-        }
-        .code-overlay:hover button.copy-btn {
-            opacity: 1;
-        }
     ");
     gtk::style_context_add_provider_for_display(
         &gtk::gdk::Display::default().expect("Could not connect to a display."),
