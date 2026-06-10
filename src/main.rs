@@ -34,7 +34,10 @@ fn build_ui(app: &Application) {
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
-    let stack = ViewStack::new();
+    let stack = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .transition_duration(300)
+        .build();
 
     let edit_buffer = TextBuffer::new(None);
     let edit_view = TextView::builder()
@@ -130,20 +133,24 @@ fn build_ui(app: &Application) {
         }
     });
 
-    let header_bar = HeaderBar::builder().build();
+    let header_bar = adw::HeaderBar::new();
     header_bar.pack_end(&menu_button);
     header_bar.pack_end(&preview_toggle);
 
-    let bottom_box = Box::new(gtk::Orientation::Horizontal, 0);
+    let bottom_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .build();
+    let spacer = gtk::Box::builder().hexpand(true).build();
+    bottom_box.append(&spacer);
     bottom_box.append(&status_label);
 
-    let toolbar_view = ToolbarView::builder()
+    let toolbar_view = adw::ToolbarView::builder()
         .content(&stack)
         .build();
     toolbar_view.add_top_bar(&header_bar);
     toolbar_view.add_bottom_bar(&bottom_box);
 
-    let window = ApplicationWindow::builder()
+    let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Untitled Document")
         .default_width(800)
