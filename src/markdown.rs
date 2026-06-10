@@ -139,6 +139,8 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .margin_top(12).margin_bottom(12).margin_start(12).margin_end(12)
                         .xalign(0.0)
                         .yalign(0.0)
+                        .selectable(true)
+                        .can_focus(false)
                         .build();
                     label.set_markup(&format!("<tt>{}</tt>", glib::markup_escape_text(clean_code)));
                     
@@ -215,6 +217,8 @@ pub fn render_markdown(view: &TextView, text: &str) {
                                 .wrap(true)
                                 .xalign(0.0)
                                 .hexpand(true)
+                                .selectable(true)
+                                .can_focus(false)
                                 .build();
                             label.set_markup(cell_text);
                             if row_idx == 0 {
