@@ -230,6 +230,7 @@ fn build_ui(app: &Application) {
                 && let Ok(text) = tokio::fs::read_to_string(&path).await
             {
                 edit_buffer_clone.set_text(&text);
+                edit_buffer_clone.set_modified(false);
                 window_clone
                     .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
                 *current_file_clone.borrow_mut() = Some(file);
@@ -264,6 +265,7 @@ fn build_ui(app: &Application) {
                     alert.add_response("ok", &gettext("OK"));
                     alert.present(Some(&window_clone));
                 } else {
+                    edit_buffer_clone.set_modified(false);
                     window_clone
                         .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
                     *current_file_clone.borrow_mut() = Some(file);
@@ -288,6 +290,7 @@ fn build_ui(app: &Application) {
                     false,
                 );
                 let window_clone_inner = window_clone_save.clone();
+                let edit_buffer_inner = edit_buffer_clone.clone();
                 glib::spawn_future_local(async move {
                     if let Err(e) = tokio::fs::write(&path, text.as_str()).await {
                         let alert = adw::AlertDialog::builder()
@@ -296,6 +299,8 @@ fn build_ui(app: &Application) {
                             .build();
                         alert.add_response("ok", &gettext("OK"));
                         alert.present(Some(&window_clone_inner));
+                    } else {
+                        edit_buffer_inner.set_modified(false);
                     }
                 });
             }
@@ -306,9 +311,37 @@ fn build_ui(app: &Application) {
     app.add_action(&action_save);
 
     let app_clone = app.clone();
+    let window_clone_quit = window.clone();
+    let edit_buffer_clone_quit = edit_buffer.clone();
     let action_quit = gio::SimpleAction::new("quit", None);
-    action_quit.connect_activate(move |_, _| app_clone.quit());
+    action_quit.connect_activate(move |_, _| {
+        if edit_buffer_clone_quit.is_modified() {
+            let alert = adw::AlertDialog::builder()
+                .heading(&gettext("Unsaved Changes"))
+                .body(&gettext("You have unsaved changes. Do you want to close without saving?"))
+                .build();
+            alert.add_response("cancel", &gettext("Cancel"));
+            alert.add_response("close", &gettext("Close Without Saving"));
+            alert.set_response_appearance("close", adw::ResponseAppearance::Destructive);
+            
+            let app_clone_inner = app_clone.clone();
+            alert.connect_response(None, move |_, response| {
+                if response == "close" {
+                    app_clone_inner.quit();
+                }
+            });
+            alert.present(Some(&window_clone_quit));
+        } else {
+            app_clone.quit();
+        }
+    });
     app.add_action(&action_quit);
+
+    let app_clone_close = app.clone();
+    window.connect_close_request(move |_| {
+        app_clone_close.activate_action("quit", None);
+        glib::Propagation::Stop
+    });
 
     window.present();
 }
