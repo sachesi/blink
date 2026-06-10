@@ -1,6 +1,8 @@
 use adw::prelude::*;
 use adw::{Application, ApplicationWindow, HeaderBar, ToolbarView, ViewStack};
-use gtk::{gio, glib, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton};
+use gtk::{gio, glib, FileDialog, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 mod markdown;
 
@@ -96,23 +98,6 @@ fn build_ui(app: &Application) {
         .build();
     toolbar_view.add_top_bar(&header_bar);
 
-    let action_open = gio::SimpleAction::new("open", None);
-    action_open.connect_activate(|_, _| println!("Open trigger"));
-    app.add_action(&action_open);
-
-    let action_save = gio::SimpleAction::new("save", None);
-    action_save.connect_activate(|_, _| println!("Save trigger"));
-    app.add_action(&action_save);
-
-    let action_save_as = gio::SimpleAction::new("save-as", None);
-    action_save_as.connect_activate(|_, _| println!("Save As trigger"));
-    app.add_action(&action_save_as);
-
-    let app_clone = app.clone();
-    let action_quit = gio::SimpleAction::new("quit", None);
-    action_quit.connect_activate(move |_, _| app_clone.quit());
-    app.add_action(&action_quit);
-
     let window = ApplicationWindow::builder()
         .application(app)
         .title("Untitled Document")
@@ -120,6 +105,78 @@ fn build_ui(app: &Application) {
         .default_height(600)
         .content(&toolbar_view)
         .build();
+
+    let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
+
+    // Actions
+    let action_open = gio::SimpleAction::new("open", None);
+    let window_clone = window.clone();
+    let edit_buffer_clone = edit_buffer.clone();
+    let current_file_clone = current_file.clone();
+    action_open.connect_activate(move |_, _| {
+        let dialog = FileDialog::new();
+        let window_clone = window_clone.clone();
+        let edit_buffer_clone = edit_buffer_clone.clone();
+        let current_file_clone = current_file_clone.clone();
+        glib::spawn_future_local(async move {
+            if let Ok(file) = dialog.open_future(Some(&window_clone)).await {
+                if let Some(path) = file.path() {
+                    if let Ok(text) = tokio::fs::read_to_string(&path).await {
+                        edit_buffer_clone.set_text(&text);
+                        window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
+                        *current_file_clone.borrow_mut() = Some(file);
+                    }
+                }
+            }
+        });
+    });
+    app.add_action(&action_open);
+
+    let action_save_as = gio::SimpleAction::new("save-as", None);
+    let window_clone = window.clone();
+    let edit_buffer_clone = edit_buffer.clone();
+    let current_file_clone = current_file.clone();
+    action_save_as.connect_activate(move |_, _| {
+        let dialog = FileDialog::new();
+        let window_clone = window_clone.clone();
+        let edit_buffer_clone = edit_buffer_clone.clone();
+        let current_file_clone = current_file_clone.clone();
+        glib::spawn_future_local(async move {
+            if let Ok(file) = dialog.save_future(Some(&window_clone)).await {
+                if let Some(path) = file.path() {
+                    let text = edit_buffer_clone.text(&edit_buffer_clone.start_iter(), &edit_buffer_clone.end_iter(), false);
+                    let _ = tokio::fs::write(&path, text.as_str()).await;
+                    window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
+                    *current_file_clone.borrow_mut() = Some(file);
+                }
+            }
+        });
+    });
+    app.add_action(&action_save_as);
+
+    let action_save = gio::SimpleAction::new("save", None);
+    let edit_buffer_clone = edit_buffer.clone();
+    let current_file_clone = current_file.clone();
+    let app_clone = app.clone();
+    action_save.connect_activate(move |_, _| {
+        let file_opt = current_file_clone.borrow().clone();
+        if let Some(file) = file_opt {
+            if let Some(path) = file.path() {
+                let text = edit_buffer_clone.text(&edit_buffer_clone.start_iter(), &edit_buffer_clone.end_iter(), false);
+                glib::spawn_future_local(async move {
+                    let _ = tokio::fs::write(&path, text.as_str()).await;
+                });
+            }
+        } else {
+            app_clone.activate_action("save-as", None);
+        }
+    });
+    app.add_action(&action_save);
+
+    let app_clone = app.clone();
+    let action_quit = gio::SimpleAction::new("quit", None);
+    action_quit.connect_activate(move |_, _| app_clone.quit());
+    app.add_action(&action_quit);
 
     window.present();
 }
