@@ -125,6 +125,8 @@ fn build_ui(app: &Application) {
         .orientation(gtk::Orientation::Horizontal)
         .start_child(&edit_scroll)
         .end_child(&preview_scroll)
+        .position(350)
+        .wide_handle(true)
         .build();
 
     let adj = edit_scroll.vadjustment();
@@ -168,43 +170,61 @@ fn build_ui(app: &Application) {
         .build();
 
     let view_switcher = gtk::Box::builder().css_classes(["linked"]).build();
-    let btn_edit = ToggleButton::builder().label(&gettext("Edit")).build();
-    let btn_split = ToggleButton::builder().label(&gettext("Split")).build();
-    let btn_preview = ToggleButton::builder().label(&gettext("Preview")).active(true).build();
+    
+    // Edit/Render toggle button
+    let btn_mode_toggle = gtk::Button::builder()
+        .icon_name("document-edit-symbolic")
+        .tooltip_text(&gettext("Edit Document"))
+        .build();
 
-    btn_split.set_group(Some(&btn_edit));
-    btn_preview.set_group(Some(&btn_edit));
+    // Split view toggle button
+    let btn_split_toggle = ToggleButton::builder()
+        .icon_name("view-split-left-right-symbolic")
+        .tooltip_text(&gettext("Split View"))
+        .build();
 
-    view_switcher.append(&btn_edit);
-    view_switcher.append(&btn_split);
-    view_switcher.append(&btn_preview);
+    view_switcher.append(&btn_mode_toggle);
+    view_switcher.append(&btn_split_toggle);
 
     let edit_scroll_clone = edit_scroll.clone();
     let preview_scroll_clone = preview_scroll.clone();
-    btn_edit.connect_toggled(move |btn| {
-        if btn.is_active() {
+    btn_mode_toggle.connect_clicked(move |btn| {
+        let currently_preview = preview_scroll_clone.is_visible() && !edit_scroll_clone.is_visible();
+        if currently_preview {
+            // Switch to Edit
             edit_scroll_clone.set_visible(true);
             preview_scroll_clone.set_visible(false);
+            btn.set_icon_name("view-reveal-symbolic");
+            btn.set_tooltip_text(Some(&gettext("Preview Document")));
+        } else {
+            // Switch to Preview
+            edit_scroll_clone.set_visible(false);
+            preview_scroll_clone.set_visible(true);
+            btn.set_icon_name("document-edit-symbolic");
+            btn.set_tooltip_text(Some(&gettext("Edit Document")));
         }
     });
 
     let edit_scroll_clone2 = edit_scroll.clone();
     let preview_scroll_clone2 = preview_scroll.clone();
-    btn_split.connect_toggled(move |btn| {
-        if btn.is_active() {
+    let btn_mode_toggle_clone = btn_mode_toggle.clone();
+    btn_split_toggle.connect_toggled(move |btn| {
+        let is_split = btn.is_active();
+        if is_split {
             edit_scroll_clone2.set_visible(true);
             preview_scroll_clone2.set_visible(true);
+            btn_mode_toggle_clone.set_sensitive(false);
+        } else {
+            btn_mode_toggle_clone.set_sensitive(true);
+            // Restore state based on what the toggle button says
+            let wants_preview = btn_mode_toggle_clone.icon_name() == Some(glib::GString::from("document-edit-symbolic"));
+            edit_scroll_clone2.set_visible(!wants_preview);
+            preview_scroll_clone2.set_visible(wants_preview);
         }
     });
 
-    let edit_scroll_clone3 = edit_scroll.clone();
-    let preview_scroll_clone3 = preview_scroll.clone();
-    btn_preview.connect_toggled(move |btn| {
-        if btn.is_active() {
-            edit_scroll_clone3.set_visible(false);
-            preview_scroll_clone3.set_visible(true);
-        }
-    });
+    // Default to split view being active
+    btn_split_toggle.set_active(true);
 
     let header_bar = adw::HeaderBar::new();
 
