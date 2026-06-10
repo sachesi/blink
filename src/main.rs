@@ -101,6 +101,9 @@ fn build_ui(app: &Application) {
         .end_child(&preview_scroll)
         .build();
 
+    let adj = edit_scroll.vadjustment();
+    preview_scroll.set_vadjustment(Some(&adj));
+
     // Default to preview only
     edit_scroll.set_visible(false);
 
