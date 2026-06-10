@@ -47,7 +47,11 @@ pub fn highlight_editor(buffer: &TextBuffer, text: &str) {
     }
     byte_to_char[text.len()] = char_count;
 
-    let parser = Parser::new(text).into_offset_iter();
+    let mut options = pulldown_cmark::Options::empty();
+    options.insert(pulldown_cmark::Options::ENABLE_TABLES);
+    options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
+    options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(text, options).into_offset_iter();
     for (event, range) in parser {
         let start_char = byte_to_char[range.start];
         let end_char = byte_to_char[range.end];
@@ -59,8 +63,11 @@ pub fn highlight_editor(buffer: &TextBuffer, text: &str) {
                 let tag_name = format!("h{}", level as u8);
                 buffer.apply_tag_by_name(&tag_name, &start_iter, &end_iter);
             }
-            Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => {
+            Event::Code(_) => {
                 buffer.apply_tag_by_name("code", &start_iter, &end_iter);
+            }
+            Event::Start(Tag::CodeBlock(_)) => {
+                buffer.apply_tag_by_name("code_block", &start_iter, &end_iter);
             }
             Event::Start(Tag::Strong) => {
                 buffer.apply_tag_by_name("bold", &start_iter, &end_iter);
@@ -88,7 +95,11 @@ pub fn render_markdown(view: &TextView, text: &str) {
     buffer.delete(&mut iter, &mut buffer.bounds().1);
     
     // By re-creating the parser, we iterate through events.
-    let parser = Parser::new(text);
+    let mut options = pulldown_cmark::Options::empty();
+    options.insert(pulldown_cmark::Options::ENABLE_TABLES);
+    options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
+    options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(text, options);
     let mut current_tags: Vec<&'static str> = Vec::new();
     let mut iter = buffer.end_iter();
     
@@ -113,8 +124,17 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 Event::End(TagEnd::TableCell) => {
                     current_row.push(current_cell.clone());
                 }
-                Event::Text(t) | Event::Code(t) => {
-                    current_cell.push_str(&t);
+                Event::Start(Tag::Strong) => current_cell.push_str("<b>"),
+                Event::End(TagEnd::Strong) => current_cell.push_str("</b>"),
+                Event::Start(Tag::Emphasis) => current_cell.push_str("<i>"),
+                Event::End(TagEnd::Emphasis) => current_cell.push_str("</i>"),
+                Event::Start(Tag::Strikethrough) => current_cell.push_str("<s>"),
+                Event::End(TagEnd::Strikethrough) => current_cell.push_str("</s>"),
+                Event::Code(c) => {
+                    current_cell.push_str(&format!("<span background='rgba(128,128,128,0.15)' font_family='Monospace'>{}</span>", glib::markup_escape_text(&c)));
+                }
+                Event::Text(t) => {
+                    current_cell.push_str(&glib::markup_escape_text(&t));
                 }
                 Event::End(TagEnd::Table) => {
                     in_table = false;
@@ -129,9 +149,11 @@ pub fn render_markdown(view: &TextView, text: &str) {
                     for (row_idx, row) in table_rows.iter().enumerate() {
                         for (col_idx, cell_text) in row.iter().enumerate() {
                             let label = Label::builder()
-                                .label(cell_text)
                                 .margin_top(8).margin_bottom(8).margin_start(8).margin_end(8)
+                                .wrap(true)
+                                .xalign(0.0)
                                 .build();
+                            label.set_markup(cell_text);
                             if row_idx == 0 {
                                 label.add_css_class("heading");
                             }
