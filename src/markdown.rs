@@ -111,7 +111,49 @@ pub fn render_markdown(view: &TextView, text: &str) {
     let mut current_cell = String::new();
     let mut _in_head = false;
 
+    let mut in_code_block = false;
+    let mut current_code = String::new();
+
     for event in parser {
+        if in_code_block {
+            match event {
+                Event::Text(t) | Event::Code(t) => {
+                    current_code.push_str(&t);
+                }
+                Event::End(TagEnd::CodeBlock) => {
+                    in_code_block = false;
+                    let scroll = gtk::ScrolledWindow::builder()
+                        .margin_top(12)
+                        .margin_bottom(12)
+                        .hexpand(true)
+                        .propagate_natural_height(true)
+                        .hscrollbar_policy(gtk::PolicyType::Automatic)
+                        .vscrollbar_policy(gtk::PolicyType::Never)
+                        .build();
+                    scroll.add_css_class("card");
+                    
+                    // We remove trailing newlines for a cleaner look inside the card
+                    let clean_code = current_code.trim_end_matches('\n');
+                    
+                    let label = Label::builder()
+                        .margin_top(12).margin_bottom(12).margin_start(12).margin_end(12)
+                        .xalign(0.0)
+                        .yalign(0.0)
+                        .selectable(true)
+                        .build();
+                    label.set_markup(&format!("<tt>{}</tt>", glib::markup_escape_text(clean_code)));
+                    
+                    scroll.set_child(Some(&label));
+                    
+                    let anchor = buffer.create_child_anchor(&mut iter);
+                    view.add_child_at_anchor(&scroll, &anchor);
+                    buffer.insert(&mut iter, "\n\n");
+                }
+                _ => {}
+            }
+            continue;
+        }
+
         if in_table {
             match event {
                 Event::Start(Tag::TableHead) => {
@@ -201,6 +243,10 @@ pub fn render_markdown(view: &TextView, text: &str) {
 
         match event {
             Event::Start(tag) => match tag {
+                Tag::CodeBlock(_) => {
+                    in_code_block = true;
+                    current_code.clear();
+                }
                 Tag::Table(_) => {
                     in_table = true;
                     table_rows.clear();
@@ -218,7 +264,6 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 Tag::Emphasis => current_tags.push("italic"),
                 Tag::Strikethrough => current_tags.push("strikethrough"),
                 Tag::Link { .. } => current_tags.push("link"),
-                Tag::CodeBlock(_) => current_tags.push("code_block"),
                 Tag::BlockQuote(_) => current_tags.push("blockquote"),
                 Tag::List(_) => {
                     list_depth += 1;
@@ -239,7 +284,6 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 TagEnd::Emphasis => { current_tags.retain(|&t| t != "italic"); },
                 TagEnd::Strikethrough => { current_tags.retain(|&t| t != "strikethrough"); },
                 TagEnd::Link => { current_tags.retain(|&t| t != "link"); },
-                TagEnd::CodeBlock => { current_tags.retain(|&t| t != "code_block"); buffer.insert(&mut iter, "\n\n"); },
                 TagEnd::BlockQuote(_) => { current_tags.retain(|&t| t != "blockquote"); buffer.insert(&mut iter, "\n\n"); },
                 TagEnd::List(_) => { current_tags.retain(|&t| t != "list"); list_depth -= 1; },
                 TagEnd::Item => { buffer.insert(&mut iter, "\n"); },
