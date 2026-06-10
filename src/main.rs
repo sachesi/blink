@@ -43,7 +43,7 @@ fn build_ui(app: &Application) {
         "
         textview { background: transparent; }
         paned > separator {
-            background-image: image(alpha(currentColor, 0.15));
+            background-image: image(alpha(currentColor, 0.06));
             background-size: 1px 100%;
             background-position: center center;
             background-repeat: no-repeat;
