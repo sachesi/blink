@@ -43,7 +43,7 @@ pub fn setup_tags(buffer: &TextBuffer) {
 
 
 
-pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
+pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment, sidebar_list: Option<&gtk::ListBox>) {
     let buffer = view.buffer();
     let mut iter = buffer.bounds().0;
     buffer.delete(&mut iter, &mut buffer.bounds().1);
@@ -56,6 +56,12 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
     let parser = Parser::new_ext(text, options);
     let mut current_tags: Vec<&'static str> = Vec::new();
     let mut iter = buffer.end_iter();
+
+    if let Some(list) = sidebar_list {
+        while let Some(child) = list.first_child() {
+            list.remove(&child);
+        }
+    }
 
     let mut list_depth = 0;
 
@@ -70,6 +76,9 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
     let mut current_code_lang = String::new();
 
     let mut in_image = false;
+    let mut in_heading = false;
+    let mut current_heading_text = String::new();
+    let mut current_heading_level = 0;
 
     for event in parser {
         if in_code_block {
@@ -251,6 +260,9 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
                     table_rows.clear();
                 }
                 Tag::Heading { level, .. } => {
+                    in_heading = true;
+                    current_heading_text.clear();
+                    current_heading_level = level as u8;
                     let level_num = level as u8;
                     current_tags.push(match level_num {
                         1 => "h1",
@@ -299,6 +311,29 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
             },
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
+                    in_heading = false;
+                    if let Some(list) = sidebar_list {
+                        let text = current_heading_text.clone();
+                        let row = gtk::ListBoxRow::builder().build();
+                        let label = gtk::Label::builder()
+                            .label(&text)
+                            .xalign(0.0)
+                            .margin_start(12 * current_heading_level as i32)
+                            .margin_top(6)
+                            .margin_bottom(6)
+                            .margin_end(12)
+                            .build();
+                        row.set_child(Some(&label));
+                        
+                        let offset = iter.offset();
+                        let view_clone = view.clone();
+                        // wait, ListBoxRow click needs gesture click or connect_activate
+                        row.connect_activate(move |_| {
+                            let mut iter = view_clone.buffer().iter_at_offset(offset);
+                            view_clone.scroll_to_iter(&mut iter, 0.0, true, 0.0, 0.0);
+                        });
+                        list.append(&row);
+                    }
                     current_tags.retain(|&t| t != "h1" && t != "h2" && t != "h3" && t != "h4");
                     buffer.insert(&mut iter, "\n\n");
                 }
@@ -336,6 +371,9 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
             Event::Text(t) => {
                 if in_image {
                     continue;
+                }
+                if in_heading {
+                    current_heading_text.push_str(&t);
                 }
                 let start_offset = iter.offset();
                 buffer.insert(&mut iter, &t);
