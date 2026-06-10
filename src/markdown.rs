@@ -126,6 +126,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .margin_top(12)
                         .margin_bottom(12)
                         .hexpand(true)
+                        .width_request(630)
                         .propagate_natural_height(true)
                         .hscrollbar_policy(gtk::PolicyType::Automatic)
                         .vscrollbar_policy(gtk::PolicyType::Never)
