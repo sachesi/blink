@@ -122,53 +122,21 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 }
                 Event::End(TagEnd::CodeBlock) => {
                     in_code_block = false;
-                    let vbox = gtk::Box::builder()
-                        .orientation(gtk::Orientation::Vertical)
+                    let scroll = gtk::ScrolledWindow::builder()
                         .margin_top(12)
                         .margin_bottom(12)
-                        .hexpand(true)
-                        .build();
-                    vbox.add_css_class("card");
-
-                    let header = gtk::Box::builder()
-                        .orientation(gtk::Orientation::Horizontal)
-                        .hexpand(true)
-                        .margin_start(8)
-                        .margin_end(8)
-                        .margin_top(4)
-                        .margin_bottom(4)
-                        .build();
-
-                    let spacer = gtk::Box::builder().hexpand(true).build();
-                    header.append(&spacer);
-
-                    let copy_btn = gtk::Button::builder()
-                        .icon_name("edit-copy-symbolic")
-                        .valign(gtk::Align::Center)
-                        .can_focus(false)
-                        .build();
-                    copy_btn.add_css_class("flat");
-                    
-                    let clean_code = current_code.trim_end_matches('\n');
-                    let code_clone = clean_code.to_string();
-                    copy_btn.connect_clicked(move |btn| {
-                        btn.clipboard().set_text(&code_clone);
-                    });
-
-                    header.append(&copy_btn);
-
-                    let sep = gtk::Separator::builder().orientation(gtk::Orientation::Horizontal).build();
-
-                    let scroll = gtk::ScrolledWindow::builder()
                         .hexpand(true)
                         .width_request(630)
                         .propagate_natural_height(true)
                         .hscrollbar_policy(gtk::PolicyType::Automatic)
                         .vscrollbar_policy(gtk::PolicyType::Never)
                         .build();
+                    scroll.add_css_class("card");
+                    
+                    let clean_code = current_code.trim_end_matches('\n');
                     
                     let label = Label::builder()
-                        .margin_top(8).margin_bottom(12).margin_start(12).margin_end(12)
+                        .margin_top(12).margin_bottom(12).margin_start(12).margin_end(12)
                         .xalign(0.0)
                         .yalign(0.0)
                         .selectable(true)
@@ -176,13 +144,9 @@ pub fn render_markdown(view: &TextView, text: &str) {
                     label.set_markup(&format!("<tt>{}</tt>", glib::markup_escape_text(clean_code)));
                     
                     scroll.set_child(Some(&label));
-                    
-                    vbox.append(&header);
-                    vbox.append(&sep);
-                    vbox.append(&scroll);
 
                     let anchor = buffer.create_child_anchor(&mut iter);
-                    view.add_child_at_anchor(&vbox, &anchor);
+                    view.add_child_at_anchor(&scroll, &anchor);
                     buffer.insert(&mut iter, "\n\n");
                 }
                 _ => {}
