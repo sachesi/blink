@@ -25,6 +25,9 @@ async fn main() -> glib::ExitCode {
         app.set_accels_for_action("app.save", &["<Ctrl>s"]);
         app.set_accels_for_action("app.save-as", &["<Ctrl><Shift>s"]);
         app.set_accels_for_action("app.quit", &["<Ctrl>q"]);
+        app.set_accels_for_action("app.format-bold", &["<Ctrl>b"]);
+        app.set_accels_for_action("app.format-italic", &["<Ctrl>i"]);
+        app.set_accels_for_action("app.format-link", &["<Ctrl>k"]);
     });
 
     app.connect_activate(build_ui);
@@ -336,6 +339,40 @@ fn build_ui(app: &Application) {
         }
     });
     app.add_action(&action_quit);
+
+    // Formatting Actions
+    let action_bold = gio::SimpleAction::new("format-bold", None);
+    let edit_buf_bold = edit_buffer.clone();
+    action_bold.connect_activate(move |_, _| {
+        if let Some((mut start, mut end)) = edit_buf_bold.selection_bounds() {
+            let text = edit_buf_bold.text(&start, &end, false);
+            edit_buf_bold.delete(&mut start, &mut end);
+            edit_buf_bold.insert(&mut start, &format!("**{}**", text.as_str()));
+        }
+    });
+    app.add_action(&action_bold);
+
+    let action_italic = gio::SimpleAction::new("format-italic", None);
+    let edit_buf_italic = edit_buffer.clone();
+    action_italic.connect_activate(move |_, _| {
+        if let Some((mut start, mut end)) = edit_buf_italic.selection_bounds() {
+            let text = edit_buf_italic.text(&start, &end, false);
+            edit_buf_italic.delete(&mut start, &mut end);
+            edit_buf_italic.insert(&mut start, &format!("*{}*", text.as_str()));
+        }
+    });
+    app.add_action(&action_italic);
+
+    let action_link = gio::SimpleAction::new("format-link", None);
+    let edit_buf_link = edit_buffer.clone();
+    action_link.connect_activate(move |_, _| {
+        if let Some((mut start, mut end)) = edit_buf_link.selection_bounds() {
+            let text = edit_buf_link.text(&start, &end, false);
+            edit_buf_link.delete(&mut start, &mut end);
+            edit_buf_link.insert(&mut start, &format!("[{}](url)", text.as_str()));
+        }
+    });
+    app.add_action(&action_link);
 
     let app_clone_close = app.clone();
     window.connect_close_request(move |_| {
