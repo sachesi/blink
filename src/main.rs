@@ -132,8 +132,7 @@ fn build_ui(app: &Application) {
     let adj = edit_scroll.vadjustment();
     preview_scroll.set_vadjustment(Some(&adj));
 
-    // Default to preview only
-    edit_scroll.set_visible(false);
+    // Set visibility later after buttons are created
 
     let status_label = Label::builder()
         .margin_top(4)
@@ -223,8 +222,12 @@ fn build_ui(app: &Application) {
         }
     });
 
-    // Default to split view being active
-    btn_split_toggle.set_active(true);
+    // Default to edit only when launched empty
+    edit_scroll.set_visible(true);
+    preview_scroll.set_visible(false);
+    btn_split_toggle.set_active(false);
+    btn_mode_toggle.set_icon_name("view-reveal-symbolic");
+    btn_mode_toggle.set_tooltip_text(Some(&gettext("Preview Document")));
 
     let header_bar = adw::HeaderBar::new();
 
@@ -288,11 +291,19 @@ fn build_ui(app: &Application) {
     let window_clone = window.clone();
     let edit_buffer_clone = edit_buffer.clone();
     let current_file_clone = current_file.clone();
+    let btn_split_toggle_open = btn_split_toggle.clone();
+    let btn_mode_toggle_open = btn_mode_toggle.clone();
+    let edit_scroll_open = edit_scroll.clone();
+    let preview_scroll_open = preview_scroll.clone();
     action_open.connect_activate(move |_, _| {
         let dialog = FileDialog::new();
         let window_clone = window_clone.clone();
         let edit_buffer_clone = edit_buffer_clone.clone();
         let current_file_clone = current_file_clone.clone();
+        let btn_split_toggle_open = btn_split_toggle_open.clone();
+        let btn_mode_toggle_open = btn_mode_toggle_open.clone();
+        let edit_scroll_open = edit_scroll_open.clone();
+        let preview_scroll_open = preview_scroll_open.clone();
         glib::spawn_future_local(async move {
             if let Ok(file) = dialog.open_future(Some(&window_clone)).await
                 && let Some(path) = file.path()
@@ -303,6 +314,12 @@ fn build_ui(app: &Application) {
                 window_clone
                     .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
                 *current_file_clone.borrow_mut() = Some(file);
+
+                btn_split_toggle_open.set_active(false);
+                edit_scroll_open.set_visible(false);
+                preview_scroll_open.set_visible(true);
+                btn_mode_toggle_open.set_icon_name("document-edit-symbolic");
+                btn_mode_toggle_open.set_tooltip_text(Some(&gettext("Edit Document")));
             }
         });
     });
