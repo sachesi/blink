@@ -30,13 +30,19 @@ fn build_ui(app: &Application) {
     let edit_view = TextView::builder()
         .buffer(&edit_buffer)
         .wrap_mode(gtk::WrapMode::Word)
-        .left_margin(12)
-        .right_margin(12)
-        .top_margin(12)
-        .bottom_margin(12)
+        .left_margin(32)
+        .right_margin(32)
+        .top_margin(32)
+        .bottom_margin(32)
+        .pixels_above_lines(4)
+        .pixels_below_lines(4)
+        .build();
+    let edit_clamp = adw::Clamp::builder()
+        .child(&edit_view)
+        .maximum_size(700)
         .build();
     let edit_scroll = ScrolledWindow::builder()
-        .child(&edit_view)
+        .child(&edit_clamp)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .build();
     stack.add_named(&edit_scroll, Some("edit"));
@@ -47,10 +53,12 @@ fn build_ui(app: &Application) {
         .buffer(&preview_buffer)
         .editable(false)
         .wrap_mode(gtk::WrapMode::Word)
-        .left_margin(12)
-        .right_margin(12)
-        .top_margin(12)
-        .bottom_margin(12)
+        .left_margin(32)
+        .right_margin(32)
+        .top_margin(32)
+        .bottom_margin(32)
+        .pixels_above_lines(4)
+        .pixels_below_lines(4)
         .build();
 
     let preview_buffer_clone = preview_buffer.clone();
@@ -59,8 +67,12 @@ fn build_ui(app: &Application) {
         markdown::render_markdown(&preview_buffer_clone, text.as_str());
     });
 
-    let preview_scroll = ScrolledWindow::builder()
+    let preview_clamp = adw::Clamp::builder()
         .child(&preview_view)
+        .maximum_size(700)
+        .build();
+    let preview_scroll = ScrolledWindow::builder()
+        .child(&preview_clamp)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .build();
     stack.add_named(&preview_scroll, Some("preview"));
