@@ -167,6 +167,7 @@ fn build_ui(app: &Application) {
 
     let menu = gio::Menu::new();
     menu.append(Some(&gettext("Export HTML…")), Some("app.export-html"));
+    menu.append(Some(&gettext("Export PDF…")), Some("app.export-pdf"));
     menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
     menu.append(Some(&gettext("Quit")), Some("app.quit"));
 
@@ -511,6 +512,44 @@ fn build_ui(app: &Application) {
         });
     });
     app.add_action(&action_export_html);
+
+    let action_export_pdf = gio::SimpleAction::new("export-pdf", None);
+    let window_clone_export_pdf = window.clone();
+    let edit_buffer_pdf = edit_buffer.clone();
+    action_export_pdf.connect_activate(move |_, _| {
+        let dialog = FileDialog::new();
+        let window_clone = window_clone_export_pdf.clone();
+        let edit_buffer_clone = edit_buffer_pdf.clone();
+        glib::spawn_future_local(async move {
+            if let Ok(file) = dialog.save_future(Some(&window_clone)).await
+                && let Some(path) = file.path()
+            {
+                let print_op = gtk::PrintOperation::new();
+                let compositor = sourceview5::PrintCompositor::new(&edit_buffer_clone);
+                
+                compositor.set_print_line_numbers(0);
+                compositor.set_print_header(false);
+                compositor.set_print_footer(false);
+
+                let comp_begin = compositor.clone();
+                print_op.connect_begin_print(move |op, context| {
+                    while !comp_begin.paginate(context) {}
+                    op.set_n_pages(comp_begin.n_pages());
+                });
+
+                let comp_draw = compositor.clone();
+                print_op.connect_draw_page(move |_, context, page_nr| {
+                    comp_draw.draw_page(context, page_nr);
+                });
+
+                if let Some(path_str) = path.to_str() {
+                    print_op.set_export_filename(path_str);
+                    let _ = print_op.run(gtk::PrintOperationAction::Export, Some(&window_clone));
+                }
+            }
+        });
+    });
+    app.add_action(&action_export_pdf);
 
     let app_clone_close = app.clone();
     window.connect_close_request(move |_| {
