@@ -55,4 +55,4 @@ sachesi <xsachesi@pm.me>
 
 ## License
 
-MIT
+GPL-3.0
