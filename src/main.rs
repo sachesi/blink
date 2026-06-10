@@ -140,6 +140,7 @@ fn build_ui(app: &Application) {
     });
 
     let menu = gio::Menu::new();
+    menu.append(Some(&gettext("Export HTML…")), Some("app.export-html"));
     menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
     menu.append(Some(&gettext("Quit")), Some("app.quit"));
 
@@ -407,6 +408,47 @@ fn build_ui(app: &Application) {
         search_bar_clone.set_search_mode(true);
     });
     app.add_action(&action_find);
+
+    let action_export_html = gio::SimpleAction::new("export-html", None);
+    let window_clone_export = window.clone();
+    let edit_buffer_export = edit_buffer.clone();
+    action_export_html.connect_activate(move |_, _| {
+        let dialog = FileDialog::new();
+        let window_clone = window_clone_export.clone();
+        let edit_buffer_clone = edit_buffer_export.clone();
+        glib::spawn_future_local(async move {
+            if let Ok(file) = dialog.save_future(Some(&window_clone)).await
+                && let Some(path) = file.path()
+            {
+                let text = edit_buffer_clone.text(
+                    &edit_buffer_clone.start_iter(),
+                    &edit_buffer_clone.end_iter(),
+                    false,
+                );
+                
+                let mut options = pulldown_cmark::Options::empty();
+                options.insert(pulldown_cmark::Options::ENABLE_TABLES);
+                options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
+                options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
+                let parser = pulldown_cmark::Parser::new_ext(text.as_str(), options);
+                
+                let mut html_output = String::new();
+                pulldown_cmark::html::push_html(&mut html_output, parser);
+                
+                let html_doc = format!("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Export</title>\n</head>\n<body>\n{}\n</body>\n</html>", html_output);
+
+                if let Err(e) = tokio::fs::write(&path, html_doc).await {
+                    let alert = adw::AlertDialog::builder()
+                        .heading(&gettext("Error Exporting HTML"))
+                        .body(&format!("{}: {}", gettext("Could not export the file"), e))
+                        .build();
+                    alert.add_response("ok", &gettext("OK"));
+                    alert.present(Some(&window_clone));
+                }
+            }
+        });
+    });
+    app.add_action(&action_export_html);
 
     let app_clone_close = app.clone();
     window.connect_close_request(move |_| {
