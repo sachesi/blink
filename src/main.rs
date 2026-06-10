@@ -109,8 +109,6 @@ fn build_ui(app: &Application) {
     stack.add_named(&preview_scroll, Some("preview"));
 
     let menu = gio::Menu::new();
-    menu.append(Some("Open…"), Some("app.open"));
-    menu.append(Some("Save"), Some("app.save"));
     menu.append(Some("Save As…"), Some("app.save-as"));
     menu.append(Some("Quit"), Some("app.quit"));
 
@@ -134,11 +132,27 @@ fn build_ui(app: &Application) {
     });
 
     let header_bar = adw::HeaderBar::new();
+    
+    let open_btn = gtk::Button::builder()
+        .icon_name("document-open-symbolic")
+        .tooltip_text("Open Document")
+        .action_name("app.open")
+        .build();
+        
+    let save_btn = gtk::Button::builder()
+        .icon_name("document-save-symbolic")
+        .tooltip_text("Save Document")
+        .action_name("app.save")
+        .build();
+
+    header_bar.pack_start(&open_btn);
+    header_bar.pack_start(&save_btn);
     header_bar.pack_end(&menu_button);
     header_bar.pack_end(&preview_toggle);
 
     let bottom_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
+        .css_classes(["toolbar"])
         .build();
     let spacer = gtk::Box::builder().hexpand(true).build();
     bottom_box.append(&spacer);
