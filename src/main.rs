@@ -1,8 +1,9 @@
 use adw::Application;
 use adw::prelude::*;
 use gtk::{
-    FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton, gio, glib,
+    gio, glib, FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton,
 };
+use gettextrs::{gettext, setlocale, textdomain, bindtextdomain, LocaleCategory};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -10,6 +11,11 @@ mod markdown;
 
 #[tokio::main]
 async fn main() -> glib::ExitCode {
+    // Initialize i18n
+    setlocale(LocaleCategory::LcAll, "");
+    let _ = bindtextdomain("blink", "/usr/share/locale");
+    let _ = textdomain("blink");
+
     let app = Application::builder()
         .application_id("com.example.blink")
         .build();
@@ -99,7 +105,10 @@ fn build_ui(app: &Application) {
         markdown::render_markdown(&preview_view_clone, text.as_str());
         let chars = text.chars().count();
         let words = text.split_whitespace().count();
-        status_label_clone.set_label(&format!("{} words, {} chars", words, chars));
+        let status_str = gettext("{} words, {} chars")
+            .replacen("{}", &words.to_string(), 1)
+            .replacen("{}", &chars.to_string(), 1);
+        status_label_clone.set_label(&status_str);
     });
 
     let preview_clamp = adw::Clamp::builder()
@@ -113,8 +122,8 @@ fn build_ui(app: &Application) {
     stack.add_named(&preview_scroll, Some("preview"));
 
     let menu = gio::Menu::new();
-    menu.append(Some("Save As…"), Some("app.save-as"));
-    menu.append(Some("Quit"), Some("app.quit"));
+    menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
+    menu.append(Some(&gettext("Quit")), Some("app.quit"));
 
     let menu_button = MenuButton::builder()
         .menu_model(&menu)
@@ -123,7 +132,7 @@ fn build_ui(app: &Application) {
 
     let preview_toggle = ToggleButton::builder()
         .icon_name("view-reveal-symbolic")
-        .tooltip_text("Toggle Preview")
+        .tooltip_text(&gettext("Toggle Preview"))
         .active(true)
         .build();
 
@@ -142,13 +151,13 @@ fn build_ui(app: &Application) {
 
     let open_btn = gtk::Button::builder()
         .icon_name("document-open-symbolic")
-        .tooltip_text("Open Document")
+        .tooltip_text(&gettext("Open Document"))
         .action_name("app.open")
         .build();
 
     let save_btn = gtk::Button::builder()
         .icon_name("document-save-symbolic")
-        .tooltip_text("Save Document")
+        .tooltip_text(&gettext("Save Document"))
         .action_name("app.save")
         .build();
 
@@ -171,7 +180,7 @@ fn build_ui(app: &Application) {
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
-        .title("Untitled Document")
+        .title(&gettext("Untitled Document"))
         .default_width(700)
         .default_height(900)
         .content(&toolbar_view)
@@ -223,10 +232,10 @@ fn build_ui(app: &Application) {
                 );
                 if let Err(e) = tokio::fs::write(&path, text.as_str()).await {
                     let alert = adw::AlertDialog::builder()
-                        .heading("Error Saving File")
-                        .body(&format!("Could not save the file: {}", e))
+                        .heading(&gettext("Error Saving File"))
+                        .body(&format!("{}: {}", gettext("Could not save the file"), e))
                         .build();
-                    alert.add_response("ok", "OK");
+                    alert.add_response("ok", &gettext("OK"));
                     alert.present(Some(&window_clone));
                 } else {
                     window_clone
@@ -256,10 +265,10 @@ fn build_ui(app: &Application) {
                 glib::spawn_future_local(async move {
                     if let Err(e) = tokio::fs::write(&path, text.as_str()).await {
                         let alert = adw::AlertDialog::builder()
-                            .heading("Error Saving File")
-                            .body(&format!("Could not save the file: {}", e))
+                            .heading(&gettext("Error Saving File"))
+                            .body(&format!("{}: {}", gettext("Could not save the file"), e))
                             .build();
-                        alert.add_response("ok", "OK");
+                        alert.add_response("ok", &gettext("OK"));
                         alert.present(Some(&window_clone_inner));
                     }
                 });
