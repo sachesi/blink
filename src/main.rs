@@ -30,6 +30,7 @@ async fn main() -> glib::ExitCode {
         app.set_accels_for_action("app.format-bold", &["<Ctrl>b"]);
         app.set_accels_for_action("app.format-italic", &["<Ctrl>i"]);
         app.set_accels_for_action("app.format-link", &["<Ctrl>k"]);
+        app.set_accels_for_action("app.find", &["<Ctrl>f"]);
     });
 
     app.connect_activate(build_ui);
@@ -213,8 +214,24 @@ fn build_ui(app: &Application) {
     bottom_box.append(&spacer);
     bottom_box.append(&status_label);
 
+    let search_bar = gtk::SearchBar::builder().build();
+    let search_entry = gtk::SearchEntry::builder().hexpand(true).build();
+    search_bar.set_child(Some(&search_entry));
+
+    let search_settings = sourceview5::SearchSettings::builder().build();
+    let _search_context = sourceview5::SearchContext::builder()
+        .buffer(&edit_buffer)
+        .settings(&search_settings)
+        .highlight(true)
+        .build();
+
+    search_entry.connect_search_changed(move |entry| {
+        search_settings.set_search_text(Some(entry.text().as_str()));
+    });
+
     let toolbar_view = adw::ToolbarView::builder().content(&paned).build();
     toolbar_view.add_top_bar(&header_bar);
+    toolbar_view.add_top_bar(&search_bar);
     toolbar_view.add_bottom_bar(&bottom_box);
 
     let window = adw::ApplicationWindow::builder()
@@ -383,6 +400,13 @@ fn build_ui(app: &Application) {
         }
     });
     app.add_action(&action_link);
+
+    let search_bar_clone = search_bar.clone();
+    let action_find = gio::SimpleAction::new("find", None);
+    action_find.connect_activate(move |_, _| {
+        search_bar_clone.set_search_mode(true);
+    });
+    app.add_action(&action_find);
 
     let app_clone_close = app.clone();
     window.connect_close_request(move |_| {
