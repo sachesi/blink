@@ -157,6 +157,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .valign(gtk::Align::Start)
                         .margin_top(8)
                         .margin_end(8)
+                        .can_focus(false)
                         .build();
                     copy_btn.add_css_class("flat");
                     copy_btn.add_css_class("copy-btn");
