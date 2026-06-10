@@ -154,10 +154,9 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .icon_name("edit-copy-symbolic")
                         .halign(gtk::Align::End)
                         .valign(gtk::Align::Start)
-                        .margin_top(8)
-                        .margin_end(8)
-                        .has_frame(false)
-                        .opacity(0.0)
+                        .margin_top(16)
+                        .margin_end(16)
+                        .visible(false)
                         .build();
                     copy_btn.add_css_class("osd");
                     copy_btn.add_css_class("circular");
@@ -170,11 +169,11 @@ pub fn render_markdown(view: &TextView, text: &str) {
                     let motion = gtk::EventControllerMotion::new();
                     let btn_clone1 = copy_btn.clone();
                     motion.connect_enter(move |_, _, _| {
-                        btn_clone1.set_opacity(1.0);
+                        btn_clone1.set_visible(true);
                     });
                     let btn_clone2 = copy_btn.clone();
                     motion.connect_leave(move |_| {
-                        btn_clone2.set_opacity(0.0);
+                        btn_clone2.set_visible(false);
                     });
                     overlay.add_controller(motion);
                     overlay.add_overlay(&copy_btn);
