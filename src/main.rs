@@ -42,6 +42,9 @@ fn build_ui(app: &Application) {
     provider.load_from_data(
         "
         textview.transparent-bg { background: transparent; }
+        textview.editor-view {
+            border-radius: 12px;
+        }
         paned > separator {
             background-image: image(alpha(currentColor, 0.06));
             background-size: 1px 100%;
@@ -89,6 +92,9 @@ fn build_ui(app: &Application) {
         .bottom_margin(32)
         .pixels_above_lines(4)
         .pixels_below_lines(4)
+        .margin_top(12)
+        .margin_bottom(12)
+        .css_classes(["editor-view"])
         .build();
     let edit_clamp = adw::Clamp::builder()
         .child(&edit_view)
