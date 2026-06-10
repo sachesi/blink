@@ -42,7 +42,7 @@ pub fn setup_tags(buffer: &TextBuffer) {
 
 
 
-pub fn render_markdown(view: &TextView, text: &str) {
+pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
     let buffer = view.buffer();
     let mut iter = buffer.bounds().0;
     buffer.delete(&mut iter, &mut buffer.bounds().1);
@@ -96,8 +96,14 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .yalign(0.0)
                         .selectable(true)
                         .can_focus(false)
-                        .wrap(true)
-                        .wrap_mode(gtk::pango::WrapMode::WordChar)
+                        .build();
+
+                    hadj.bind_property("page-size", &scroll, "width-request")
+                        .transform_to(|_, page_size: f64| {
+                            let max_width = page_size.min(700.0);
+                            Some((max_width - 64.0).max(100.0) as i32)
+                        })
+                        .sync_create()
                         .build();
                     label.set_markup(&format!(
                         "<tt>{}</tt>",
@@ -153,6 +159,14 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .hexpand(true)
                         .build();
                     grid.add_css_class("card");
+
+                    hadj.bind_property("page-size", &grid, "width-request")
+                        .transform_to(|_, page_size: f64| {
+                            let max_width = page_size.min(700.0);
+                            Some((max_width - 64.0).max(100.0) as i32)
+                        })
+                        .sync_create()
+                        .build();
 
                     let num_cols = table_rows.first().map_or(1, |r| r.len());
                     let grid_cols = (num_cols * 2).saturating_sub(1) as i32;
