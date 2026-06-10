@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-10 22:06+0000\n"
+"POT-Creation-Date: 2026-06-10 22:13+0000\n"
 "PO-Revision-Date: 2026-06-10 21:10+0000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -30,68 +30,76 @@ msgid "Save As…"
 msgstr "Зберегти як…"
 
 #: src/main.rs:172
+msgid "About Blink"
+msgstr "Про Blink"
+
+#: src/main.rs:173
 msgid "Quit"
 msgstr "Вийти"
 
-#: src/main.rs:184 src/main.rs:211 src/main.rs:330
+#: src/main.rs:185 src/main.rs:212 src/main.rs:331
 msgid "Edit Document"
 msgstr "Редагувати документ"
 
-#: src/main.rs:190
+#: src/main.rs:191
 msgid "Split View"
 msgstr "Розділений перегляд"
 
-#: src/main.rs:205 src/main.rs:238
+#: src/main.rs:206 src/main.rs:239
 msgid "Preview Document"
 msgstr "Попередній перегляд"
 
-#: src/main.rs:244
+#: src/main.rs:245
 msgid "Open Document"
 msgstr "Відкрити документ"
 
-#: src/main.rs:250
+#: src/main.rs:251
 msgid "Save Document"
 msgstr "Зберегти документ"
 
-#: src/main.rs:289
+#: src/main.rs:290
 msgid "Untitled Document"
 msgstr "Документ без назви"
 
-#: src/main.rs:356 src/main.rs:391
+#: src/main.rs:357 src/main.rs:392
 msgid "Error Saving File"
 msgstr "Помилка збереження файлу"
 
-#: src/main.rs:357 src/main.rs:392
+#: src/main.rs:358 src/main.rs:393
 msgid "Could not save the file"
 msgstr "Не вдалося зберегти файл"
 
-#: src/main.rs:359 src/main.rs:394 src/main.rs:508
+#: src/main.rs:360 src/main.rs:395 src/main.rs:509
 msgid "OK"
 msgstr "ОК"
 
-#: src/main.rs:414
+#: src/main.rs:415
 msgid "Unsaved Changes"
 msgstr "Незбережені зміни"
 
-#: src/main.rs:415
+#: src/main.rs:416
 msgid "You have unsaved changes. Do you want to close without saving?"
 msgstr "У вас є незбережені зміни. Бажаєте закрити без збереження?"
 
-#: src/main.rs:417
+#: src/main.rs:418
 msgid "Cancel"
 msgstr "Скасувати"
 
-#: src/main.rs:418
+#: src/main.rs:419
 msgid "Close Without Saving"
 msgstr "Закрити без збереження"
 
-#: src/main.rs:505
+#: src/main.rs:506
 msgid "Error Exporting HTML"
 msgstr "Помилка експорту HTML"
 
-#: src/main.rs:506
+#: src/main.rs:507
 msgid "Could not export the file"
 msgstr "Не вдалося експортувати файл"
+
+#: src/main.rs:563
+msgid "A fast and minimal Markdown editor"
+msgstr "Швидкий і мінімалістичний Markdown-редактор"
 
 #~ msgid "Toggle Preview"
 #~ msgstr "Перемкнути попередній перегляд"

@@ -19,7 +19,7 @@ async fn main() -> glib::ExitCode {
     let _ = textdomain("blink");
 
     let app = Application::builder()
-        .application_id("com.example.blink")
+        .application_id("com.github.sachesi.blink")
         .build();
 
     app.connect_startup(|app| {
@@ -169,6 +169,7 @@ fn build_ui(app: &Application) {
     menu.append(Some(&gettext("Export HTML…")), Some("app.export-html"));
     menu.append(Some(&gettext("Export PDF…")), Some("app.export-pdf"));
     menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
+    menu.append(Some(&gettext("About Blink")), Some("app.about"));
     menu.append(Some(&gettext("Quit")), Some("app.quit"));
 
     let menu_button = MenuButton::builder()
@@ -550,6 +551,22 @@ fn build_ui(app: &Application) {
         });
     });
     app.add_action(&action_export_pdf);
+
+    let action_about = gio::SimpleAction::new("about", None);
+    let window_clone_about = window.clone();
+    action_about.connect_activate(move |_, _| {
+        let about = adw::AboutDialog::builder()
+            .application_name("Blink")
+            .application_icon("com.github.sachesi.blink")
+            .developer_name("sachesi")
+            .version("0.1.0")
+            .comments(&gettext("A fast and minimal Markdown editor"))
+            .website("https://github.com/sachesi/blink")
+            .issue_url("https://github.com/sachesi/blink/issues")
+            .build();
+        about.present(Some(&window_clone_about));
+    });
+    app.add_action(&action_about);
 
     let app_clone_close = app.clone();
     window.connect_close_request(move |_| {

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-10 22:06+0000\n"
+"POT-Creation-Date: 2026-06-10 22:13+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -34,65 +34,73 @@ msgid "Save As…"
 msgstr ""
 
 #: src/main.rs:172
+msgid "About Blink"
+msgstr ""
+
+#: src/main.rs:173
 msgid "Quit"
 msgstr ""
 
-#: src/main.rs:184 src/main.rs:211 src/main.rs:330
+#: src/main.rs:185 src/main.rs:212 src/main.rs:331
 msgid "Edit Document"
 msgstr ""
 
-#: src/main.rs:190
+#: src/main.rs:191
 msgid "Split View"
 msgstr ""
 
-#: src/main.rs:205 src/main.rs:238
+#: src/main.rs:206 src/main.rs:239
 msgid "Preview Document"
 msgstr ""
 
-#: src/main.rs:244
+#: src/main.rs:245
 msgid "Open Document"
 msgstr ""
 
-#: src/main.rs:250
+#: src/main.rs:251
 msgid "Save Document"
 msgstr ""
 
-#: src/main.rs:289
+#: src/main.rs:290
 msgid "Untitled Document"
 msgstr ""
 
-#: src/main.rs:356 src/main.rs:391
+#: src/main.rs:357 src/main.rs:392
 msgid "Error Saving File"
 msgstr ""
 
-#: src/main.rs:357 src/main.rs:392
+#: src/main.rs:358 src/main.rs:393
 msgid "Could not save the file"
 msgstr ""
 
-#: src/main.rs:359 src/main.rs:394 src/main.rs:508
+#: src/main.rs:360 src/main.rs:395 src/main.rs:509
 msgid "OK"
 msgstr ""
 
-#: src/main.rs:414
+#: src/main.rs:415
 msgid "Unsaved Changes"
 msgstr ""
 
-#: src/main.rs:415
+#: src/main.rs:416
 msgid "You have unsaved changes. Do you want to close without saving?"
 msgstr ""
 
-#: src/main.rs:417
+#: src/main.rs:418
 msgid "Cancel"
 msgstr ""
 
-#: src/main.rs:418
+#: src/main.rs:419
 msgid "Close Without Saving"
 msgstr ""
 
-#: src/main.rs:505
+#: src/main.rs:506
 msgid "Error Exporting HTML"
 msgstr ""
 
-#: src/main.rs:506
+#: src/main.rs:507
 msgid "Could not export the file"
+msgstr ""
+
+#: src/main.rs:563
+msgid "A fast and minimal Markdown editor"
 msgstr ""
