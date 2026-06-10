@@ -42,6 +42,12 @@ fn build_ui(app: &Application) {
     provider.load_from_data(
         "
         textview { background: transparent; }
+        paned > separator {
+            background-image: image(alpha(currentColor, 0.15));
+            background-size: 1px 100%;
+            background-position: center center;
+            background-repeat: no-repeat;
+        }
     ",
     );
     gtk::style_context_add_provider_for_display(
