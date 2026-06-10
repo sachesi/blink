@@ -29,8 +29,8 @@ fn build_ui(app: &Application) {
         textview { background: transparent; }
         .inline-code {
             background: rgba(150, 150, 150, 0.15);
-            border-radius: 6px;
-            padding: 2px 6px;
+            border-radius: 4px;
+            padding: 1px 4px;
             font-family: monospace;
         }
     ");

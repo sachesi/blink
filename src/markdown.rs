@@ -302,8 +302,8 @@ pub fn render_markdown(view: &TextView, text: &str) {
             Event::Code(c) => {
                 let label = Label::builder()
                     .label(c.as_ref())
-                    .wrap(true)
                     .selectable(true)
+                    .valign(gtk::Align::Baseline)
                     .css_classes(["inline-code"])
                     .build();
                 let anchor = buffer.create_child_anchor(&mut iter);
