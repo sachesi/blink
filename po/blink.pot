@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-10 21:10+0000\n"
+"POT-Creation-Date: 2026-06-10 22:06+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,42 +17,82 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/main.rs:108
+#: src/main.rs:162
 msgid "{} words, {} chars"
 msgstr ""
 
-#: src/main.rs:125
+#: src/main.rs:169
+msgid "Export HTML…"
+msgstr ""
+
+#: src/main.rs:170
+msgid "Export PDF…"
+msgstr ""
+
+#: src/main.rs:171
 msgid "Save As…"
 msgstr ""
 
-#: src/main.rs:126
+#: src/main.rs:172
 msgid "Quit"
 msgstr ""
 
-#: src/main.rs:135
-msgid "Toggle Preview"
+#: src/main.rs:184 src/main.rs:211 src/main.rs:330
+msgid "Edit Document"
 msgstr ""
 
-#: src/main.rs:154
+#: src/main.rs:190
+msgid "Split View"
+msgstr ""
+
+#: src/main.rs:205 src/main.rs:238
+msgid "Preview Document"
+msgstr ""
+
+#: src/main.rs:244
 msgid "Open Document"
 msgstr ""
 
-#: src/main.rs:160
+#: src/main.rs:250
 msgid "Save Document"
 msgstr ""
 
-#: src/main.rs:183
+#: src/main.rs:289
 msgid "Untitled Document"
 msgstr ""
 
-#: src/main.rs:235 src/main.rs:268
+#: src/main.rs:356 src/main.rs:391
 msgid "Error Saving File"
 msgstr ""
 
-#: src/main.rs:236 src/main.rs:269
+#: src/main.rs:357 src/main.rs:392
 msgid "Could not save the file"
 msgstr ""
 
-#: src/main.rs:238 src/main.rs:271
+#: src/main.rs:359 src/main.rs:394 src/main.rs:508
 msgid "OK"
+msgstr ""
+
+#: src/main.rs:414
+msgid "Unsaved Changes"
+msgstr ""
+
+#: src/main.rs:415
+msgid "You have unsaved changes. Do you want to close without saving?"
+msgstr ""
+
+#: src/main.rs:417
+msgid "Cancel"
+msgstr ""
+
+#: src/main.rs:418
+msgid "Close Without Saving"
+msgstr ""
+
+#: src/main.rs:505
+msgid "Error Exporting HTML"
+msgstr ""
+
+#: src/main.rs:506
+msgid "Could not export the file"
 msgstr ""
