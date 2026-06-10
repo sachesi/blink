@@ -114,8 +114,14 @@ pub fn render_markdown(view: &TextView, text: &str) {
     for event in parser {
         if in_table {
             match event {
-                Event::Start(Tag::TableHead) => _in_head = true,
-                Event::End(TagEnd::TableHead) => _in_head = false,
+                Event::Start(Tag::TableHead) => {
+                    _in_head = true;
+                    current_row = Vec::new();
+                }
+                Event::End(TagEnd::TableHead) => {
+                    _in_head = false;
+                    table_rows.push(current_row.clone());
+                }
                 Event::Start(Tag::TableRow) => current_row = Vec::new(),
                 Event::End(TagEnd::TableRow) => {
                     table_rows.push(current_row.clone());
@@ -131,7 +137,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 Event::Start(Tag::Strikethrough) => current_cell.push_str("<s>"),
                 Event::End(TagEnd::Strikethrough) => current_cell.push_str("</s>"),
                 Event::Code(c) => {
-                    current_cell.push_str(&format!("<span background='rgba(128,128,128,0.15)' font_family='Monospace'>{}</span>", glib::markup_escape_text(&c)));
+                    current_cell.push_str(&format!("<tt>{}</tt>", glib::markup_escape_text(&c)));
                 }
                 Event::Text(t) => {
                     current_cell.push_str(&glib::markup_escape_text(&t));
