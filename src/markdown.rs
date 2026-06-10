@@ -300,10 +300,14 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 }
             }
             Event::Code(c) => {
-                let start_offset = iter.offset();
-                buffer.insert(&mut iter, &c);
-                let start_iter = buffer.iter_at_offset(start_offset);
-                buffer.apply_tag_by_name("code", &start_iter, &iter);
+                let label = Label::builder()
+                    .label(c.as_ref())
+                    .wrap(true)
+                    .selectable(true)
+                    .css_classes(["inline-code"])
+                    .build();
+                let anchor = buffer.create_child_anchor(&mut iter);
+                view.add_child_at_anchor(&label, &anchor);
             }
             Event::SoftBreak | Event::HardBreak => {
                 buffer.insert(&mut iter, "\n");
