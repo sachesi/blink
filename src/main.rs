@@ -62,6 +62,7 @@ fn build_ui(app: &Application) {
     let preview_view = TextView::builder()
         .buffer(&preview_buffer)
         .editable(false)
+        .cursor_visible(false)
         .wrap_mode(gtk::WrapMode::Word)
         .left_margin(32)
         .right_margin(32)

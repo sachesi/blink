@@ -250,6 +250,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
                                 .wrap(true)
                                 .xalign(0.0)
                                 .hexpand(true)
+                                .selectable(true)
                                 .build();
                             label.set_markup(cell_text);
                             if row_idx == 0 {
