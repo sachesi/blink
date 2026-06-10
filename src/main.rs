@@ -120,7 +120,10 @@ fn build_ui(app: &Application) {
     let preview_toggle = ToggleButton::builder()
         .icon_name("view-reveal-symbolic")
         .tooltip_text("Toggle Preview")
+        .active(true)
         .build();
+    
+    stack.set_visible_child_name("preview");
 
     let stack_clone = stack.clone();
     preview_toggle.connect_toggled(move |btn| {
