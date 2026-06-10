@@ -127,6 +127,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .margin_bottom(12)
                         .hexpand(true)
                         .build();
+                    overlay.add_css_class("code-overlay");
 
                     let scroll = gtk::ScrolledWindow::builder()
                         .hexpand(true)
@@ -154,28 +155,17 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .icon_name("edit-copy-symbolic")
                         .halign(gtk::Align::End)
                         .valign(gtk::Align::Start)
-                        .margin_top(16)
-                        .margin_end(16)
-                        .visible(false)
+                        .margin_top(8)
+                        .margin_end(8)
                         .build();
-                    copy_btn.add_css_class("osd");
-                    copy_btn.add_css_class("circular");
+                    copy_btn.add_css_class("flat");
+                    copy_btn.add_css_class("copy-btn");
                     
                     let code_clone = clean_code.to_string();
                     copy_btn.connect_clicked(move |btn| {
                         btn.clipboard().set_text(&code_clone);
                     });
                     
-                    let motion = gtk::EventControllerMotion::new();
-                    let btn_clone1 = copy_btn.clone();
-                    motion.connect_enter(move |_, _, _| {
-                        btn_clone1.set_visible(true);
-                    });
-                    let btn_clone2 = copy_btn.clone();
-                    motion.connect_leave(move |_| {
-                        btn_clone2.set_visible(false);
-                    });
-                    overlay.add_controller(motion);
                     overlay.add_overlay(&copy_btn);
                     
                     let anchor = buffer.create_child_anchor(&mut iter);
