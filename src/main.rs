@@ -462,6 +462,29 @@ fn build_ui(app: &Application) {
     });
     app.add_action(&action_save);
 
+    let current_file_autosave = current_file.clone();
+    let edit_buffer_autosave = edit_buffer.clone();
+    glib::timeout_add_seconds_local(10, move || {
+        if edit_buffer_autosave.is_modified() {
+            if let Some(file) = current_file_autosave.borrow().as_ref() {
+                if let Some(path) = file.path() {
+                    let text = edit_buffer_autosave.text(
+                        &edit_buffer_autosave.start_iter(),
+                        &edit_buffer_autosave.end_iter(),
+                        false,
+                    );
+                    let edit_buf_clone = edit_buffer_autosave.clone();
+                    glib::spawn_future_local(async move {
+                        if tokio::fs::write(&path, text.as_str()).await.is_ok() {
+                            edit_buf_clone.set_modified(false);
+                        }
+                    });
+                }
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+
     let app_clone = app.clone();
     let window_clone_quit = window.clone();
     let edit_buffer_clone_quit = edit_buffer.clone();
