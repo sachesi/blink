@@ -67,6 +67,8 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
     let mut in_code_block = false;
     let mut current_code = String::new();
 
+    let mut in_image = false;
+
     for event in parser {
         if in_code_block {
             match event {
@@ -243,6 +245,26 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
                 Tag::Emphasis => current_tags.push("italic"),
                 Tag::Strikethrough => current_tags.push("strikethrough"),
                 Tag::Link { .. } => current_tags.push("link"),
+                Tag::Image { dest_url, .. } => {
+                    in_image = true;
+                    let path = dest_url.to_string();
+                    let picture = gtk::Picture::for_filename(&path);
+                    picture.set_margin_top(12);
+                    picture.set_margin_bottom(12);
+                    picture.set_hexpand(false);
+                    picture.set_halign(gtk::Align::Center);
+                    
+                    hadj.bind_property("page-size", &picture, "width-request")
+                        .transform_to(|_, page_size: f64| {
+                            let max_width = page_size.min(700.0);
+                            Some((max_width - 64.0).max(100.0) as i32)
+                        })
+                        .sync_create()
+                        .build();
+
+                    let anchor = buffer.create_child_anchor(&mut iter);
+                    view.add_child_at_anchor(&picture, &anchor);
+                }
                 Tag::BlockQuote(_) => current_tags.push("blockquote"),
                 Tag::List(_) => {
                     list_depth += 1;
@@ -274,6 +296,9 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
                 TagEnd::Link => {
                     current_tags.retain(|&t| t != "link");
                 }
+                TagEnd::Image => {
+                    in_image = false;
+                }
                 TagEnd::BlockQuote(_) => {
                     current_tags.retain(|&t| t != "blockquote");
                     buffer.insert(&mut iter, "\n\n");
@@ -291,6 +316,9 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
                 _ => {}
             },
             Event::Text(t) => {
+                if in_image {
+                    continue;
+                }
                 let start_offset = iter.offset();
                 buffer.insert(&mut iter, &t);
                 let start_iter = buffer.iter_at_offset(start_offset);
