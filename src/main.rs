@@ -44,11 +44,6 @@ fn build_ui(app: &Application) {
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
-    let stack = gtk::Stack::builder()
-        .transition_type(gtk::StackTransitionType::Crossfade)
-        .transition_duration(300)
-        .build();
-
     let edit_buffer = TextBuffer::new(None);
     let edit_view = TextView::builder()
         .buffer(&edit_buffer)
@@ -67,8 +62,8 @@ fn build_ui(app: &Application) {
     let edit_scroll = ScrolledWindow::builder()
         .child(&edit_clamp)
         .hscrollbar_policy(gtk::PolicyType::Never)
+        .hexpand(true)
         .build();
-    stack.add_named(&edit_scroll, Some("edit"));
 
     markdown::setup_tags(&edit_buffer);
 
@@ -86,6 +81,25 @@ fn build_ui(app: &Application) {
         .pixels_above_lines(4)
         .pixels_below_lines(4)
         .build();
+
+    let preview_clamp = adw::Clamp::builder()
+        .child(&preview_view)
+        .maximum_size(700)
+        .build();
+    let preview_scroll = ScrolledWindow::builder()
+        .child(&preview_clamp)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hexpand(true)
+        .build();
+
+    let paned = gtk::Paned::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .start_child(&edit_scroll)
+        .end_child(&preview_scroll)
+        .build();
+
+    // Default to preview only
+    edit_scroll.set_visible(false);
 
     let status_label = Label::builder()
         .margin_top(4)
@@ -111,16 +125,6 @@ fn build_ui(app: &Application) {
         status_label_clone.set_label(&status_str);
     });
 
-    let preview_clamp = adw::Clamp::builder()
-        .child(&preview_view)
-        .maximum_size(700)
-        .build();
-    let preview_scroll = ScrolledWindow::builder()
-        .child(&preview_clamp)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .build();
-    stack.add_named(&preview_scroll, Some("preview"));
-
     let menu = gio::Menu::new();
     menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
     menu.append(Some(&gettext("Quit")), Some("app.quit"));
@@ -130,20 +134,42 @@ fn build_ui(app: &Application) {
         .icon_name("open-menu-symbolic")
         .build();
 
-    let preview_toggle = ToggleButton::builder()
-        .icon_name("view-reveal-symbolic")
-        .tooltip_text(&gettext("Toggle Preview"))
-        .active(true)
-        .build();
+    let view_switcher = gtk::Box::builder().css_classes(["linked"]).build();
+    let btn_edit = ToggleButton::builder().label(&gettext("Edit")).build();
+    let btn_split = ToggleButton::builder().label(&gettext("Split")).build();
+    let btn_preview = ToggleButton::builder().label(&gettext("Preview")).active(true).build();
 
-    stack.set_visible_child_name("preview");
+    btn_split.set_group(Some(&btn_edit));
+    btn_preview.set_group(Some(&btn_edit));
 
-    let stack_clone = stack.clone();
-    preview_toggle.connect_toggled(move |btn| {
+    view_switcher.append(&btn_edit);
+    view_switcher.append(&btn_split);
+    view_switcher.append(&btn_preview);
+
+    let edit_scroll_clone = edit_scroll.clone();
+    let preview_scroll_clone = preview_scroll.clone();
+    btn_edit.connect_toggled(move |btn| {
         if btn.is_active() {
-            stack_clone.set_visible_child_name("preview");
-        } else {
-            stack_clone.set_visible_child_name("edit");
+            edit_scroll_clone.set_visible(true);
+            preview_scroll_clone.set_visible(false);
+        }
+    });
+
+    let edit_scroll_clone2 = edit_scroll.clone();
+    let preview_scroll_clone2 = preview_scroll.clone();
+    btn_split.connect_toggled(move |btn| {
+        if btn.is_active() {
+            edit_scroll_clone2.set_visible(true);
+            preview_scroll_clone2.set_visible(true);
+        }
+    });
+
+    let edit_scroll_clone3 = edit_scroll.clone();
+    let preview_scroll_clone3 = preview_scroll.clone();
+    btn_preview.connect_toggled(move |btn| {
+        if btn.is_active() {
+            edit_scroll_clone3.set_visible(false);
+            preview_scroll_clone3.set_visible(true);
         }
     });
 
@@ -164,7 +190,7 @@ fn build_ui(app: &Application) {
     header_bar.pack_start(&open_btn);
     header_bar.pack_start(&save_btn);
     header_bar.pack_end(&menu_button);
-    header_bar.pack_end(&preview_toggle);
+    header_bar.pack_end(&view_switcher);
 
     let bottom_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -174,7 +200,7 @@ fn build_ui(app: &Application) {
     bottom_box.append(&spacer);
     bottom_box.append(&status_label);
 
-    let toolbar_view = adw::ToolbarView::builder().content(&stack).build();
+    let toolbar_view = adw::ToolbarView::builder().content(&paned).build();
     toolbar_view.add_top_bar(&header_bar);
     toolbar_view.add_bottom_bar(&bottom_box);
 
