@@ -99,6 +99,7 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
                         .margin_end(12)
                         .can_focus(false)
                         .wrap_mode(gtk::WrapMode::None)
+                        .css_classes(["transparent-bg"])
                         .build();
 
                     hadj.bind_property("page-size", &scroll, "width-request")

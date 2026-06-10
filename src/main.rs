@@ -41,7 +41,7 @@ fn build_ui(app: &Application) {
     let provider = gtk::CssProvider::new();
     provider.load_from_data(
         "
-        textview.preview-view { background: transparent; }
+        textview.transparent-bg { background: transparent; }
         paned > separator {
             background-image: image(alpha(currentColor, 0.06));
             background-size: 1px 100%;
@@ -115,7 +115,7 @@ fn build_ui(app: &Application) {
         .bottom_margin(32)
         .pixels_above_lines(4)
         .pixels_below_lines(4)
-        .css_classes(["preview-view"])
+        .css_classes(["transparent-bg"])
         .build();
 
     let preview_clamp = adw::Clamp::builder()
