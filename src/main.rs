@@ -57,10 +57,26 @@ fn build_ui(app: &Application) {
     let edit_buffer = SourceBuffer::builder()
         .language(&markdown_lang.expect("Markdown language not found"))
         .build();
+        
+    let scheme_manager = sourceview5::StyleSchemeManager::default();
+    let is_dark = adw::StyleManager::default().is_dark();
+    if let Some(scheme) = scheme_manager.scheme(if is_dark { "Adwaita-dark" } else { "Adwaita" }) {
+        edit_buffer.set_style_scheme(Some(&scheme));
+    }
+
+    let edit_buffer_style = edit_buffer.clone();
+    adw::StyleManager::default().connect_dark_notify(move |manager| {
+        let scheme_name = if manager.is_dark() { "Adwaita-dark" } else { "Adwaita" };
+        if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
+            edit_buffer_style.set_style_scheme(Some(&scheme));
+        }
+    });
+
     let edit_view = SourceView::builder()
         .buffer(&edit_buffer)
         .wrap_mode(gtk::WrapMode::Word)
         .show_line_numbers(true)
+        .monospace(true)
         .left_margin(32)
         .right_margin(32)
         .top_margin(32)

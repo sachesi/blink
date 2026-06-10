@@ -79,7 +79,6 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .margin_top(12)
                         .margin_bottom(12)
                         .hexpand(true)
-                        .width_request(630)
                         .propagate_natural_height(true)
                         .hscrollbar_policy(gtk::PolicyType::Automatic)
                         .vscrollbar_policy(gtk::PolicyType::Never)
@@ -97,6 +96,8 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .yalign(0.0)
                         .selectable(true)
                         .can_focus(false)
+                        .wrap(true)
+                        .wrap_mode(gtk::pango::WrapMode::WordChar)
                         .build();
                     label.set_markup(&format!(
                         "<tt>{}</tt>",
@@ -150,7 +151,6 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .margin_top(12)
                         .margin_bottom(12)
                         .hexpand(true)
-                        .width_request(630)
                         .build();
                     grid.add_css_class("card");
 
