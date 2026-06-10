@@ -1,6 +1,6 @@
 use adw::prelude::*;
 use adw::{Application, ApplicationWindow, HeaderBar, ToolbarView, ViewStack};
-use gtk::{gio, glib, FileDialog, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton};
+use gtk::{gio, glib, Box, FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -61,10 +61,23 @@ fn build_ui(app: &Application) {
         .pixels_below_lines(4)
         .build();
 
+    let status_label = Label::builder()
+        .margin_top(4)
+        .margin_bottom(4)
+        .margin_end(12)
+        .halign(gtk::Align::End)
+        .hexpand(true)
+        .css_classes(["dim-label"])
+        .build();
+
     let preview_buffer_clone = preview_buffer.clone();
+    let status_label_clone = status_label.clone();
     edit_buffer.connect_changed(move |b| {
         let text = b.text(&b.start_iter(), &b.end_iter(), false);
         markdown::render_markdown(&preview_buffer_clone, text.as_str());
+        let chars = text.chars().count();
+        let words = text.split_whitespace().count();
+        status_label_clone.set_label(&format!("{} words, {} chars", words, chars));
     });
 
     let preview_clamp = adw::Clamp::builder()
@@ -106,10 +119,14 @@ fn build_ui(app: &Application) {
     header_bar.pack_end(&menu_button);
     header_bar.pack_end(&preview_toggle);
 
+    let bottom_box = Box::new(gtk::Orientation::Horizontal, 0);
+    bottom_box.append(&status_label);
+
     let toolbar_view = ToolbarView::builder()
         .content(&stack)
         .build();
     toolbar_view.add_top_bar(&header_bar);
+    toolbar_view.add_bottom_bar(&bottom_box);
 
     let window = ApplicationWindow::builder()
         .application(app)
