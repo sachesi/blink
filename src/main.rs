@@ -64,9 +64,10 @@ fn build_ui(app: &Application) {
     let lang_manager = LanguageManager::default();
     let markdown_lang = lang_manager.language("markdown");
 
-    let edit_buffer = SourceBuffer::builder()
-        .language(&markdown_lang.expect("Markdown language not found"))
-        .build();
+    let edit_buffer = SourceBuffer::builder().build();
+    if let Some(lang) = markdown_lang {
+        edit_buffer.set_language(Some(&lang));
+    }
         
     let scheme_manager = sourceview5::StyleSchemeManager::default();
     let is_dark = adw::StyleManager::default().is_dark();
