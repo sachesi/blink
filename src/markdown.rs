@@ -1,6 +1,7 @@
 use gtk::prelude::*;
 use gtk::{Grid, Label, TextBuffer, TextView};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use sourceview5::prelude::*;
 
 pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("h1"), &[("scale", &2.0), ("weight", &700)]);
@@ -66,6 +67,7 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
 
     let mut in_code_block = false;
     let mut current_code = String::new();
+    let mut current_code_lang = String::new();
 
     let mut in_image = false;
 
@@ -89,8 +91,20 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
 
                     let clean_code = current_code.trim_end_matches('\n');
 
-                    let code_buffer = TextBuffer::builder().text(clean_code).build();
-                    let code_view = TextView::builder()
+                    let lang_manager = sourceview5::LanguageManager::default();
+                    let code_buffer = sourceview5::Buffer::builder().text(clean_code).build();
+                    if !current_code_lang.is_empty() {
+                        if let Some(lang) = lang_manager.language(&current_code_lang) {
+                            code_buffer.set_language(Some(&lang));
+                        }
+                    }
+                    let scheme_manager = sourceview5::StyleSchemeManager::default();
+                    let is_dark = adw::StyleManager::default().is_dark();
+                    if let Some(scheme) = scheme_manager.scheme(if is_dark { "Adwaita-dark" } else { "Adwaita" }) {
+                        code_buffer.set_style_scheme(Some(&scheme));
+                    }
+
+                    let code_view = sourceview5::View::builder()
                         .buffer(&code_buffer)
                         .editable(false)
                         .cursor_visible(false)
@@ -224,9 +238,13 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
 
         match event {
             Event::Start(tag) => match tag {
-                Tag::CodeBlock(_) => {
+                Tag::CodeBlock(kind) => {
                     in_code_block = true;
                     current_code.clear();
+                    current_code_lang = match kind {
+                        pulldown_cmark::CodeBlockKind::Fenced(lang) => lang.to_string(),
+                        _ => String::new(),
+                    };
                 }
                 Tag::Table(_) => {
                     in_table = true;
