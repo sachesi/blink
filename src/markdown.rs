@@ -122,9 +122,13 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 }
                 Event::End(TagEnd::CodeBlock) => {
                     in_code_block = false;
-                    let scroll = gtk::ScrolledWindow::builder()
+                    let overlay = gtk::Overlay::builder()
                         .margin_top(12)
                         .margin_bottom(12)
+                        .hexpand(true)
+                        .build();
+
+                    let scroll = gtk::ScrolledWindow::builder()
                         .hexpand(true)
                         .width_request(630)
                         .propagate_natural_height(true)
@@ -133,7 +137,6 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .build();
                     scroll.add_css_class("card");
                     
-                    // We remove trailing newlines for a cleaner look inside the card
                     let clean_code = current_code.trim_end_matches('\n');
                     
                     let label = Label::builder()
@@ -145,9 +148,39 @@ pub fn render_markdown(view: &TextView, text: &str) {
                     label.set_markup(&format!("<tt>{}</tt>", glib::markup_escape_text(clean_code)));
                     
                     scroll.set_child(Some(&label));
+                    overlay.set_child(Some(&scroll));
+
+                    let copy_btn = gtk::Button::builder()
+                        .icon_name("edit-copy-symbolic")
+                        .halign(gtk::Align::End)
+                        .valign(gtk::Align::Start)
+                        .margin_top(8)
+                        .margin_end(8)
+                        .has_frame(false)
+                        .opacity(0.0)
+                        .build();
+                    copy_btn.add_css_class("osd");
+                    copy_btn.add_css_class("circular");
+                    
+                    let code_clone = clean_code.to_string();
+                    copy_btn.connect_clicked(move |btn| {
+                        btn.clipboard().set_text(&code_clone);
+                    });
+                    
+                    let motion = gtk::EventControllerMotion::new();
+                    let btn_clone1 = copy_btn.clone();
+                    motion.connect_enter(move |_, _, _| {
+                        btn_clone1.set_opacity(1.0);
+                    });
+                    let btn_clone2 = copy_btn.clone();
+                    motion.connect_leave(move |_| {
+                        btn_clone2.set_opacity(0.0);
+                    });
+                    overlay.add_controller(motion);
+                    overlay.add_overlay(&copy_btn);
                     
                     let anchor = buffer.create_child_anchor(&mut iter);
-                    view.add_child_at_anchor(&scroll, &anchor);
+                    view.add_child_at_anchor(&overlay, &anchor);
                     buffer.insert(&mut iter, "\n\n");
                 }
                 _ => {}
