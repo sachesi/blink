@@ -141,6 +141,8 @@ fn build_ui(app: &Application) {
         .end_child(&preview_scroll)
         .position(350)
         .wide_handle(true)
+        .resize_start_child(true)
+        .resize_end_child(true)
         .build();
 
     let adj = edit_scroll.vadjustment();
@@ -244,12 +246,21 @@ fn build_ui(app: &Application) {
     let edit_scroll_clone2 = edit_scroll.clone();
     let preview_scroll_clone2 = preview_scroll.clone();
     let btn_mode_toggle_clone = btn_mode_toggle.clone();
+    let paned_clone = paned.clone();
     btn_split_toggle.connect_toggled(move |btn| {
         let is_split = btn.is_active();
         if is_split {
             edit_scroll_clone2.set_visible(true);
             preview_scroll_clone2.set_visible(true);
             btn_mode_toggle_clone.set_sensitive(false);
+            
+            // Force exactly 50-50 split by checking the current width of the paned
+            let width = paned_clone.width();
+            if width > 0 {
+                paned_clone.set_position(width / 2);
+            } else {
+                paned_clone.set_position(350);
+            }
         } else {
             btn_mode_toggle_clone.set_sensitive(true);
             // Restore state based on what the toggle button says
