@@ -4,6 +4,8 @@ use gtk::{
     gio, glib, FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton,
 };
 use gettextrs::{gettext, setlocale, textdomain, bindtextdomain, LocaleCategory};
+use sourceview5::prelude::*;
+use sourceview5::{Buffer as SourceBuffer, View as SourceView, LanguageManager};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -47,10 +49,17 @@ fn build_ui(app: &Application) {
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
-    let edit_buffer = TextBuffer::new(None);
-    let edit_view = TextView::builder()
+    sourceview5::init();
+    let lang_manager = LanguageManager::default();
+    let markdown_lang = lang_manager.language("markdown");
+
+    let edit_buffer = SourceBuffer::builder()
+        .language(&markdown_lang.expect("Markdown language not found"))
+        .build();
+    let edit_view = SourceView::builder()
         .buffer(&edit_buffer)
         .wrap_mode(gtk::WrapMode::Word)
+        .show_line_numbers(true)
         .left_margin(32)
         .right_margin(32)
         .top_margin(32)
@@ -68,7 +77,7 @@ fn build_ui(app: &Application) {
         .hexpand(true)
         .build();
 
-    markdown::setup_tags(&edit_buffer);
+    markdown::setup_tags(edit_buffer.upcast_ref::<gtk::TextBuffer>());
 
     let preview_buffer = TextBuffer::new(None);
     markdown::setup_tags(&preview_buffer);
@@ -118,10 +127,8 @@ fn build_ui(app: &Application) {
 
     let preview_view_clone = preview_view.clone();
     let status_label_clone = status_label.clone();
-    let edit_buffer_clone = edit_buffer.clone();
     edit_buffer.connect_changed(move |b| {
         let text = b.text(&b.start_iter(), &b.end_iter(), false);
-        markdown::highlight_editor(&edit_buffer_clone, text.as_str());
         markdown::render_markdown(&preview_view_clone, text.as_str());
         let chars = text.chars().count();
         let words = text.split_whitespace().count();

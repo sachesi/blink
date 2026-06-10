@@ -40,60 +40,7 @@ pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("list"), &[("indent", &16)]);
 }
 
-pub fn highlight_editor(buffer: &TextBuffer, text: &str) {
-    let start = buffer.bounds().0;
-    let end = buffer.bounds().1;
-    buffer.remove_all_tags(&start, &end);
 
-    let mut byte_to_char = vec![0; text.len() + 1];
-    let mut char_count = 0;
-    for (byte_idx, _) in text.char_indices() {
-        byte_to_char[byte_idx] = char_count;
-        char_count += 1;
-    }
-    byte_to_char[text.len()] = char_count;
-
-    let mut options = pulldown_cmark::Options::empty();
-    options.insert(pulldown_cmark::Options::ENABLE_TABLES);
-    options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
-    options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
-    let parser = Parser::new_ext(text, options).into_offset_iter();
-    for (event, range) in parser {
-        let start_char = byte_to_char[range.start];
-        let end_char = byte_to_char[range.end];
-        let start_iter = buffer.iter_at_offset(start_char as i32);
-        let end_iter = buffer.iter_at_offset(end_char as i32);
-
-        match event {
-            Event::Start(Tag::Heading { level, .. }) => {
-                let tag_name = format!("h{}", level as u8);
-                buffer.apply_tag_by_name(&tag_name, &start_iter, &end_iter);
-            }
-            Event::Code(_) => {
-                buffer.apply_tag_by_name("code", &start_iter, &end_iter);
-            }
-            Event::Start(Tag::CodeBlock(_)) => {
-                buffer.apply_tag_by_name("code_block", &start_iter, &end_iter);
-            }
-            Event::Start(Tag::Strong) => {
-                buffer.apply_tag_by_name("bold", &start_iter, &end_iter);
-            }
-            Event::Start(Tag::Emphasis) => {
-                buffer.apply_tag_by_name("italic", &start_iter, &end_iter);
-            }
-            Event::Start(Tag::BlockQuote(_)) => {
-                buffer.apply_tag_by_name("blockquote", &start_iter, &end_iter);
-            }
-            Event::Start(Tag::Link { .. }) => {
-                buffer.apply_tag_by_name("link", &start_iter, &end_iter);
-            }
-            Event::Start(Tag::Strikethrough) => {
-                buffer.apply_tag_by_name("strikethrough", &start_iter, &end_iter);
-            }
-            _ => {}
-        }
-    }
-}
 
 pub fn render_markdown(view: &TextView, text: &str) {
     let buffer = view.buffer();
