@@ -1,5 +1,5 @@
 use gtk::prelude::*;
-use gtk::{TextBuffer, TextView, Grid, Label, TextChildAnchor};
+use gtk::{Grid, Label, TextBuffer, TextView};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
 pub fn setup_tags(buffer: &TextBuffer) {
@@ -10,27 +10,33 @@ pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("bold"), &[("weight", &700)]);
     buffer.create_tag(Some("italic"), &[("style", &gtk::pango::Style::Italic)]);
     buffer.create_tag(Some("strikethrough"), &[("strikethrough", &true)]);
-    buffer.create_tag(Some("link"), &[
-        ("foreground", &"#3584e4"),
-        ("underline", &gtk::pango::Underline::Single),
-    ]);
-    buffer.create_tag(Some("code"), &[
-        ("family", &"Monospace"),
-        ("weight", &700),
-    ]);
-    buffer.create_tag(Some("code_block"), &[
-        ("family", &"Monospace"),
-        ("paragraph-background", &"rgba(128, 128, 128, 0.15)"),
-        ("left-margin", &16),
-        ("right-margin", &16),
-        ("pixels-above-lines", &8),
-        ("pixels-below-lines", &8),
-    ]);
-    buffer.create_tag(Some("blockquote"), &[
-        ("indent", &24),
-        ("style", &gtk::pango::Style::Italic),
-        ("foreground", &"rgba(128, 128, 128, 0.9)"),
-    ]);
+    buffer.create_tag(
+        Some("link"),
+        &[
+            ("foreground", &"#3584e4"),
+            ("underline", &gtk::pango::Underline::Single),
+        ],
+    );
+    buffer.create_tag(Some("code"), &[("family", &"Monospace"), ("weight", &700)]);
+    buffer.create_tag(
+        Some("code_block"),
+        &[
+            ("family", &"Monospace"),
+            ("paragraph-background", &"rgba(128, 128, 128, 0.15)"),
+            ("left-margin", &16),
+            ("right-margin", &16),
+            ("pixels-above-lines", &8),
+            ("pixels-below-lines", &8),
+        ],
+    );
+    buffer.create_tag(
+        Some("blockquote"),
+        &[
+            ("indent", &24),
+            ("style", &gtk::pango::Style::Italic),
+            ("foreground", &"rgba(128, 128, 128, 0.9)"),
+        ],
+    );
     buffer.create_tag(Some("list"), &[("indent", &16)]);
 }
 
@@ -93,7 +99,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
     let buffer = view.buffer();
     let mut iter = buffer.bounds().0;
     buffer.delete(&mut iter, &mut buffer.bounds().1);
-    
+
     // By re-creating the parser, we iterate through events.
     let mut options = pulldown_cmark::Options::empty();
     options.insert(pulldown_cmark::Options::ENABLE_TABLES);
@@ -102,7 +108,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
     let parser = Parser::new_ext(text, options);
     let mut current_tags: Vec<&'static str> = Vec::new();
     let mut iter = buffer.end_iter();
-    
+
     let mut list_depth = 0;
 
     let mut in_table = false;
@@ -132,18 +138,24 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .vscrollbar_policy(gtk::PolicyType::Never)
                         .build();
                     scroll.add_css_class("card");
-                    
+
                     let clean_code = current_code.trim_end_matches('\n');
-                    
+
                     let label = Label::builder()
-                        .margin_top(12).margin_bottom(12).margin_start(12).margin_end(12)
+                        .margin_top(12)
+                        .margin_bottom(12)
+                        .margin_start(12)
+                        .margin_end(12)
                         .xalign(0.0)
                         .yalign(0.0)
                         .selectable(true)
                         .can_focus(false)
                         .build();
-                    label.set_markup(&format!("<tt>{}</tt>", glib::markup_escape_text(clean_code)));
-                    
+                    label.set_markup(&format!(
+                        "<tt>{}</tt>",
+                        glib::markup_escape_text(clean_code)
+                    ));
+
                     scroll.set_child(Some(&label));
 
                     let anchor = buffer.create_child_anchor(&mut iter);
@@ -194,7 +206,7 @@ pub fn render_markdown(view: &TextView, text: &str) {
                         .width_request(630)
                         .build();
                     grid.add_css_class("card");
-                    
+
                     let num_cols = table_rows.first().map_or(1, |r| r.len());
                     let grid_cols = (num_cols * 2).saturating_sub(1) as i32;
 
@@ -211,9 +223,12 @@ pub fn render_markdown(view: &TextView, text: &str) {
 
                         for (col_idx, cell_text) in row.iter().enumerate() {
                             let text_col = (col_idx * 2) as i32;
-                            
+
                             let label = Label::builder()
-                                .margin_top(10).margin_bottom(10).margin_start(12).margin_end(12)
+                                .margin_top(10)
+                                .margin_bottom(10)
+                                .margin_start(12)
+                                .margin_end(12)
                                 .wrap(true)
                                 .xalign(0.0)
                                 .hexpand(true)
@@ -282,15 +297,36 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 _ => {}
             },
             Event::End(tag_end) => match tag_end {
-                TagEnd::Heading(_) => { current_tags.retain(|&t| t != "h1" && t != "h2" && t != "h3" && t != "h4"); buffer.insert(&mut iter, "\n\n"); },
-                TagEnd::Strong => { current_tags.retain(|&t| t != "bold"); },
-                TagEnd::Emphasis => { current_tags.retain(|&t| t != "italic"); },
-                TagEnd::Strikethrough => { current_tags.retain(|&t| t != "strikethrough"); },
-                TagEnd::Link => { current_tags.retain(|&t| t != "link"); },
-                TagEnd::BlockQuote(_) => { current_tags.retain(|&t| t != "blockquote"); buffer.insert(&mut iter, "\n\n"); },
-                TagEnd::List(_) => { current_tags.retain(|&t| t != "list"); list_depth -= 1; },
-                TagEnd::Item => { buffer.insert(&mut iter, "\n"); },
-                TagEnd::Paragraph => { buffer.insert(&mut iter, "\n\n"); },
+                TagEnd::Heading(_) => {
+                    current_tags.retain(|&t| t != "h1" && t != "h2" && t != "h3" && t != "h4");
+                    buffer.insert(&mut iter, "\n\n");
+                }
+                TagEnd::Strong => {
+                    current_tags.retain(|&t| t != "bold");
+                }
+                TagEnd::Emphasis => {
+                    current_tags.retain(|&t| t != "italic");
+                }
+                TagEnd::Strikethrough => {
+                    current_tags.retain(|&t| t != "strikethrough");
+                }
+                TagEnd::Link => {
+                    current_tags.retain(|&t| t != "link");
+                }
+                TagEnd::BlockQuote(_) => {
+                    current_tags.retain(|&t| t != "blockquote");
+                    buffer.insert(&mut iter, "\n\n");
+                }
+                TagEnd::List(_) => {
+                    current_tags.retain(|&t| t != "list");
+                    list_depth -= 1;
+                }
+                TagEnd::Item => {
+                    buffer.insert(&mut iter, "\n");
+                }
+                TagEnd::Paragraph => {
+                    buffer.insert(&mut iter, "\n\n");
+                }
                 _ => {}
             },
             Event::Text(t) => {

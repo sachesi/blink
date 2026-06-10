@@ -1,6 +1,8 @@
+use adw::Application;
 use adw::prelude::*;
-use adw::{Application, ApplicationWindow, HeaderBar, ToolbarView, ViewStack};
-use gtk::{gio, glib, Box, FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton};
+use gtk::{
+    FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton, gio, glib,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -25,9 +27,11 @@ async fn main() -> glib::ExitCode {
 
 fn build_ui(app: &Application) {
     let provider = gtk::CssProvider::new();
-    provider.load_from_data("
+    provider.load_from_data(
+        "
         textview { background: transparent; }
-    ");
+    ",
+    );
     gtk::style_context_add_provider_for_display(
         &gtk::gdk::Display::default().expect("Could not connect to a display."),
         &provider,
@@ -122,7 +126,7 @@ fn build_ui(app: &Application) {
         .tooltip_text("Toggle Preview")
         .active(true)
         .build();
-    
+
     stack.set_visible_child_name("preview");
 
     let stack_clone = stack.clone();
@@ -135,13 +139,13 @@ fn build_ui(app: &Application) {
     });
 
     let header_bar = adw::HeaderBar::new();
-    
+
     let open_btn = gtk::Button::builder()
         .icon_name("document-open-symbolic")
         .tooltip_text("Open Document")
         .action_name("app.open")
         .build();
-        
+
     let save_btn = gtk::Button::builder()
         .icon_name("document-save-symbolic")
         .tooltip_text("Save Document")
@@ -161,9 +165,7 @@ fn build_ui(app: &Application) {
     bottom_box.append(&spacer);
     bottom_box.append(&status_label);
 
-    let toolbar_view = adw::ToolbarView::builder()
-        .content(&stack)
-        .build();
+    let toolbar_view = adw::ToolbarView::builder().content(&stack).build();
     toolbar_view.add_top_bar(&header_bar);
     toolbar_view.add_bottom_bar(&bottom_box);
 
@@ -188,14 +190,14 @@ fn build_ui(app: &Application) {
         let edit_buffer_clone = edit_buffer_clone.clone();
         let current_file_clone = current_file_clone.clone();
         glib::spawn_future_local(async move {
-            if let Ok(file) = dialog.open_future(Some(&window_clone)).await {
-                if let Some(path) = file.path() {
-                    if let Ok(text) = tokio::fs::read_to_string(&path).await {
-                        edit_buffer_clone.set_text(&text);
-                        window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
-                        *current_file_clone.borrow_mut() = Some(file);
-                    }
-                }
+            if let Ok(file) = dialog.open_future(Some(&window_clone)).await
+                && let Some(path) = file.path()
+                && let Ok(text) = tokio::fs::read_to_string(&path).await
+            {
+                edit_buffer_clone.set_text(&text);
+                window_clone
+                    .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
+                *current_file_clone.borrow_mut() = Some(file);
             }
         });
     });
@@ -211,13 +213,18 @@ fn build_ui(app: &Application) {
         let edit_buffer_clone = edit_buffer_clone.clone();
         let current_file_clone = current_file_clone.clone();
         glib::spawn_future_local(async move {
-            if let Ok(file) = dialog.save_future(Some(&window_clone)).await {
-                if let Some(path) = file.path() {
-                    let text = edit_buffer_clone.text(&edit_buffer_clone.start_iter(), &edit_buffer_clone.end_iter(), false);
-                    let _ = tokio::fs::write(&path, text.as_str()).await;
-                    window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
-                    *current_file_clone.borrow_mut() = Some(file);
-                }
+            if let Ok(file) = dialog.save_future(Some(&window_clone)).await
+                && let Some(path) = file.path()
+            {
+                let text = edit_buffer_clone.text(
+                    &edit_buffer_clone.start_iter(),
+                    &edit_buffer_clone.end_iter(),
+                    false,
+                );
+                let _ = tokio::fs::write(&path, text.as_str()).await;
+                window_clone
+                    .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
+                *current_file_clone.borrow_mut() = Some(file);
             }
         });
     });
@@ -231,7 +238,11 @@ fn build_ui(app: &Application) {
         let file_opt = current_file_clone.borrow().clone();
         if let Some(file) = file_opt {
             if let Some(path) = file.path() {
-                let text = edit_buffer_clone.text(&edit_buffer_clone.start_iter(), &edit_buffer_clone.end_iter(), false);
+                let text = edit_buffer_clone.text(
+                    &edit_buffer_clone.start_iter(),
+                    &edit_buffer_clone.end_iter(),
+                    false,
+                );
                 glib::spawn_future_local(async move {
                     let _ = tokio::fs::write(&path, text.as_str()).await;
                 });
