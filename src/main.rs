@@ -31,6 +31,7 @@ async fn main() -> glib::ExitCode {
         app.set_accels_for_action("app.format-italic", &["<Ctrl>i"]);
         app.set_accels_for_action("app.format-link", &["<Ctrl>k"]);
         app.set_accels_for_action("app.find", &["<Ctrl>f"]);
+        app.set_accels_for_action("app.focus-mode", &["F11"]);
     });
 
     app.connect_activate(build_ui);
@@ -192,6 +193,7 @@ fn build_ui(app: &Application) {
     });
 
     let menu = gio::Menu::new();
+    menu.append(Some(&gettext("Focus Mode")), Some("app.focus-mode"));
     menu.append(Some(&gettext("Export HTML…")), Some("app.export-html"));
     menu.append(Some(&gettext("Export PDF…")), Some("app.export-pdf"));
     menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
@@ -593,6 +595,24 @@ fn build_ui(app: &Application) {
         about.present(Some(&window_clone_about));
     });
     app.add_action(&action_about);
+
+    let action_focus = gio::SimpleAction::new_stateful("focus-mode", None, &false.to_variant());
+    let window_clone_focus = window.clone();
+    let toolbar_view_clone = toolbar_view.clone();
+    action_focus.connect_change_state(move |action, state| {
+        if let Some(st) = state {
+            let is_focus = st.get::<bool>().unwrap_or(false);
+            action.set_state(st);
+            toolbar_view_clone.set_reveal_top_bars(!is_focus);
+            toolbar_view_clone.set_reveal_bottom_bars(!is_focus);
+            if is_focus {
+                window_clone_focus.fullscreen();
+            } else {
+                window_clone_focus.unfullscreen();
+            }
+        }
+    });
+    app.add_action(&action_focus);
 
     let app_clone_close = app.clone();
     window.connect_close_request(move |_| {
