@@ -6,7 +6,8 @@ use std::rc::Rc;
 
 mod markdown;
 
-fn main() -> glib::ExitCode {
+#[tokio::main]
+async fn main() -> glib::ExitCode {
     let app = Application::builder()
         .application_id("com.example.blink")
         .build();
