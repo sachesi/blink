@@ -221,10 +221,18 @@ fn build_ui(app: &Application) {
                     &edit_buffer_clone.end_iter(),
                     false,
                 );
-                let _ = tokio::fs::write(&path, text.as_str()).await;
-                window_clone
-                    .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
-                *current_file_clone.borrow_mut() = Some(file);
+                if let Err(e) = tokio::fs::write(&path, text.as_str()).await {
+                    let alert = adw::AlertDialog::builder()
+                        .heading("Error Saving File")
+                        .body(&format!("Could not save the file: {}", e))
+                        .build();
+                    alert.add_response("ok", "OK");
+                    alert.present(Some(&window_clone));
+                } else {
+                    window_clone
+                        .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
+                    *current_file_clone.borrow_mut() = Some(file);
+                }
             }
         });
     });
@@ -234,6 +242,7 @@ fn build_ui(app: &Application) {
     let edit_buffer_clone = edit_buffer.clone();
     let current_file_clone = current_file.clone();
     let app_clone = app.clone();
+    let window_clone_save = window.clone();
     action_save.connect_activate(move |_, _| {
         let file_opt = current_file_clone.borrow().clone();
         if let Some(file) = file_opt {
@@ -243,8 +252,16 @@ fn build_ui(app: &Application) {
                     &edit_buffer_clone.end_iter(),
                     false,
                 );
+                let window_clone_inner = window_clone_save.clone();
                 glib::spawn_future_local(async move {
-                    let _ = tokio::fs::write(&path, text.as_str()).await;
+                    if let Err(e) = tokio::fs::write(&path, text.as_str()).await {
+                        let alert = adw::AlertDialog::builder()
+                            .heading("Error Saving File")
+                            .body(&format!("Could not save the file: {}", e))
+                            .build();
+                        alert.add_response("ok", "OK");
+                        alert.present(Some(&window_clone_inner));
+                    }
                 });
             }
         } else {
