@@ -24,6 +24,14 @@ async fn main() -> glib::ExitCode {
 }
 
 fn build_ui(app: &Application) {
+    let provider = gtk::CssProvider::new();
+    provider.load_from_data("textview { background: transparent; }");
+    gtk::style_context_add_provider_for_display(
+        &gtk::gdk::Display::default().expect("Could not connect to a display."),
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+
     let stack = ViewStack::new();
 
     let edit_buffer = TextBuffer::new(None);
