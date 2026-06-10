@@ -16,7 +16,8 @@ pub fn setup_tags(buffer: &TextBuffer) {
     ]);
     buffer.create_tag(Some("code"), &[
         ("family", &"Monospace"),
-        ("background", &"rgba(128, 128, 128, 0.15)"),
+        ("background", &"rgba(150, 150, 150, 0.15)"),
+        ("foreground", &"#cf222e"),
     ]);
     buffer.create_tag(Some("code_block"), &[
         ("family", &"Monospace"),
@@ -300,14 +301,10 @@ pub fn render_markdown(view: &TextView, text: &str) {
                 }
             }
             Event::Code(c) => {
-                let label = Label::builder()
-                    .label(c.as_ref())
-                    .selectable(true)
-                    .valign(gtk::Align::Baseline)
-                    .css_classes(["inline-code"])
-                    .build();
-                let anchor = buffer.create_child_anchor(&mut iter);
-                view.add_child_at_anchor(&label, &anchor);
+                let start_offset = iter.offset();
+                buffer.insert(&mut iter, &format!(" {} ", c));
+                let start_iter = buffer.iter_at_offset(start_offset);
+                buffer.apply_tag_by_name("code", &start_iter, &iter);
             }
             Event::SoftBreak | Event::HardBreak => {
                 buffer.insert(&mut iter, "\n");

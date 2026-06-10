@@ -27,12 +27,6 @@ fn build_ui(app: &Application) {
     let provider = gtk::CssProvider::new();
     provider.load_from_data("
         textview { background: transparent; }
-        .inline-code {
-            background: rgba(150, 150, 150, 0.15);
-            border-radius: 4px;
-            padding: 1px 4px;
-            font-family: monospace;
-        }
     ");
     gtk::style_context_add_provider_for_display(
         &gtk::gdk::Display::default().expect("Could not connect to a display."),
