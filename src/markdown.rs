@@ -1,5 +1,5 @@
 use gtk::prelude::*;
-use gtk::TextBuffer;
+use gtk::{TextBuffer, TextView, Grid, Label, TextChildAnchor};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
 pub fn setup_tags(buffer: &TextBuffer) {
@@ -82,19 +82,77 @@ pub fn highlight_editor(buffer: &TextBuffer, text: &str) {
     }
 }
 
-pub fn render_markdown(buffer: &TextBuffer, text: &str) {
+pub fn render_markdown(view: &TextView, text: &str) {
+    let buffer = view.buffer();
     let mut iter = buffer.bounds().0;
     buffer.delete(&mut iter, &mut buffer.bounds().1);
     
+    // By re-creating the parser, we iterate through events.
     let parser = Parser::new(text);
     let mut current_tags: Vec<&'static str> = Vec::new();
     let mut iter = buffer.end_iter();
     
     let mut list_depth = 0;
 
+    let mut in_table = false;
+    let mut table_rows: Vec<Vec<String>> = Vec::new();
+    let mut current_row: Vec<String> = Vec::new();
+    let mut current_cell = String::new();
+    let mut _in_head = false;
+
     for event in parser {
+        if in_table {
+            match event {
+                Event::Start(Tag::TableHead) => _in_head = true,
+                Event::End(TagEnd::TableHead) => _in_head = false,
+                Event::Start(Tag::TableRow) => current_row = Vec::new(),
+                Event::End(TagEnd::TableRow) => {
+                    table_rows.push(current_row.clone());
+                }
+                Event::Start(Tag::TableCell) => current_cell = String::new(),
+                Event::End(TagEnd::TableCell) => {
+                    current_row.push(current_cell.clone());
+                }
+                Event::Text(t) | Event::Code(t) => {
+                    current_cell.push_str(&t);
+                }
+                Event::End(TagEnd::Table) => {
+                    in_table = false;
+                    let grid = Grid::builder()
+                        .margin_top(12)
+                        .margin_bottom(12)
+                        .column_spacing(16)
+                        .row_spacing(8)
+                        .build();
+                    grid.add_css_class("card");
+                    
+                    for (row_idx, row) in table_rows.iter().enumerate() {
+                        for (col_idx, cell_text) in row.iter().enumerate() {
+                            let label = Label::builder()
+                                .label(cell_text)
+                                .margin_top(8).margin_bottom(8).margin_start(8).margin_end(8)
+                                .build();
+                            if row_idx == 0 {
+                                label.add_css_class("heading");
+                            }
+                            grid.attach(&label, col_idx as i32, row_idx as i32, 1, 1);
+                        }
+                    }
+                    let anchor = buffer.create_child_anchor(&mut iter);
+                    view.add_child_at_anchor(&grid, &anchor);
+                    buffer.insert(&mut iter, "\n\n");
+                }
+                _ => {}
+            }
+            continue;
+        }
+
         match event {
             Event::Start(tag) => match tag {
+                Tag::Table(_) => {
+                    in_table = true;
+                    table_rows.clear();
+                }
                 Tag::Heading { level, .. } => {
                     let level_num = level as u8;
                     current_tags.push(match level_num {

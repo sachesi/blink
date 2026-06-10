@@ -80,13 +80,13 @@ fn build_ui(app: &Application) {
         .css_classes(["dim-label"])
         .build();
 
-    let preview_buffer_clone = preview_buffer.clone();
+    let preview_view_clone = preview_view.clone();
     let status_label_clone = status_label.clone();
     let edit_buffer_clone = edit_buffer.clone();
     edit_buffer.connect_changed(move |b| {
         let text = b.text(&b.start_iter(), &b.end_iter(), false);
         markdown::highlight_editor(&edit_buffer_clone, text.as_str());
-        markdown::render_markdown(&preview_buffer_clone, text.as_str());
+        markdown::render_markdown(&preview_view_clone, text.as_str());
         let chars = text.chars().count();
         let words = text.split_whitespace().count();
         status_label_clone.set_label(&format!("{} words, {} chars", words, chars));
