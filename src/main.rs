@@ -170,8 +170,8 @@ fn build_ui(app: &Application) {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Untitled Document")
-        .default_width(800)
-        .default_height(600)
+        .default_width(700)
+        .default_height(900)
         .content(&toolbar_view)
         .build();
 
