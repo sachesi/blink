@@ -87,15 +87,18 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
 
                     let clean_code = current_code.trim_end_matches('\n');
 
-                    let label = Label::builder()
+                    let code_buffer = TextBuffer::builder().text(clean_code).build();
+                    let code_view = TextView::builder()
+                        .buffer(&code_buffer)
+                        .editable(false)
+                        .cursor_visible(false)
+                        .monospace(true)
                         .margin_top(12)
                         .margin_bottom(12)
                         .margin_start(12)
                         .margin_end(12)
-                        .xalign(0.0)
-                        .yalign(0.0)
-                        .selectable(true)
                         .can_focus(false)
+                        .wrap_mode(gtk::WrapMode::None)
                         .build();
 
                     hadj.bind_property("page-size", &scroll, "width-request")
@@ -105,12 +108,8 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
                         })
                         .sync_create()
                         .build();
-                    label.set_markup(&format!(
-                        "<tt>{}</tt>",
-                        glib::markup_escape_text(clean_code)
-                    ));
 
-                    scroll.set_child(Some(&label));
+                    scroll.set_child(Some(&code_view));
 
                     let anchor = buffer.create_child_anchor(&mut iter);
                     view.add_child_at_anchor(&scroll, &anchor);
