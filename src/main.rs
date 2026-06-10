@@ -13,7 +13,7 @@ mod markdown;
 async fn main() -> glib::ExitCode {
     // Initialize i18n
     setlocale(LocaleCategory::LcAll, "");
-    let _ = bindtextdomain("blink", "/usr/share/locale");
+    let _ = bindtextdomain("blink", "locale");
     let _ = textdomain("blink");
 
     let app = Application::builder()

@@ -1,0 +1,54 @@
+# Ukrainian translation for blink.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: blink 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-10 21:10+0000\n"
+"PO-Revision-Date: 2026-06-10 21:10+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: Ukrainian <uk@li.org>\n"
+"Language: uk_UA\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/main.rs:108
+msgid "{} words, {} chars"
+msgstr "{} слів, {} симв."
+
+#: src/main.rs:125
+msgid "Save As…"
+msgstr "Зберегти як…"
+
+#: src/main.rs:126
+msgid "Quit"
+msgstr "Вийти"
+
+#: src/main.rs:135
+msgid "Toggle Preview"
+msgstr "Перемкнути попередній перегляд"
+
+#: src/main.rs:154
+msgid "Open Document"
+msgstr "Відкрити документ"
+
+#: src/main.rs:160
+msgid "Save Document"
+msgstr "Зберегти документ"
+
+#: src/main.rs:183
+msgid "Untitled Document"
+msgstr "Документ без назви"
+
+#: src/main.rs:235 src/main.rs:268
+msgid "Error Saving File"
+msgstr "Помилка збереження файлу"
+
+#: src/main.rs:236 src/main.rs:269
+msgid "Could not save the file"
+msgstr "Не вдалося зберегти файл"
+
+#: src/main.rs:238 src/main.rs:271
+msgid "OK"
+msgstr "ОК"
