@@ -335,6 +335,53 @@ fn build_ui(app: &Application) {
 
     let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
 
+    let drop_target = gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
+    let window_clone_drop = window.clone();
+    let edit_buffer_clone_drop = edit_buffer.clone();
+    let current_file_clone_drop = current_file.clone();
+    let btn_split_toggle_drop = btn_split_toggle.clone();
+    let btn_mode_toggle_drop = btn_mode_toggle.clone();
+    let edit_scroll_drop = edit_scroll.clone();
+    let preview_scroll_drop = preview_scroll.clone();
+    drop_target.connect_drop(move |_, value, _, _| {
+        if let Ok(file) = value.get::<gio::File>() {
+            let window_clone = window_clone_drop.clone();
+            let edit_buffer_clone = edit_buffer_clone_drop.clone();
+            let current_file_clone = current_file_clone_drop.clone();
+            let btn_split_toggle_open = btn_split_toggle_drop.clone();
+            let btn_mode_toggle_open = btn_mode_toggle_drop.clone();
+            let edit_scroll_open = edit_scroll_drop.clone();
+            let preview_scroll_open = preview_scroll_drop.clone();
+            
+            glib::spawn_future_local(async move {
+                if let Some(path) = file.path() {
+                    if let Ok(text) = tokio::fs::read_to_string(&path).await {
+                        edit_buffer_clone.set_text(&text);
+                        edit_buffer_clone.set_modified(false);
+                        window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
+                        *current_file_clone.borrow_mut() = Some(file);
+
+                        btn_split_toggle_open.set_active(false);
+                        edit_scroll_open.set_visible(false);
+                        preview_scroll_open.set_visible(true);
+                        btn_mode_toggle_open.set_icon_name("document-edit-symbolic");
+                        btn_mode_toggle_open.set_tooltip_text(Some(&gettext("Edit Document")));
+                    } else {
+                        let alert = adw::AlertDialog::builder()
+                            .heading(&gettext("Error Opening File"))
+                            .body(&format!("{}: {}", gettext("Could not open the file"), path.display()))
+                            .build();
+                        alert.add_response("ok", &gettext("OK"));
+                        alert.present(Some(&window_clone));
+                    }
+                }
+            });
+            return true;
+        }
+        false
+    });
+    window.add_controller(drop_target);
+
     // Actions
     let action_open = gio::SimpleAction::new("open", None);
     let window_clone = window.clone();
