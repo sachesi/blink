@@ -56,11 +56,8 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         textview.editor-view {
             border-radius: 12px;
         }
-        separator {
-            background-image: image(alpha(currentColor, 0.06));
-            background-size: 1px 100%;
-            background-position: center center;
-            background-repeat: no-repeat;
+        .split-preview {
+            border-left: 1px solid alpha(currentColor, 0.06);
         }
         .drop-overlay {
             background: alpha(@theme_bg_color, 0.9);
@@ -151,17 +148,13 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     let split_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
-        .build();
-
-    let separator = gtk::Separator::builder()
-        .orientation(gtk::Orientation::Vertical)
+        .homogeneous(true)
         .build();
 
     edit_scroll.set_hexpand(true);
     preview_scroll.set_hexpand(true);
 
     split_box.append(&edit_scroll);
-    split_box.append(&separator);
     split_box.append(&preview_scroll);
 
     let adj = edit_scroll.vadjustment();
@@ -264,15 +257,15 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let edit_scroll_clone2 = edit_scroll.clone();
     let preview_scroll_clone2 = preview_scroll.clone();
     let btn_mode_toggle_clone = btn_mode_toggle.clone();
-    let separator_clone = separator.clone();
     btn_split_toggle.connect_toggled(move |btn| {
         let is_split = btn.is_active();
-        separator_clone.set_visible(is_split);
         if is_split {
+            preview_scroll_clone2.add_css_class("split-preview");
             edit_scroll_clone2.set_visible(true);
             preview_scroll_clone2.set_visible(true);
             btn_mode_toggle_clone.set_sensitive(false);
         } else {
+            preview_scroll_clone2.remove_css_class("split-preview");
             btn_mode_toggle_clone.set_sensitive(true);
             // Restore state based on what the toggle button says
             let wants_preview = btn_mode_toggle_clone.icon_name() == Some(glib::GString::from("document-edit-symbolic"));
