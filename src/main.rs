@@ -725,11 +725,21 @@ fn build_ui(app: &Application) {
             .application_name("Blink")
             .application_icon("com.github.sachesi.blink")
             .developer_name("sachesi")
-            .version("0.1.0")
+            .version("0.1.1")
             .comments(&gettext("A fast and minimal Markdown editor"))
             .website("https://github.com/sachesi/blink")
             .issue_url("https://github.com/sachesi/blink/issues")
+            .license_type(gtk::License::Gpl30)
             .build();
+            
+        // Provide standard End User License Agreement / Disclaimer
+        about.add_legal_section(
+            &gettext("End User Agreement"),
+            None,
+            gtk::License::Custom,
+            Some(&gettext("This software is provided 'as is', without warranty of any kind, express or implied. By using this software, you agree to these terms and the terms of the GNU General Public License version 3."))
+        );
+        
         about.present(Some(&window_clone_about));
     });
     app.add_action(&action_about);
