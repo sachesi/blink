@@ -211,7 +211,6 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let menu = gio::Menu::new();
     menu.append(Some(&gettext("Focus Mode")), Some("app.focus-mode"));
     menu.append(Some(&gettext("Export HTML…")), Some("app.export-html"));
-    menu.append(Some(&gettext("Export PDF…")), Some("app.export-pdf"));
     menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
     menu.append(Some(&gettext("About Blink")), Some("app.about"));
     menu.append(Some(&gettext("Quit")), Some("app.quit"));
@@ -675,7 +674,25 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
                 let mut html_output = String::new();
                 pulldown_cmark::html::push_html(&mut html_output, parser);
                 
-                let html_doc = format!("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Export</title>\n</head>\n<body>\n{}\n</body>\n</html>", html_output);
+                let css = "
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 100%; margin: 0; padding: 20px; color: #333; }
+pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; }
+code { font-family: ui-monospace, monospace; font-weight: bold; font-size: 0.9em; }
+pre code { background: transparent; padding: 0; font-weight: normal; }
+blockquote { border-left: 4px solid #ddd; margin: 0; padding-left: 12px; color: #666; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; table-layout: fixed; overflow-wrap: break-word; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; word-wrap: break-word; }
+th { background: #f9f9f9; }
+img { max-width: 100%; border-radius: 8px; }
+@media (prefers-color-scheme: dark) {
+    body { background: #1e1e1e; color: #eee; }
+    pre { background: #2d2d2d; }
+    blockquote { border-left-color: #555; color: #aaa; }
+    th, td { border-color: #444; }
+    th { background: #2a2a2a; }
+}";
+                let html_doc = format!("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Export</title>\n<style>\n{}\n</style>\n</head>\n<body>\n{}\n</body>\n</html>", css, html_output);
 
                 if let Err(e) = tokio::fs::write(&path, html_doc).await {
                     let alert = adw::AlertDialog::builder()
@@ -689,44 +706,6 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         });
     });
     app.add_action(&action_export_html);
-
-    let action_export_pdf = gio::SimpleAction::new("export-pdf", None);
-    let window_clone_export_pdf = window.clone();
-    let edit_buffer_pdf = edit_buffer.clone();
-    action_export_pdf.connect_activate(move |_, _| {
-        let dialog = FileDialog::new();
-        let window_clone = window_clone_export_pdf.clone();
-        let edit_buffer_clone = edit_buffer_pdf.clone();
-        glib::spawn_future_local(async move {
-            if let Ok(file) = dialog.save_future(Some(&window_clone)).await
-                && let Some(path) = file.path()
-            {
-                let print_op = gtk::PrintOperation::new();
-                let compositor = sourceview5::PrintCompositor::new(&edit_buffer_clone);
-                
-                compositor.set_print_line_numbers(0);
-                compositor.set_print_header(false);
-                compositor.set_print_footer(false);
-
-                let comp_begin = compositor.clone();
-                print_op.connect_begin_print(move |op, context| {
-                    while !comp_begin.paginate(context) {}
-                    op.set_n_pages(comp_begin.n_pages());
-                });
-
-                let comp_draw = compositor.clone();
-                print_op.connect_draw_page(move |_, context, page_nr| {
-                    comp_draw.draw_page(context, page_nr);
-                });
-
-                if let Some(path_str) = path.to_str() {
-                    print_op.set_export_filename(path_str);
-                    let _ = print_op.run(gtk::PrintOperationAction::Export, Some(&window_clone));
-                }
-            }
-        });
-    });
-    app.add_action(&action_export_pdf);
 
     let action_about = gio::SimpleAction::new("about", None);
     let window_clone_about = window.clone();
