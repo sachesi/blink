@@ -1,6 +1,6 @@
 [package]
 name = "blink"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["sachesi <xsachesi@pm.me>"]
 license = "GPL-3.0-or-later"

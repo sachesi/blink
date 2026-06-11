@@ -15,7 +15,15 @@ mod markdown;
 async fn main() -> glib::ExitCode {
     // Initialize i18n
     setlocale(LocaleCategory::LcAll, "");
-    let _ = bindtextdomain("blink", "locale");
+    let locale_dir = std::env::var("BLINK_LOCALE_DIR")
+        .unwrap_or_else(|_| {
+            if std::path::Path::new("/usr/share/locale").exists() && !cfg!(debug_assertions) {
+                "/usr/share/locale".to_string()
+            } else {
+                "locale".to_string()
+            }
+        });
+    let _ = bindtextdomain("blink", locale_dir);
     let _ = textdomain("blink");
 
     let app = Application::builder()
@@ -254,25 +262,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         }
     });
 
-    let edit_scroll_clone2 = edit_scroll.clone();
-    let preview_scroll_clone2 = preview_scroll.clone();
-    let btn_mode_toggle_clone = btn_mode_toggle.clone();
-    btn_split_toggle.connect_toggled(move |btn| {
-        let is_split = btn.is_active();
-        if is_split {
-            preview_scroll_clone2.add_css_class("split-preview");
-            edit_scroll_clone2.set_visible(true);
-            preview_scroll_clone2.set_visible(true);
-            btn_mode_toggle_clone.set_sensitive(false);
-        } else {
-            preview_scroll_clone2.remove_css_class("split-preview");
-            btn_mode_toggle_clone.set_sensitive(true);
-            // Restore state based on what the toggle button says
-            let wants_preview = btn_mode_toggle_clone.icon_name() == Some(glib::GString::from("document-edit-symbolic"));
-            edit_scroll_clone2.set_visible(!wants_preview);
-            preview_scroll_clone2.set_visible(wants_preview);
-        }
-    });
+    // Split connection moved below window creation
 
     // Default to edit only when launched empty
     edit_scroll.set_visible(true);
@@ -374,6 +364,32 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         .default_height(900)
         .content(&overlay)
         .build();
+
+    let edit_scroll_clone2 = edit_scroll.clone();
+    let preview_scroll_clone2 = preview_scroll.clone();
+    let btn_mode_toggle_clone = btn_mode_toggle.clone();
+    let window_clone_split = window.clone();
+    btn_split_toggle.connect_toggled(move |btn| {
+        let is_split = btn.is_active();
+        if is_split {
+            preview_scroll_clone2.add_css_class("split-preview");
+            edit_scroll_clone2.set_visible(true);
+            preview_scroll_clone2.set_visible(true);
+            btn_mode_toggle_clone.set_sensitive(false);
+
+            let height = window_clone_split.height();
+            window_clone_split.set_default_size(1200, height);
+        } else {
+            preview_scroll_clone2.remove_css_class("split-preview");
+            btn_mode_toggle_clone.set_sensitive(true);
+            let wants_preview = btn_mode_toggle_clone.icon_name() == Some(glib::GString::from("document-edit-symbolic"));
+            edit_scroll_clone2.set_visible(!wants_preview);
+            preview_scroll_clone2.set_visible(wants_preview);
+
+            let height = window_clone_split.height();
+            window_clone_split.set_default_size(700, height);
+        }
+    });
 
     let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
 
@@ -705,7 +721,7 @@ img { max-width: 100%; border-radius: 8px; }
             .application_name("Blink")
             .application_icon("com.github.sachesi.blink")
             .developer_name("sachesi")
-            .version("0.1.1")
+            .version("0.1.2")
             .comments(&gettext("A fast and minimal Markdown editor"))
             .website("https://github.com/sachesi/blink")
             .issue_url("https://github.com/sachesi/blink/issues")
