@@ -20,6 +20,7 @@ async fn main() -> glib::ExitCode {
 
     let app = Application::builder()
         .application_id("com.github.sachesi.blink")
+        .flags(gio::ApplicationFlags::HANDLES_OPEN)
         .build();
 
     app.connect_startup(|app| {
@@ -34,11 +35,20 @@ async fn main() -> glib::ExitCode {
         app.set_accels_for_action("app.focus-mode", &["F11"]);
     });
 
-    app.connect_activate(build_ui);
+    app.connect_activate(|app| {
+        build_ui(app, None);
+    });
+
+    app.connect_open(|app, files, _hint| {
+        if let Some(file) = files.first() {
+            build_ui(app, Some(file.clone()));
+        }
+    });
+
     app.run()
 }
 
-fn build_ui(app: &Application) {
+fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let provider = gtk::CssProvider::new();
     provider.load_from_data(
         "
@@ -767,6 +777,40 @@ fn build_ui(app: &Application) {
         app_clone_close.activate_action("quit", None);
         glib::Propagation::Stop
     });
+
+    if let Some(file) = initial_file {
+        let window_clone = window.clone();
+        let edit_buffer_clone = edit_buffer.clone();
+        let current_file_clone = current_file.clone();
+        let btn_split_toggle_open = btn_split_toggle.clone();
+        let btn_mode_toggle_open = btn_mode_toggle.clone();
+        let edit_scroll_open = edit_scroll.clone();
+        let preview_scroll_open = preview_scroll.clone();
+        
+        glib::spawn_future_local(async move {
+            if let Some(path) = file.path() {
+                if let Ok(text) = tokio::fs::read_to_string(&path).await {
+                    edit_buffer_clone.set_text(&text);
+                    edit_buffer_clone.set_modified(false);
+                    window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
+                    *current_file_clone.borrow_mut() = Some(file);
+
+                    btn_split_toggle_open.set_active(false);
+                    edit_scroll_open.set_visible(false);
+                    preview_scroll_open.set_visible(true);
+                    btn_mode_toggle_open.set_icon_name("document-edit-symbolic");
+                    btn_mode_toggle_open.set_tooltip_text(Some(&gettext("Edit Document")));
+                } else {
+                    let alert = adw::AlertDialog::builder()
+                        .heading(&gettext("Error Opening File"))
+                        .body(&format!("{}: {}", gettext("Could not open the file"), path.display()))
+                        .build();
+                    alert.add_response("ok", &gettext("OK"));
+                    alert.present(Some(&window_clone));
+                }
+            }
+        });
+    }
 
     window.present();
 }
