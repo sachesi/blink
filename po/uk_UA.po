@@ -19,7 +19,7 @@ msgstr "{} слів, {} симв."
 
 #: src/main.rs:212
 msgid "Focus Mode"
-msgstr ""
+msgstr "Режим фокусування"
 
 #: src/main.rs:213
 msgid "Export HTML…"
