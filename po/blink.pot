@@ -8,99 +8,128 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-10 22:13+0000\n"
+"POT-Creation-Date: 2026-06-11 07:37+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: sachesi <xsachesi@pm.me>\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/main.rs:162
+#: src/main.rs:199
 msgid "{} words, {} chars"
 msgstr ""
 
-#: src/main.rs:169
+#: src/main.rs:212
+msgid "Focus Mode"
+msgstr ""
+
+#: src/main.rs:213
 msgid "Export HTML…"
 msgstr ""
 
-#: src/main.rs:170
+#: src/main.rs:214
 msgid "Export PDF…"
 msgstr ""
 
-#: src/main.rs:171
+#: src/main.rs:215
 msgid "Save As…"
 msgstr ""
 
-#: src/main.rs:172
+#: src/main.rs:216
 msgid "About Blink"
 msgstr ""
 
-#: src/main.rs:173
+#: src/main.rs:217
 msgid "Quit"
 msgstr ""
 
-#: src/main.rs:185 src/main.rs:212 src/main.rs:331
+#: src/main.rs:229 src/main.rs:256 src/main.rs:434 src/main.rs:484
+#: src/main.rs:802
 msgid "Edit Document"
 msgstr ""
 
-#: src/main.rs:191
+#: src/main.rs:235
 msgid "Split View"
 msgstr ""
 
-#: src/main.rs:206 src/main.rs:239
+#: src/main.rs:250 src/main.rs:292
 msgid "Preview Document"
 msgstr ""
 
-#: src/main.rs:245
+#: src/main.rs:298
 msgid "Open Document"
 msgstr ""
 
-#: src/main.rs:251
+#: src/main.rs:304
 msgid "Save Document"
 msgstr ""
 
-#: src/main.rs:290
+#: src/main.rs:358
+msgid "Drop Markdown file to open"
+msgstr ""
+
+#: src/main.rs:382
 msgid "Untitled Document"
 msgstr ""
 
-#: src/main.rs:357 src/main.rs:392
-msgid "Error Saving File"
+#: src/main.rs:437 src/main.rs:805
+msgid "Error Opening File"
 msgstr ""
 
-#: src/main.rs:358 src/main.rs:393
-msgid "Could not save the file"
+#: src/main.rs:438 src/main.rs:806
+msgid "Could not open the file"
 msgstr ""
 
-#: src/main.rs:360 src/main.rs:395 src/main.rs:509
+#: src/main.rs:440 src/main.rs:513 src/main.rs:548 src/main.rs:685
+#: src/main.rs:808
 msgid "OK"
 msgstr ""
 
-#: src/main.rs:415
+#: src/main.rs:510 src/main.rs:545
+msgid "Error Saving File"
+msgstr ""
+
+#: src/main.rs:511 src/main.rs:546
+msgid "Could not save the file"
+msgstr ""
+
+#: src/main.rs:591
 msgid "Unsaved Changes"
 msgstr ""
 
-#: src/main.rs:416
+#: src/main.rs:592
 msgid "You have unsaved changes. Do you want to close without saving?"
 msgstr ""
 
-#: src/main.rs:418
+#: src/main.rs:594
 msgid "Cancel"
 msgstr ""
 
-#: src/main.rs:419
+#: src/main.rs:595
 msgid "Close Without Saving"
 msgstr ""
 
-#: src/main.rs:506
+#: src/main.rs:682
 msgid "Error Exporting HTML"
 msgstr ""
 
-#: src/main.rs:507
+#: src/main.rs:683
 msgid "Could not export the file"
 msgstr ""
 
-#: src/main.rs:563
+#: src/main.rs:739
 msgid "A fast and minimal Markdown editor"
+msgstr ""
+
+#: src/main.rs:747
+msgid "End User Agreement"
+msgstr ""
+
+#: src/main.rs:750
+msgid ""
+"This software is provided 'as is', without warranty of any kind, express or "
+"implied. By using this software, you agree to these terms and the terms of "
+"the GNU General Public License version 3."
 msgstr ""

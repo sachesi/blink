@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-10 22:13+0000\n"
+"POT-Creation-Date: 2026-06-11 07:37+0000\n"
 "PO-Revision-Date: 2026-06-10 21:10+0000\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -13,93 +13,127 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/main.rs:162
+#: src/main.rs:199
 msgid "{} words, {} chars"
 msgstr "{} слів, {} симв."
 
-#: src/main.rs:169
+#: src/main.rs:212
+msgid "Focus Mode"
+msgstr ""
+
+#: src/main.rs:213
 msgid "Export HTML…"
 msgstr "Експортувати в HTML…"
 
-#: src/main.rs:170
+#: src/main.rs:214
 msgid "Export PDF…"
 msgstr "Експортувати в PDF…"
 
-#: src/main.rs:171
+#: src/main.rs:215
 msgid "Save As…"
 msgstr "Зберегти як…"
 
-#: src/main.rs:172
+#: src/main.rs:216
 msgid "About Blink"
 msgstr "Про Blink"
 
-#: src/main.rs:173
+#: src/main.rs:217
 msgid "Quit"
 msgstr "Вийти"
 
-#: src/main.rs:185 src/main.rs:212 src/main.rs:331
+#: src/main.rs:229 src/main.rs:256 src/main.rs:434 src/main.rs:484
+#: src/main.rs:802
 msgid "Edit Document"
 msgstr "Редагувати документ"
 
-#: src/main.rs:191
+#: src/main.rs:235
 msgid "Split View"
 msgstr "Розділений перегляд"
 
-#: src/main.rs:206 src/main.rs:239
+#: src/main.rs:250 src/main.rs:292
 msgid "Preview Document"
 msgstr "Попередній перегляд"
 
-#: src/main.rs:245
+#: src/main.rs:298
 msgid "Open Document"
 msgstr "Відкрити документ"
 
-#: src/main.rs:251
+#: src/main.rs:304
 msgid "Save Document"
 msgstr "Зберегти документ"
 
-#: src/main.rs:290
+#: src/main.rs:358
+msgid "Drop Markdown file to open"
+msgstr "Перетягніть файл Markdown для відкриття"
+
+#: src/main.rs:382
 msgid "Untitled Document"
 msgstr "Документ без назви"
 
-#: src/main.rs:357 src/main.rs:392
-msgid "Error Saving File"
+#: src/main.rs:437 src/main.rs:805
+#, fuzzy
+msgid "Error Opening File"
 msgstr "Помилка збереження файлу"
 
-#: src/main.rs:358 src/main.rs:393
-msgid "Could not save the file"
+#: src/main.rs:438 src/main.rs:806
+#, fuzzy
+msgid "Could not open the file"
 msgstr "Не вдалося зберегти файл"
 
-#: src/main.rs:360 src/main.rs:395 src/main.rs:509
+#: src/main.rs:440 src/main.rs:513 src/main.rs:548 src/main.rs:685
+#: src/main.rs:808
 msgid "OK"
 msgstr "ОК"
 
-#: src/main.rs:415
+#: src/main.rs:510 src/main.rs:545
+msgid "Error Saving File"
+msgstr "Помилка збереження файлу"
+
+#: src/main.rs:511 src/main.rs:546
+msgid "Could not save the file"
+msgstr "Не вдалося зберегти файл"
+
+#: src/main.rs:591
 msgid "Unsaved Changes"
 msgstr "Незбережені зміни"
 
-#: src/main.rs:416
+#: src/main.rs:592
 msgid "You have unsaved changes. Do you want to close without saving?"
 msgstr "У вас є незбережені зміни. Бажаєте закрити без збереження?"
 
-#: src/main.rs:418
+#: src/main.rs:594
 msgid "Cancel"
 msgstr "Скасувати"
 
-#: src/main.rs:419
+#: src/main.rs:595
 msgid "Close Without Saving"
 msgstr "Закрити без збереження"
 
-#: src/main.rs:506
+#: src/main.rs:682
 msgid "Error Exporting HTML"
 msgstr "Помилка експорту HTML"
 
-#: src/main.rs:507
+#: src/main.rs:683
 msgid "Could not export the file"
 msgstr "Не вдалося експортувати файл"
 
-#: src/main.rs:563
+#: src/main.rs:739
 msgid "A fast and minimal Markdown editor"
 msgstr "Швидкий і мінімалістичний Markdown-редактор"
+
+#: src/main.rs:736
+msgid "End User Agreement"
+msgstr "Ліцензійна угода кінцевого користувача"
+
+#: src/main.rs:750
+msgid ""
+"This software is provided 'as is', without warranty of any kind, express or "
+"implied. By using this software, you agree to these terms and the terms of "
+"the GNU General Public License version 3."
+msgstr ""
+"Це програмне забезпечення надається «як є», без будь-яких гарантій, явних або "
+"непрямих. Використовуючи це програмне забезпечення, ви погоджуєтеся з цими "
+"умовами та умовами GNU General Public License версії 3."
 
 #~ msgid "Toggle Preview"
 #~ msgstr "Перемкнути попередній перегляд"
