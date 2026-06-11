@@ -52,6 +52,9 @@ fn build_ui(app: &Application) {
             background-position: center center;
             background-repeat: no-repeat;
         }
+        .drop-overlay {
+            background: alpha(@theme_bg_color, 0.9);
+        }
     ",
     );
     gtk::style_context_add_provider_for_display(
@@ -325,12 +328,51 @@ fn build_ui(app: &Application) {
     toolbar_view.add_top_bar(&search_bar);
     toolbar_view.add_bottom_bar(&bottom_box);
 
+    let drop_overlay = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .halign(gtk::Align::Fill)
+        .valign(gtk::Align::Fill)
+        .css_classes(["drop-overlay"])
+        .visible(false)
+        .build();
+
+    let drop_icon = gtk::Image::builder()
+        .icon_name("document-open-symbolic")
+        .pixel_size(64)
+        .valign(gtk::Align::End)
+        .halign(gtk::Align::Center)
+        .vexpand(true)
+        .margin_bottom(12)
+        .build();
+    let drop_label = gtk::Label::builder()
+        .label(&gettext("Drop Markdown file to open"))
+        .css_classes(["title-1"])
+        .valign(gtk::Align::Start)
+        .halign(gtk::Align::Center)
+        .vexpand(true)
+        .margin_top(12)
+        .build();
+
+    let drop_content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
+        .halign(gtk::Align::Center)
+        .build();
+    drop_content.append(&drop_icon);
+    drop_content.append(&drop_label);
+    drop_overlay.append(&drop_content);
+
+    let overlay = gtk::Overlay::builder()
+        .child(&toolbar_view)
+        .build();
+    overlay.add_overlay(&drop_overlay);
+
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title(&gettext("Untitled Document"))
         .default_width(700)
         .default_height(900)
-        .content(&toolbar_view)
+        .content(&overlay)
         .build();
 
     let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
@@ -343,7 +385,21 @@ fn build_ui(app: &Application) {
     let btn_mode_toggle_drop = btn_mode_toggle.clone();
     let edit_scroll_drop = edit_scroll.clone();
     let preview_scroll_drop = preview_scroll.clone();
+    
+    let drop_overlay_enter = drop_overlay.clone();
+    drop_target.connect_enter(move |_, _, _| {
+        drop_overlay_enter.set_visible(true);
+        gtk::gdk::DragAction::COPY
+    });
+
+    let drop_overlay_leave = drop_overlay.clone();
+    drop_target.connect_leave(move |_| {
+        drop_overlay_leave.set_visible(false);
+    });
+
+    let drop_overlay_drop = drop_overlay.clone();
     drop_target.connect_drop(move |_, value, _, _| {
+        drop_overlay_drop.set_visible(false);
         if let Ok(file) = value.get::<gio::File>() {
             let window_clone = window_clone_drop.clone();
             let edit_buffer_clone = edit_buffer_clone_drop.clone();
