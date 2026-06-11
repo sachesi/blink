@@ -56,7 +56,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         textview.editor-view {
             border-radius: 12px;
         }
-        paned > separator {
+        separator {
             background-image: image(alpha(currentColor, 0.06));
             background-size: 1px 100%;
             background-position: center center;
@@ -149,15 +149,20 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         .hexpand(true)
         .build();
 
-    let paned = gtk::Paned::builder()
+    let split_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
-        .start_child(&edit_scroll)
-        .end_child(&preview_scroll)
-        .position(350)
-        .wide_handle(true)
-        .resize_start_child(true)
-        .resize_end_child(true)
         .build();
+
+    let separator = gtk::Separator::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
+
+    edit_scroll.set_hexpand(true);
+    preview_scroll.set_hexpand(true);
+
+    split_box.append(&edit_scroll);
+    split_box.append(&separator);
+    split_box.append(&preview_scroll);
 
     let adj = edit_scroll.vadjustment();
     preview_scroll.set_vadjustment(Some(&adj));
@@ -259,21 +264,14 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let edit_scroll_clone2 = edit_scroll.clone();
     let preview_scroll_clone2 = preview_scroll.clone();
     let btn_mode_toggle_clone = btn_mode_toggle.clone();
-    let paned_clone = paned.clone();
+    let separator_clone = separator.clone();
     btn_split_toggle.connect_toggled(move |btn| {
         let is_split = btn.is_active();
+        separator_clone.set_visible(is_split);
         if is_split {
             edit_scroll_clone2.set_visible(true);
             preview_scroll_clone2.set_visible(true);
             btn_mode_toggle_clone.set_sensitive(false);
-            
-            // Force exactly 50-50 split by checking the current width of the paned
-            let width = paned_clone.width();
-            if width > 0 {
-                paned_clone.set_position(width / 2);
-            } else {
-                paned_clone.set_position(350);
-            }
         } else {
             btn_mode_toggle_clone.set_sensitive(true);
             // Restore state based on what the toggle button says
@@ -332,7 +330,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         search_settings.set_search_text(Some(entry.text().as_str()));
     });
 
-    let toolbar_view = adw::ToolbarView::builder().content(&paned).build();
+    let toolbar_view = adw::ToolbarView::builder().content(&split_box).build();
     toolbar_view.add_top_bar(&header_bar);
     toolbar_view.add_top_bar(&search_bar);
     toolbar_view.add_bottom_bar(&bottom_box);
