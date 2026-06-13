@@ -1642,7 +1642,7 @@ img { max-width: 100%; border-radius: 8px; }
             .application_name("Blink")
             .application_icon("com.github.sachesi.blink")
             .developer_name("sachesi")
-            .version("0.1.4")
+            .version("0.1.5")
             .comments(gettext("A fast and minimal Markdown editor"))
             .website("https://github.com/sachesi/blink")
             .issue_url("https://github.com/sachesi/blink/issues")
