@@ -28,6 +28,9 @@ struct DocumentTarget {
     btn_mode_toggle: gtk::Button,
     edit_scroll: ScrolledWindow,
     preview_scroll: ScrolledWindow,
+    // Tracks the intended non-split view (`true` = preview, `false` = edit) so
+    // the split toggle can restore it without inspecting button icon names.
+    preview_mode: Rc<Cell<bool>>,
 }
 
 fn present_error(window: &adw::ApplicationWindow, heading: String, body: String) {
@@ -120,6 +123,7 @@ fn apply_loaded_file(file: gio::File, text: &str, target: &DocumentTarget) {
     target.edit_buffer.set_modified(false);
     target.window.set_title(Some(&file_title(&file)));
     *target.current_file.borrow_mut() = Some(file);
+    target.preview_mode.set(true);
     show_preview_mode(
         &target.btn_split_toggle,
         &target.btn_mode_toggle,
@@ -145,7 +149,18 @@ async fn write_text_atomically(path: &Path, text: &str) -> std::io::Result<()> {
         suffix
     ));
 
-    tokio::fs::write(&tmp_path, text.as_bytes()).await?;
+    let write_result = async {
+        use tokio::io::AsyncWriteExt;
+        let mut file = tokio::fs::File::create(&tmp_path).await?;
+        file.write_all(text.as_bytes()).await?;
+        file.sync_all().await
+    }
+    .await;
+    if let Err(err) = write_result {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(err);
+    }
+
     if let Ok(metadata) = tokio::fs::metadata(path).await
         && let Err(err) = tokio::fs::set_permissions(&tmp_path, metadata.permissions()).await
     {
@@ -475,19 +490,19 @@ async fn main() -> glib::ExitCode {
         .build();
 
     app.connect_startup(|app| {
-        app.set_accels_for_action("app.open", &["<Ctrl>o"]);
-        app.set_accels_for_action("app.save", &["<Ctrl>s"]);
-        app.set_accels_for_action("app.save-as", &["<Ctrl><Shift>s"]);
-        app.set_accels_for_action("app.quit", &["<Ctrl>q"]);
-        app.set_accels_for_action("app.format-bold", &["<Ctrl>b"]);
-        app.set_accels_for_action("app.format-italic", &["<Ctrl>i"]);
-        app.set_accels_for_action("app.format-link", &["<Ctrl>k"]);
+        app.set_accels_for_action("win.open", &["<Ctrl>o"]);
+        app.set_accels_for_action("win.save", &["<Ctrl>s"]);
+        app.set_accels_for_action("win.save-as", &["<Ctrl><Shift>s"]);
+        app.set_accels_for_action("win.quit", &["<Ctrl>q"]);
+        app.set_accels_for_action("win.format-bold", &["<Ctrl>b"]);
+        app.set_accels_for_action("win.format-italic", &["<Ctrl>i"]);
+        app.set_accels_for_action("win.format-link", &["<Ctrl>k"]);
         app.set_accels_for_action("win.find", &["<Ctrl>f"]);
         app.set_accels_for_action("win.find-next", &["<Ctrl>g"]);
         app.set_accels_for_action("win.find-previous", &["<Ctrl><Shift>g"]);
         app.set_accels_for_action("win.replace", &["<Ctrl>h"]);
         app.set_accels_for_action("win.replace-all", &["<Ctrl><Shift>h"]);
-        app.set_accels_for_action("app.focus-mode", &["F11"]);
+        app.set_accels_for_action("win.focus-mode", &["F11"]);
     });
 
     app.connect_activate(|app| {
@@ -592,6 +607,11 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         .bottom_margin(32)
         .pixels_above_lines(4)
         .pixels_below_lines(4)
+        // The preview is read-only output. Taking it out of the focus chain
+        // stops a click from scrolling its (stale, top-of-buffer) insertion
+        // mark on-screen, which made the page jump on click.
+        .can_focus(false)
+        .focusable(false)
         .css_classes(["transparent-bg"])
         .build();
 
@@ -618,6 +638,8 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     let split_scroll_sync = Rc::new(Cell::new(false));
     let scroll_syncing = Rc::new(Cell::new(false));
+    // Intended non-split view: `false` = edit, `true` = preview.
+    let preview_mode = Rc::new(Cell::new(false));
     connect_scroll_sync(
         &edit_scroll.vadjustment(),
         &preview_scroll.vadjustment(),
@@ -642,13 +664,50 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         .css_classes(["dim-label"])
         .build();
 
-    let preview_view_clone = preview_view.clone();
+    let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
+
+    // Renders the source buffer into the preview. Pure: does not touch scroll
+    // position, so callers decide how to place the viewport afterwards.
+    // Reads the buffer text on each call so callers need no arguments.
+    let render_preview: Rc<dyn Fn()> = Rc::new({
+        let preview_view = preview_view.clone();
+        let edit_buffer = edit_buffer.clone();
+        let preview_scroll = preview_scroll.clone();
+        let current_file = current_file.clone();
+        move || {
+            let text =
+                edit_buffer.text(&edit_buffer.start_iter(), &edit_buffer.end_iter(), false);
+            let adj = preview_scroll.hadjustment();
+            let image_base_dir = current_file
+                .borrow()
+                .as_ref()
+                .and_then(|file| file.path())
+                .and_then(|path| path.parent().map(Path::to_path_buf));
+            markdown::render_markdown(&preview_view, text.as_str(), &adj, image_base_dir.as_deref());
+        }
+    });
+
+    // Set when the buffer changes while the preview is hidden, so the stale
+    // preview is re-rendered on demand the next time it becomes visible.
+    let preview_dirty = Rc::new(Cell::new(false));
+
+    // Re-renders the preview only if it went stale while hidden.
+    let flush_preview: Rc<dyn Fn()> = Rc::new({
+        let render_preview = render_preview.clone();
+        let preview_dirty = preview_dirty.clone();
+        move || {
+            if preview_dirty.get() {
+                render_preview();
+                preview_dirty.set(false);
+            }
+        }
+    });
+
     let status_label_clone = status_label.clone();
     let preview_scroll_clone_for_render = preview_scroll.clone();
-    let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
-    let current_file_render = current_file.clone();
+    let render_preview_changed = render_preview.clone();
+    let preview_dirty_changed = preview_dirty.clone();
     let scroll_syncing_render = scroll_syncing.clone();
-
     let render_source_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
 
     edit_buffer.connect_changed(move |b| {
@@ -656,40 +715,44 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             source_id.remove();
         }
 
-        let preview_view_inner = preview_view_clone.clone();
         let status_label_inner = status_label_clone.clone();
         let preview_scroll_inner = preview_scroll_clone_for_render.clone();
-        let current_file_inner = current_file_render.clone();
+        let render_preview_inner = render_preview_changed.clone();
+        let preview_dirty_inner = preview_dirty_changed.clone();
         let scroll_syncing_inner = scroll_syncing_render.clone();
         let b_clone = b.clone();
         let source_id_ref = render_source_id.clone();
 
         let id = glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
             let text = b_clone.text(&b_clone.start_iter(), &b_clone.end_iter(), false);
-            let adj = preview_scroll_inner.hadjustment();
-            let preview_vadj = preview_scroll_inner.vadjustment();
-            let preview_ratio = adjustment_ratio(&preview_vadj);
-            let image_base_dir = current_file_inner
-                .borrow()
-                .as_ref()
-                .and_then(|file| file.path())
-                .and_then(|path| path.parent().map(Path::to_path_buf));
-            markdown::render_markdown(
-                &preview_view_inner,
-                text.as_str(),
-                &adj,
-                image_base_dir.as_deref(),
-            );
             let chars = text.chars().count();
             let words = text.split_whitespace().count();
             let status_str = gettext("{} words, {} chars")
                 .replacen("{}", &words.to_string(), 1)
                 .replacen("{}", &chars.to_string(), 1);
             status_label_inner.set_label(&status_str);
-            let scroll_syncing_restore = scroll_syncing_inner.clone();
-            glib::idle_add_local_once(move || {
-                set_adjustment_ratio_guarded(&preview_vadj, preview_ratio, &scroll_syncing_restore);
-            });
+
+            // Skip the full preview rebuild while it is hidden (the default
+            // edit-only view); just mark it stale for the next reveal.
+            if preview_scroll_inner.is_visible() {
+                // Re-rendering clears the buffer and resets scroll; capture the
+                // ratio first and restore it after layout so the visible
+                // viewport stays put instead of snapping to the top.
+                let preview_vadj = preview_scroll_inner.vadjustment();
+                let preview_ratio = adjustment_ratio(&preview_vadj);
+                render_preview_inner();
+                let scroll_syncing_restore = scroll_syncing_inner.clone();
+                glib::idle_add_local_once(move || {
+                    set_adjustment_ratio_guarded(
+                        &preview_vadj,
+                        preview_ratio,
+                        &scroll_syncing_restore,
+                    );
+                });
+                preview_dirty_inner.set(false);
+            } else {
+                preview_dirty_inner.set(true);
+            }
 
             *source_id_ref.borrow_mut() = None;
             glib::ControlFlow::Break
@@ -699,11 +762,11 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     });
 
     let menu = gio::Menu::new();
-    menu.append(Some(&gettext("Focus Mode")), Some("app.focus-mode"));
-    menu.append(Some(&gettext("Export HTML…")), Some("app.export-html"));
-    menu.append(Some(&gettext("Save As…")), Some("app.save-as"));
-    menu.append(Some(&gettext("About Blink")), Some("app.about"));
-    menu.append(Some(&gettext("Quit")), Some("app.quit"));
+    menu.append(Some(&gettext("Focus Mode")), Some("win.focus-mode"));
+    menu.append(Some(&gettext("Export HTML…")), Some("win.export-html"));
+    menu.append(Some(&gettext("Save As…")), Some("win.save-as"));
+    menu.append(Some(&gettext("About Blink")), Some("win.about"));
+    menu.append(Some(&gettext("Quit")), Some("win.quit"));
 
     let menu_button = MenuButton::builder()
         .menu_model(&menu)
@@ -729,21 +792,26 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     let edit_scroll_clone = edit_scroll.clone();
     let preview_scroll_clone = preview_scroll.clone();
+    let preview_mode_toggle = preview_mode.clone();
+    let flush_preview_mode = flush_preview.clone();
     btn_mode_toggle.connect_clicked(move |btn| {
         let currently_preview =
             preview_scroll_clone.is_visible() && !edit_scroll_clone.is_visible();
         if currently_preview {
             // Switch to Edit
+            preview_mode_toggle.set(false);
             edit_scroll_clone.set_visible(true);
             preview_scroll_clone.set_visible(false);
             btn.set_icon_name("view-reveal-symbolic");
             btn.set_tooltip_text(Some(&gettext("Preview Document")));
         } else {
             // Switch to Preview
+            preview_mode_toggle.set(true);
             edit_scroll_clone.set_visible(false);
             preview_scroll_clone.set_visible(true);
             btn.set_icon_name("document-edit-symbolic");
             btn.set_tooltip_text(Some(&gettext("Edit Document")));
+            flush_preview_mode();
         }
     });
 
@@ -761,13 +829,13 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let open_btn = gtk::Button::builder()
         .icon_name("document-open-symbolic")
         .tooltip_text(gettext("Open Document"))
-        .action_name("app.open")
+        .action_name("win.open")
         .build();
 
     let save_btn = gtk::Button::builder()
         .icon_name("document-save-symbolic")
         .tooltip_text(gettext("Save Document"))
-        .action_name("app.save")
+        .action_name("win.save")
         .build();
 
     header_bar.pack_start(&open_btn);
@@ -902,6 +970,8 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         let edit_scroll = edit_scroll.clone();
         let preview_scroll = preview_scroll.clone();
         let btn_mode_toggle = btn_mode_toggle.clone();
+        let preview_mode = preview_mode.clone();
+        let flush_preview = flush_preview.clone();
         move || {
             search_panel.set_visible(false);
             search_context.set_highlight(false);
@@ -919,14 +989,17 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
                     btn_mode_toggle.set_sensitive(false);
                 }
                 SearchRestoreMode::Preview => {
+                    preview_mode.set(true);
                     btn_mode_toggle.set_icon_name("document-edit-symbolic");
                     btn_mode_toggle.set_tooltip_text(Some(&gettext("Edit Document")));
                     btn_split_toggle.set_active(false);
                     btn_mode_toggle.set_sensitive(true);
                     edit_scroll.set_visible(false);
                     preview_scroll.set_visible(true);
+                    flush_preview();
                 }
                 SearchRestoreMode::Edit => {
+                    preview_mode.set(false);
                     btn_mode_toggle.set_icon_name("view-reveal-symbolic");
                     btn_mode_toggle.set_tooltip_text(Some(&gettext("Preview Document")));
                     btn_split_toggle.set_active(false);
@@ -1130,6 +1203,8 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let btn_mode_toggle_clone = btn_mode_toggle.clone();
     let split_scroll_sync_toggle = split_scroll_sync.clone();
     let scroll_syncing_toggle = scroll_syncing.clone();
+    let preview_mode_split = preview_mode.clone();
+    let flush_preview_split = flush_preview.clone();
     btn_split_toggle.connect_toggled(move |btn| {
         let is_split = btn.is_active();
         split_scroll_sync_toggle.set(is_split);
@@ -1138,18 +1213,24 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             edit_scroll_clone2.set_visible(true);
             preview_scroll_clone2.set_visible(true);
             btn_mode_toggle_clone.set_sensitive(false);
-            set_adjustment_ratio_guarded(
-                &preview_scroll_clone2.vadjustment(),
-                adjustment_ratio(&edit_scroll_clone2.vadjustment()),
-                &scroll_syncing_toggle,
-            );
+            flush_preview_split();
+            // Align the preview to the editor after a possible re-render; defer
+            // so the freshly rebuilt preview has a valid scroll range.
+            let preview_vadj = preview_scroll_clone2.vadjustment();
+            let edit_ratio = adjustment_ratio(&edit_scroll_clone2.vadjustment());
+            let scroll_syncing_align = scroll_syncing_toggle.clone();
+            glib::idle_add_local_once(move || {
+                set_adjustment_ratio_guarded(&preview_vadj, edit_ratio, &scroll_syncing_align);
+            });
         } else {
             preview_scroll_clone2.remove_css_class("split-preview");
             btn_mode_toggle_clone.set_sensitive(true);
-            let wants_preview = btn_mode_toggle_clone.icon_name()
-                == Some(glib::GString::from("document-edit-symbolic"));
+            let wants_preview = preview_mode_split.get();
             edit_scroll_clone2.set_visible(!wants_preview);
             preview_scroll_clone2.set_visible(wants_preview);
+            if wants_preview {
+                flush_preview_split();
+            }
         }
     });
 
@@ -1161,6 +1242,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         btn_mode_toggle: btn_mode_toggle.clone(),
         edit_scroll: edit_scroll.clone(),
         preview_scroll: preview_scroll.clone(),
+        preview_mode: preview_mode.clone(),
     };
 
     let drop_target = gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
@@ -1205,7 +1287,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             }
         });
     });
-    app.add_action(&action_open);
+    window.add_action(&action_open);
 
     let action_save_as = gio::SimpleAction::new("save-as", None);
     let window_clone = window.clone();
@@ -1223,28 +1305,26 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             }
         });
     });
-    app.add_action(&action_save_as);
+    window.add_action(&action_save_as);
 
     let action_save = gio::SimpleAction::new("save", None);
     let edit_buffer_clone = edit_buffer.clone();
     let current_file_clone = current_file.clone();
-    let app_clone = app.clone();
     let window_clone_save = window.clone();
     action_save.connect_activate(move |_, _| {
         let window_clone_inner = window_clone_save.clone();
         let edit_buffer_inner = edit_buffer_clone.clone();
         let current_file_inner = current_file_clone.clone();
-        let app_inner = app_clone.clone();
         glib::spawn_future_local(async move {
             if current_file_inner.borrow().is_some() {
                 save_current_document(&window_clone_inner, &edit_buffer_inner, &current_file_inner)
                     .await;
             } else {
-                app_inner.activate_action("save-as", None);
+                let _ = WidgetExt::activate_action(&window_clone_inner, "win.save-as", None);
             }
         });
     });
-    app.add_action(&action_save);
+    window.add_action(&action_save);
 
     let current_file_autosave = current_file.clone();
     let edit_buffer_autosave = edit_buffer.clone();
@@ -1269,7 +1349,6 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         glib::ControlFlow::Continue
     });
 
-    let app_clone = app.clone();
     let window_clone_quit = window.clone();
     let edit_buffer_clone_quit = edit_buffer.clone();
     let action_quit = gio::SimpleAction::new("quit", None);
@@ -1285,18 +1364,18 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             alert.add_response("close", &gettext("Close Without Saving"));
             alert.set_response_appearance("close", adw::ResponseAppearance::Destructive);
 
-            let app_clone_inner = app_clone.clone();
+            let window_close_inner = window_clone_quit.clone();
             alert.connect_response(None, move |_, response| {
                 if response == "close" {
-                    app_clone_inner.quit();
+                    window_close_inner.destroy();
                 }
             });
             alert.present(Some(&window_clone_quit));
         } else {
-            app_clone.quit();
+            window_clone_quit.destroy();
         }
     });
-    app.add_action(&action_quit);
+    window.add_action(&action_quit);
 
     // Formatting Actions
     let action_bold = gio::SimpleAction::new("format-bold", None);
@@ -1308,7 +1387,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             edit_buf_bold.insert(&mut start, &format!("**{}**", text.as_str()));
         }
     });
-    app.add_action(&action_bold);
+    window.add_action(&action_bold);
 
     let action_italic = gio::SimpleAction::new("format-italic", None);
     let edit_buf_italic = edit_buffer.clone();
@@ -1319,7 +1398,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             edit_buf_italic.insert(&mut start, &format!("*{}*", text.as_str()));
         }
     });
-    app.add_action(&action_italic);
+    window.add_action(&action_italic);
 
     let action_link = gio::SimpleAction::new("format-link", None);
     let edit_buf_link = edit_buffer.clone();
@@ -1330,7 +1409,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             edit_buf_link.insert(&mut start, &format!("[{}](url)", text.as_str()));
         }
     });
-    app.add_action(&action_link);
+    window.add_action(&action_link);
 
     let search_entry_find = search_entry.clone();
     let show_search_panel_find = show_search_panel.clone();
@@ -1449,7 +1528,7 @@ img { max-width: 100%; border-radius: 8px; }
             }
         });
     });
-    app.add_action(&action_export_html);
+    window.add_action(&action_export_html);
 
     let action_about = gio::SimpleAction::new("about", None);
     let window_clone_about = window.clone();
@@ -1475,7 +1554,7 @@ img { max-width: 100%; border-radius: 8px; }
 
         about.present(Some(&window_clone_about));
     });
-    app.add_action(&action_about);
+    window.add_action(&action_about);
 
     let action_focus = gio::SimpleAction::new_stateful("focus-mode", None, &false.to_variant());
     let window_clone_focus = window.clone();
@@ -1493,11 +1572,10 @@ img { max-width: 100%; border-radius: 8px; }
             }
         }
     });
-    app.add_action(&action_focus);
+    window.add_action(&action_focus);
 
-    let app_clone_close = app.clone();
-    window.connect_close_request(move |_| {
-        app_clone_close.activate_action("quit", None);
+    window.connect_close_request(move |win| {
+        let _ = WidgetExt::activate_action(win, "win.quit", None);
         glib::Propagation::Stop
     });
 

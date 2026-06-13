@@ -86,13 +86,16 @@ pub fn render_markdown(
     let mut current_tags: Vec<&'static str> = Vec::new();
     let mut iter = buffer.end_iter();
 
-    let mut list_depth = 0;
+    // One entry per open list. `Some(n)` is an ordered list whose next item
+    // number is `n`; `None` is a bullet list. Length doubles as nesting depth.
+    let mut list_stack: Vec<Option<u64>> = Vec::new();
+    // Open blockquote nesting level, used to indent block widgets.
+    let mut blockquote_depth: i32 = 0;
 
     let mut in_table = false;
     let mut table_rows: Vec<Vec<String>> = Vec::new();
     let mut current_row: Vec<String> = Vec::new();
     let mut current_cell = String::new();
-    let mut _in_head = false;
 
     let mut in_code_block = false;
     let mut current_code = String::new();
@@ -107,13 +110,18 @@ pub fn render_markdown(
                 }
                 Event::End(TagEnd::CodeBlock) => {
                     in_code_block = false;
+                    let indent = list_stack.len() as i32 * 16 + blockquote_depth * 24;
                     let scroll = gtk::ScrolledWindow::builder()
                         .margin_top(12)
                         .margin_bottom(12)
+                        .margin_start(indent)
                         .hexpand(true)
                         .propagate_natural_height(true)
                         .hscrollbar_policy(gtk::PolicyType::Automatic)
                         .vscrollbar_policy(gtk::PolicyType::Never)
+                        // Keep out of the focus chain so a click never makes the
+                        // preview scroll this block into view.
+                        .focusable(false)
                         .build();
                     scroll.add_css_class("card");
 
@@ -131,13 +139,14 @@ pub fn render_markdown(
                         .margin_end(12)
                         .can_focus(false)
                         .wrap_mode(gtk::WrapMode::None)
+                        .focusable(false)
                         .css_classes(["transparent-bg"])
                         .build();
 
                     hadj.bind_property("page-size", &scroll, "width-request")
-                        .transform_to(|_, page_size: f64| {
+                        .transform_to(move |_, page_size: f64| {
                             let max_width = page_size.min(700.0);
-                            Some((max_width - 64.0).max(100.0) as i32)
+                            Some((max_width - 64.0 - indent as f64).max(100.0) as i32)
                         })
                         .sync_create()
                         .build();
@@ -156,11 +165,9 @@ pub fn render_markdown(
         if in_table {
             match event {
                 Event::Start(Tag::TableHead) => {
-                    _in_head = true;
                     current_row = Vec::new();
                 }
                 Event::End(TagEnd::TableHead) => {
-                    _in_head = false;
                     table_rows.push(current_row.clone());
                 }
                 Event::Start(Tag::TableRow) => current_row = Vec::new(),
@@ -185,17 +192,19 @@ pub fn render_markdown(
                 }
                 Event::End(TagEnd::Table) => {
                     in_table = false;
+                    let indent = list_stack.len() as i32 * 16 + blockquote_depth * 24;
                     let grid = Grid::builder()
                         .margin_top(12)
                         .margin_bottom(12)
+                        .margin_start(indent)
                         .hexpand(true)
                         .build();
                     grid.add_css_class("card");
 
                     hadj.bind_property("page-size", &grid, "width-request")
-                        .transform_to(|_, page_size: f64| {
+                        .transform_to(move |_, page_size: f64| {
                             let max_width = page_size.min(700.0);
-                            Some((max_width - 64.0).max(100.0) as i32)
+                            Some((max_width - 64.0 - indent as f64).max(100.0) as i32)
                         })
                         .sync_create()
                         .build();
@@ -225,7 +234,7 @@ pub fn render_markdown(
                                 .wrap(true)
                                 .xalign(0.0)
                                 .hexpand(true)
-                                .selectable(true)
+                                .focusable(false)
                                 .can_focus(false)
                                 .build();
                             label.set_markup(cell_text);
@@ -279,6 +288,7 @@ pub fn render_markdown(
                     in_image = true;
                     if let Some(path) = local_image_path(dest_url.as_ref(), image_base_dir) {
                         let picture = gtk::Picture::for_filename(path);
+                        picture.set_focusable(false);
                         picture.set_margin_top(12);
                         picture.set_margin_bottom(12);
                         picture.set_hexpand(false);
@@ -296,15 +306,25 @@ pub fn render_markdown(
                         view.add_child_at_anchor(&picture, &anchor);
                     }
                 }
-                Tag::BlockQuote(_) => current_tags.push("blockquote"),
-                Tag::List(_) => {
-                    list_depth += 1;
+                Tag::BlockQuote(_) => {
+                    blockquote_depth += 1;
+                    current_tags.push("blockquote");
+                }
+                Tag::List(first) => {
+                    list_stack.push(first);
                     current_tags.push("list");
                 }
                 Tag::Item => {
-                    let bullet = format!("{} ", if list_depth % 2 == 1 { "•" } else { "◦" });
+                    let marker = match list_stack.last_mut() {
+                        Some(Some(number)) => {
+                            let marker = format!("{}. ", number);
+                            *number += 1;
+                            marker
+                        }
+                        _ => format!("{} ", if list_stack.len() % 2 == 1 { "•" } else { "◦" }),
+                    };
                     let start_offset = iter.offset();
-                    buffer.insert(&mut iter, &bullet);
+                    buffer.insert(&mut iter, &marker);
                     let start_iter = buffer.iter_at_offset(start_offset);
                     buffer.apply_tag_by_name("bold", &start_iter, &iter);
                 }
@@ -332,11 +352,12 @@ pub fn render_markdown(
                 }
                 TagEnd::BlockQuote(_) => {
                     current_tags.retain(|&t| t != "blockquote");
+                    blockquote_depth = (blockquote_depth - 1).max(0);
                     buffer.insert(&mut iter, "\n\n");
                 }
                 TagEnd::List(_) => {
                     current_tags.retain(|&t| t != "list");
-                    list_depth -= 1;
+                    list_stack.pop();
                 }
                 TagEnd::Item => {
                     buffer.insert(&mut iter, "\n");
@@ -362,6 +383,12 @@ pub fn render_markdown(
                 buffer.insert(&mut iter, &c);
                 let start_iter = buffer.iter_at_offset(start_offset);
                 buffer.apply_tag_by_name("code", &start_iter, &iter);
+            }
+            Event::TaskListMarker(checked) => {
+                let start_offset = iter.offset();
+                buffer.insert(&mut iter, if checked { "☑ " } else { "☐ " });
+                let start_iter = buffer.iter_at_offset(start_offset);
+                buffer.apply_tag_by_name("bold", &start_iter, &iter);
             }
             Event::SoftBreak | Event::HardBreak => {
                 buffer.insert(&mut iter, "\n");
