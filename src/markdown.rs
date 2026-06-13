@@ -1,6 +1,7 @@
 use gtk::prelude::*;
-use gtk::{Grid, Label, TextBuffer, TextView};
+use gtk::{Grid, Label, TextBuffer, TextView, gio, glib};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use std::path::{Path, PathBuf};
 
 pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("h1"), &[("scale", &2.0), ("weight", &700)]);
@@ -40,9 +41,38 @@ pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("list"), &[("indent", &16)]);
 }
 
+fn local_image_path(dest_url: &str, base_dir: Option<&Path>) -> Option<PathBuf> {
+    let dest_url = dest_url.trim();
+    if dest_url.is_empty() || dest_url.starts_with("data:") {
+        return None;
+    }
 
+    if dest_url.starts_with("file://") {
+        return gio::File::for_uri(dest_url)
+            .path()
+            .filter(|path| path.is_file());
+    }
 
-pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
+    if dest_url.contains("://") {
+        return None;
+    }
+
+    let path = Path::new(dest_url);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base_dir?.join(path)
+    };
+
+    path.is_file().then_some(path)
+}
+
+pub fn render_markdown(
+    view: &TextView,
+    text: &str,
+    hadj: &gtk::Adjustment,
+    image_base_dir: Option<&Path>,
+) {
     let buffer = view.buffer();
     let mut iter = buffer.bounds().0;
     buffer.delete(&mut iter, &mut buffer.bounds().1);
@@ -247,23 +277,24 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
                 Tag::Link { .. } => current_tags.push("link"),
                 Tag::Image { dest_url, .. } => {
                     in_image = true;
-                    let path = dest_url.to_string();
-                    let picture = gtk::Picture::for_filename(&path);
-                    picture.set_margin_top(12);
-                    picture.set_margin_bottom(12);
-                    picture.set_hexpand(false);
-                    picture.set_halign(gtk::Align::Center);
-                    
-                    hadj.bind_property("page-size", &picture, "width-request")
-                        .transform_to(|_, page_size: f64| {
-                            let max_width = page_size.min(700.0);
-                            Some((max_width - 64.0).max(100.0) as i32)
-                        })
-                        .sync_create()
-                        .build();
+                    if let Some(path) = local_image_path(dest_url.as_ref(), image_base_dir) {
+                        let picture = gtk::Picture::for_filename(path);
+                        picture.set_margin_top(12);
+                        picture.set_margin_bottom(12);
+                        picture.set_hexpand(false);
+                        picture.set_halign(gtk::Align::Center);
 
-                    let anchor = buffer.create_child_anchor(&mut iter);
-                    view.add_child_at_anchor(&picture, &anchor);
+                        hadj.bind_property("page-size", &picture, "width-request")
+                            .transform_to(|_, page_size: f64| {
+                                let max_width = page_size.min(700.0);
+                                Some((max_width - 64.0).max(100.0) as i32)
+                            })
+                            .sync_create()
+                            .build();
+
+                        let anchor = buffer.create_child_anchor(&mut iter);
+                        view.add_child_at_anchor(&picture, &anchor);
+                    }
                 }
                 Tag::BlockQuote(_) => current_tags.push("blockquote"),
                 Tag::List(_) => {
@@ -337,5 +368,34 @@ pub fn render_markdown(view: &TextView, text: &str, hadj: &gtk::Adjustment) {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::local_image_path;
+    use std::fs;
+
+    #[test]
+    fn resolves_relative_images_against_document_directory() {
+        let root = std::env::temp_dir().join(format!("blink-markdown-test-{}", std::process::id()));
+        let image_dir = root.join("images");
+        let image = image_dir.join("photo.png");
+        fs::create_dir_all(&image_dir).unwrap();
+        fs::write(&image, b"").unwrap();
+
+        assert_eq!(
+            local_image_path("images/photo.png", Some(&root)),
+            Some(image.clone())
+        );
+
+        let _ = fs::remove_file(image);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_remote_images() {
+        assert!(local_image_path("https://example.invalid/image.png", None).is_none());
+        assert!(local_image_path("data:image/png;base64,AAAA", None).is_none());
     }
 }

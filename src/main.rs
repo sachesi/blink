@@ -1,12 +1,13 @@
 use adw::Application;
 use adw::prelude::*;
+use gettextrs::{LocaleCategory, bindtextdomain, gettext, setlocale, textdomain};
 use gtk::{
-    gio, glib, FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton,
+    FileDialog, Label, MenuButton, ScrolledWindow, TextBuffer, TextView, ToggleButton, gio, glib,
 };
-use gettextrs::{gettext, setlocale, textdomain, bindtextdomain, LocaleCategory};
 use sourceview5::prelude::*;
 use sourceview5::{Buffer as SourceBuffer, LanguageManager, SearchContext, View as SourceView};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 mod markdown;
@@ -16,6 +17,262 @@ enum SearchRestoreMode {
     Edit,
     Preview,
     Split,
+}
+
+#[derive(Clone)]
+struct DocumentTarget {
+    window: adw::ApplicationWindow,
+    edit_buffer: SourceBuffer,
+    current_file: Rc<RefCell<Option<gio::File>>>,
+    btn_split_toggle: ToggleButton,
+    btn_mode_toggle: gtk::Button,
+    edit_scroll: ScrolledWindow,
+    preview_scroll: ScrolledWindow,
+}
+
+fn present_error(window: &adw::ApplicationWindow, heading: String, body: String) {
+    let alert = adw::AlertDialog::builder()
+        .heading(heading)
+        .body(body)
+        .build();
+    alert.add_response("ok", &gettext("OK"));
+    alert.present(Some(window));
+}
+
+fn file_path(file: &gio::File) -> Result<PathBuf, String> {
+    file.path()
+        .ok_or_else(|| gettext("Only local files are supported"))
+}
+
+fn file_title(file: &gio::File) -> String {
+    file.basename()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| gettext("Untitled Document"))
+}
+
+fn buffer_text(edit_buffer: &SourceBuffer) -> String {
+    edit_buffer
+        .text(&edit_buffer.start_iter(), &edit_buffer.end_iter(), false)
+        .to_string()
+}
+
+fn show_preview_mode(
+    btn_split_toggle: &ToggleButton,
+    btn_mode_toggle: &gtk::Button,
+    edit_scroll: &ScrolledWindow,
+    preview_scroll: &ScrolledWindow,
+) {
+    btn_split_toggle.set_active(false);
+    edit_scroll.set_visible(false);
+    preview_scroll.set_visible(true);
+    btn_mode_toggle.set_icon_name("document-edit-symbolic");
+    btn_mode_toggle.set_tooltip_text(Some(&gettext("Edit Document")));
+}
+
+fn adjustment_scroll_range(adjustment: &gtk::Adjustment) -> f64 {
+    (adjustment.upper() - adjustment.lower() - adjustment.page_size()).max(0.0)
+}
+
+fn adjustment_ratio(adjustment: &gtk::Adjustment) -> f64 {
+    let range = adjustment_scroll_range(adjustment);
+    if range <= f64::EPSILON {
+        return 0.0;
+    }
+
+    ((adjustment.value() - adjustment.lower()) / range).clamp(0.0, 1.0)
+}
+
+fn set_adjustment_ratio(adjustment: &gtk::Adjustment, ratio: f64) {
+    let range = adjustment_scroll_range(adjustment);
+    let value = adjustment.lower() + range * ratio.clamp(0.0, 1.0);
+    adjustment.set_value(value.clamp(adjustment.lower(), adjustment.lower() + range));
+}
+
+fn set_adjustment_ratio_guarded(
+    adjustment: &gtk::Adjustment,
+    ratio: f64,
+    syncing: &Rc<Cell<bool>>,
+) {
+    syncing.set(true);
+    set_adjustment_ratio(adjustment, ratio);
+    syncing.set(false);
+}
+
+fn connect_scroll_sync(
+    source: &gtk::Adjustment,
+    target: &gtk::Adjustment,
+    split_active: Rc<Cell<bool>>,
+    syncing: Rc<Cell<bool>>,
+) {
+    let target = target.clone();
+    source.connect_value_changed(move |source| {
+        if !split_active.get() || syncing.get() {
+            return;
+        }
+
+        let ratio = adjustment_ratio(source);
+        set_adjustment_ratio_guarded(&target, ratio, &syncing);
+    });
+}
+
+fn apply_loaded_file(file: gio::File, text: &str, target: &DocumentTarget) {
+    target.edit_buffer.set_text(text);
+    target.edit_buffer.set_modified(false);
+    target.window.set_title(Some(&file_title(&file)));
+    *target.current_file.borrow_mut() = Some(file);
+    show_preview_mode(
+        &target.btn_split_toggle,
+        &target.btn_mode_toggle,
+        &target.edit_scroll,
+        &target.preview_scroll,
+    );
+}
+
+async fn write_text_atomically(path: &Path, text: &str) -> std::io::Result<()> {
+    let directory = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("document");
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let tmp_path = directory.join(format!(
+        ".{}.blink-tmp-{}-{}",
+        file_name,
+        std::process::id(),
+        suffix
+    ));
+
+    tokio::fs::write(&tmp_path, text.as_bytes()).await?;
+    if let Ok(metadata) = tokio::fs::metadata(path).await
+        && let Err(err) = tokio::fs::set_permissions(&tmp_path, metadata.permissions()).await
+    {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(err);
+    }
+
+    match tokio::fs::rename(&tmp_path, path).await {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            Err(err)
+        }
+    }
+}
+
+async fn save_document_to_file(
+    file: gio::File,
+    window: &adw::ApplicationWindow,
+    edit_buffer: &SourceBuffer,
+    current_file: &Rc<RefCell<Option<gio::File>>>,
+) -> bool {
+    let path = match file_path(&file) {
+        Ok(path) => path,
+        Err(err) => {
+            present_error(window, gettext("Error Saving File"), err);
+            return false;
+        }
+    };
+    let text = buffer_text(edit_buffer);
+
+    if let Err(err) = write_text_atomically(&path, &text).await {
+        present_error(
+            window,
+            gettext("Error Saving File"),
+            format!("{}: {}", gettext("Could not save the file"), err),
+        );
+        return false;
+    }
+
+    edit_buffer.set_modified(false);
+    window.set_title(Some(&file_title(&file)));
+    *current_file.borrow_mut() = Some(file);
+    true
+}
+
+async fn save_document_as(
+    window: &adw::ApplicationWindow,
+    edit_buffer: &SourceBuffer,
+    current_file: &Rc<RefCell<Option<gio::File>>>,
+) -> bool {
+    let dialog = FileDialog::new();
+    match dialog.save_future(Some(window)).await {
+        Ok(file) => save_document_to_file(file, window, edit_buffer, current_file).await,
+        Err(_) => false,
+    }
+}
+
+async fn save_current_document(
+    window: &adw::ApplicationWindow,
+    edit_buffer: &SourceBuffer,
+    current_file: &Rc<RefCell<Option<gio::File>>>,
+) -> bool {
+    let file = current_file.borrow().clone();
+    if let Some(file) = file {
+        save_document_to_file(file, window, edit_buffer, current_file).await
+    } else {
+        save_document_as(window, edit_buffer, current_file).await
+    }
+}
+
+async fn confirm_replace_modified_document(
+    window: &adw::ApplicationWindow,
+    edit_buffer: &SourceBuffer,
+    current_file: &Rc<RefCell<Option<gio::File>>>,
+) -> bool {
+    if !edit_buffer.is_modified() {
+        return true;
+    }
+
+    let alert = adw::AlertDialog::builder()
+        .heading(gettext("Unsaved Changes"))
+        .body(gettext(
+            "Opening another file will discard unsaved changes.",
+        ))
+        .build();
+    alert.add_response("cancel", &gettext("Cancel"));
+    alert.add_response("save", &gettext("Save"));
+    alert.add_response("discard", &gettext("Discard Changes"));
+    alert.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+
+    let response = alert.choose_future(Some(window)).await;
+    match response.as_str() {
+        "save" => save_current_document(window, edit_buffer, current_file).await,
+        "discard" => true,
+        _ => false,
+    }
+}
+
+async fn load_document_file(file: gio::File, target: DocumentTarget, confirm_replace: bool) {
+    if confirm_replace
+        && !confirm_replace_modified_document(
+            &target.window,
+            &target.edit_buffer,
+            &target.current_file,
+        )
+        .await
+    {
+        return;
+    }
+
+    let path = match file_path(&file) {
+        Ok(path) => path,
+        Err(err) => {
+            present_error(&target.window, gettext("Error Opening File"), err);
+            return;
+        }
+    };
+
+    match tokio::fs::read_to_string(&path).await {
+        Ok(text) => apply_loaded_file(file, &text, &target),
+        Err(err) => present_error(
+            &target.window,
+            gettext("Error Opening File"),
+            format!("{}: {}", gettext("Could not open the file"), err),
+        ),
+    }
 }
 
 fn has_search_text(search_context: &SearchContext) -> bool {
@@ -85,14 +342,18 @@ fn replace_search_match(
 
     if selection_is_search_match(edit_buffer, search_context)
         && let Some((mut start, mut end)) = edit_buffer.selection_bounds()
-        && search_context.replace(&mut start, &mut end, replacement).is_ok()
+        && search_context
+            .replace(&mut start, &mut end, replacement)
+            .is_ok()
     {
         return true;
     }
 
     if select_search_match(edit_buffer, search_context, true)
         && let Some((mut start, mut end)) = edit_buffer.selection_bounds()
-        && search_context.replace(&mut start, &mut end, replacement).is_ok()
+        && search_context
+            .replace(&mut start, &mut end, replacement)
+            .is_ok()
     {
         return true;
     }
@@ -198,14 +459,13 @@ fn set_replace_controls_sensitive(
 async fn main() -> glib::ExitCode {
     // Initialize i18n
     setlocale(LocaleCategory::LcAll, "");
-    let locale_dir = std::env::var("BLINK_LOCALE_DIR")
-        .unwrap_or_else(|_| {
-            if std::path::Path::new("/usr/share/locale").exists() && !cfg!(debug_assertions) {
-                "/usr/share/locale".to_string()
-            } else {
-                "locale".to_string()
-            }
-        });
+    let locale_dir = std::env::var("BLINK_LOCALE_DIR").unwrap_or_else(|_| {
+        if std::path::Path::new("/usr/share/locale").exists() && !cfg!(debug_assertions) {
+            "/usr/share/locale".to_string()
+        } else {
+            "locale".to_string()
+        }
+    });
     let _ = bindtextdomain("blink", locale_dir);
     let _ = textdomain("blink");
 
@@ -273,7 +533,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     if let Some(lang) = markdown_lang {
         edit_buffer.set_language(Some(&lang));
     }
-        
+
     let scheme_manager = sourceview5::StyleSchemeManager::default();
     let is_dark = adw::StyleManager::default().is_dark();
     if let Some(scheme) = scheme_manager.scheme(if is_dark { "Adwaita-dark" } else { "Adwaita" }) {
@@ -282,7 +542,11 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     let edit_buffer_style = edit_buffer.clone();
     adw::StyleManager::default().connect_dark_notify(move |manager| {
-        let scheme_name = if manager.is_dark() { "Adwaita-dark" } else { "Adwaita" };
+        let scheme_name = if manager.is_dark() {
+            "Adwaita-dark"
+        } else {
+            "Adwaita"
+        };
         if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
             edit_buffer_style.set_style_scheme(Some(&scheme));
         }
@@ -352,8 +616,20 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     split_box.append(&edit_scroll);
     split_box.append(&preview_scroll);
 
-    let adj = edit_scroll.vadjustment();
-    preview_scroll.set_vadjustment(Some(&adj));
+    let split_scroll_sync = Rc::new(Cell::new(false));
+    let scroll_syncing = Rc::new(Cell::new(false));
+    connect_scroll_sync(
+        &edit_scroll.vadjustment(),
+        &preview_scroll.vadjustment(),
+        split_scroll_sync.clone(),
+        scroll_syncing.clone(),
+    );
+    connect_scroll_sync(
+        &preview_scroll.vadjustment(),
+        &edit_scroll.vadjustment(),
+        split_scroll_sync.clone(),
+        scroll_syncing.clone(),
+    );
 
     // Set visibility later after buttons are created
 
@@ -369,35 +645,56 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let preview_view_clone = preview_view.clone();
     let status_label_clone = status_label.clone();
     let preview_scroll_clone_for_render = preview_scroll.clone();
-    
+    let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
+    let current_file_render = current_file.clone();
+    let scroll_syncing_render = scroll_syncing.clone();
+
     let render_source_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
-    
+
     edit_buffer.connect_changed(move |b| {
         if let Some(source_id) = render_source_id.borrow_mut().take() {
             source_id.remove();
         }
-        
+
         let preview_view_inner = preview_view_clone.clone();
         let status_label_inner = status_label_clone.clone();
         let preview_scroll_inner = preview_scroll_clone_for_render.clone();
+        let current_file_inner = current_file_render.clone();
+        let scroll_syncing_inner = scroll_syncing_render.clone();
         let b_clone = b.clone();
         let source_id_ref = render_source_id.clone();
-        
+
         let id = glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
             let text = b_clone.text(&b_clone.start_iter(), &b_clone.end_iter(), false);
             let adj = preview_scroll_inner.hadjustment();
-            markdown::render_markdown(&preview_view_inner, text.as_str(), &adj);
+            let preview_vadj = preview_scroll_inner.vadjustment();
+            let preview_ratio = adjustment_ratio(&preview_vadj);
+            let image_base_dir = current_file_inner
+                .borrow()
+                .as_ref()
+                .and_then(|file| file.path())
+                .and_then(|path| path.parent().map(Path::to_path_buf));
+            markdown::render_markdown(
+                &preview_view_inner,
+                text.as_str(),
+                &adj,
+                image_base_dir.as_deref(),
+            );
             let chars = text.chars().count();
             let words = text.split_whitespace().count();
             let status_str = gettext("{} words, {} chars")
                 .replacen("{}", &words.to_string(), 1)
                 .replacen("{}", &chars.to_string(), 1);
             status_label_inner.set_label(&status_str);
-            
+            let scroll_syncing_restore = scroll_syncing_inner.clone();
+            glib::idle_add_local_once(move || {
+                set_adjustment_ratio_guarded(&preview_vadj, preview_ratio, &scroll_syncing_restore);
+            });
+
             *source_id_ref.borrow_mut() = None;
             glib::ControlFlow::Break
         });
-        
+
         *render_source_id.borrow_mut() = Some(id);
     });
 
@@ -414,17 +711,17 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         .build();
 
     let view_switcher = gtk::Box::builder().css_classes(["linked"]).build();
-    
+
     // Edit/Render toggle button
     let btn_mode_toggle = gtk::Button::builder()
         .icon_name("document-edit-symbolic")
-        .tooltip_text(&gettext("Edit Document"))
+        .tooltip_text(gettext("Edit Document"))
         .build();
 
     // Split view toggle button
     let btn_split_toggle = ToggleButton::builder()
         .icon_name("view-split-left-right-symbolic")
-        .tooltip_text(&gettext("Split View"))
+        .tooltip_text(gettext("Split View"))
         .build();
 
     view_switcher.append(&btn_mode_toggle);
@@ -433,7 +730,8 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let edit_scroll_clone = edit_scroll.clone();
     let preview_scroll_clone = preview_scroll.clone();
     btn_mode_toggle.connect_clicked(move |btn| {
-        let currently_preview = preview_scroll_clone.is_visible() && !edit_scroll_clone.is_visible();
+        let currently_preview =
+            preview_scroll_clone.is_visible() && !edit_scroll_clone.is_visible();
         if currently_preview {
             // Switch to Edit
             edit_scroll_clone.set_visible(true);
@@ -462,13 +760,13 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     let open_btn = gtk::Button::builder()
         .icon_name("document-open-symbolic")
-        .tooltip_text(&gettext("Open Document"))
+        .tooltip_text(gettext("Open Document"))
         .action_name("app.open")
         .build();
 
     let save_btn = gtk::Button::builder()
         .icon_name("document-save-symbolic")
-        .tooltip_text(&gettext("Save Document"))
+        .tooltip_text(gettext("Save Document"))
         .action_name("app.save")
         .build();
 
@@ -799,7 +1097,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         .margin_bottom(12)
         .build();
     let drop_label = gtk::Label::builder()
-        .label(&gettext("Drop Markdown file to open"))
+        .label(gettext("Drop Markdown file to open"))
         .css_classes(["title-1"])
         .valign(gtk::Align::Start)
         .halign(gtk::Align::Center)
@@ -816,14 +1114,12 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     drop_content.append(&drop_label);
     drop_overlay.append(&drop_content);
 
-    let overlay = gtk::Overlay::builder()
-        .child(&toolbar_view)
-        .build();
+    let overlay = gtk::Overlay::builder().child(&toolbar_view).build();
     overlay.add_overlay(&drop_overlay);
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
-        .title(&gettext("Untitled Document"))
+        .title(gettext("Untitled Document"))
         .default_width(700)
         .default_height(900)
         .content(&overlay)
@@ -832,40 +1128,44 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let edit_scroll_clone2 = edit_scroll.clone();
     let preview_scroll_clone2 = preview_scroll.clone();
     let btn_mode_toggle_clone = btn_mode_toggle.clone();
-    let window_clone_split = window.clone();
+    let split_scroll_sync_toggle = split_scroll_sync.clone();
+    let scroll_syncing_toggle = scroll_syncing.clone();
     btn_split_toggle.connect_toggled(move |btn| {
         let is_split = btn.is_active();
+        split_scroll_sync_toggle.set(is_split);
         if is_split {
             preview_scroll_clone2.add_css_class("split-preview");
             edit_scroll_clone2.set_visible(true);
             preview_scroll_clone2.set_visible(true);
             btn_mode_toggle_clone.set_sensitive(false);
-
-            let height = window_clone_split.height();
-            window_clone_split.set_default_size(1200, height);
+            set_adjustment_ratio_guarded(
+                &preview_scroll_clone2.vadjustment(),
+                adjustment_ratio(&edit_scroll_clone2.vadjustment()),
+                &scroll_syncing_toggle,
+            );
         } else {
             preview_scroll_clone2.remove_css_class("split-preview");
             btn_mode_toggle_clone.set_sensitive(true);
-            let wants_preview = btn_mode_toggle_clone.icon_name() == Some(glib::GString::from("document-edit-symbolic"));
+            let wants_preview = btn_mode_toggle_clone.icon_name()
+                == Some(glib::GString::from("document-edit-symbolic"));
             edit_scroll_clone2.set_visible(!wants_preview);
             preview_scroll_clone2.set_visible(wants_preview);
-
-            let height = window_clone_split.height();
-            window_clone_split.set_default_size(700, height);
         }
     });
 
-    let current_file: Rc<RefCell<Option<gio::File>>> = Rc::new(RefCell::new(None));
+    let document_target = DocumentTarget {
+        window: window.clone(),
+        edit_buffer: edit_buffer.clone(),
+        current_file: current_file.clone(),
+        btn_split_toggle: btn_split_toggle.clone(),
+        btn_mode_toggle: btn_mode_toggle.clone(),
+        edit_scroll: edit_scroll.clone(),
+        preview_scroll: preview_scroll.clone(),
+    };
 
     let drop_target = gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
-    let window_clone_drop = window.clone();
-    let edit_buffer_clone_drop = edit_buffer.clone();
-    let current_file_clone_drop = current_file.clone();
-    let btn_split_toggle_drop = btn_split_toggle.clone();
-    let btn_mode_toggle_drop = btn_mode_toggle.clone();
-    let edit_scroll_drop = edit_scroll.clone();
-    let preview_scroll_drop = preview_scroll.clone();
-    
+    let document_target_drop = document_target.clone();
+
     let drop_overlay_enter = drop_overlay.clone();
     drop_target.connect_enter(move |_, _, _| {
         drop_overlay_enter.set_visible(true);
@@ -881,36 +1181,10 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     drop_target.connect_drop(move |_, value, _, _| {
         drop_overlay_drop.set_visible(false);
         if let Ok(file) = value.get::<gio::File>() {
-            let window_clone = window_clone_drop.clone();
-            let edit_buffer_clone = edit_buffer_clone_drop.clone();
-            let current_file_clone = current_file_clone_drop.clone();
-            let btn_split_toggle_open = btn_split_toggle_drop.clone();
-            let btn_mode_toggle_open = btn_mode_toggle_drop.clone();
-            let edit_scroll_open = edit_scroll_drop.clone();
-            let preview_scroll_open = preview_scroll_drop.clone();
-            
-            glib::spawn_future_local(async move {
-                if let Some(path) = file.path() {
-                    if let Ok(text) = tokio::fs::read_to_string(&path).await {
-                        edit_buffer_clone.set_text(&text);
-                        edit_buffer_clone.set_modified(false);
-                        window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
-                        *current_file_clone.borrow_mut() = Some(file);
+            let target = document_target_drop.clone();
 
-                        btn_split_toggle_open.set_active(false);
-                        edit_scroll_open.set_visible(false);
-                        preview_scroll_open.set_visible(true);
-                        btn_mode_toggle_open.set_icon_name("document-edit-symbolic");
-                        btn_mode_toggle_open.set_tooltip_text(Some(&gettext("Edit Document")));
-                    } else {
-                        let alert = adw::AlertDialog::builder()
-                            .heading(&gettext("Error Opening File"))
-                            .body(&format!("{}: {}", gettext("Could not open the file"), path.display()))
-                            .build();
-                        alert.add_response("ok", &gettext("OK"));
-                        alert.present(Some(&window_clone));
-                    }
-                }
+            glib::spawn_future_local(async move {
+                load_document_file(file, target, true).await;
             });
             return true;
         }
@@ -920,38 +1194,14 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     // Actions
     let action_open = gio::SimpleAction::new("open", None);
-    let window_clone = window.clone();
-    let edit_buffer_clone = edit_buffer.clone();
-    let current_file_clone = current_file.clone();
-    let btn_split_toggle_open = btn_split_toggle.clone();
-    let btn_mode_toggle_open = btn_mode_toggle.clone();
-    let edit_scroll_open = edit_scroll.clone();
-    let preview_scroll_open = preview_scroll.clone();
+    let document_target_open = document_target.clone();
     action_open.connect_activate(move |_, _| {
         let dialog = FileDialog::new();
-        let window_clone = window_clone.clone();
-        let edit_buffer_clone = edit_buffer_clone.clone();
-        let current_file_clone = current_file_clone.clone();
-        let btn_split_toggle_open = btn_split_toggle_open.clone();
-        let btn_mode_toggle_open = btn_mode_toggle_open.clone();
-        let edit_scroll_open = edit_scroll_open.clone();
-        let preview_scroll_open = preview_scroll_open.clone();
+        let target = document_target_open.clone();
         glib::spawn_future_local(async move {
-            if let Ok(file) = dialog.open_future(Some(&window_clone)).await
-                && let Some(path) = file.path()
-                && let Ok(text) = tokio::fs::read_to_string(&path).await
-            {
-                edit_buffer_clone.set_text(&text);
-                edit_buffer_clone.set_modified(false);
-                window_clone
-                    .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
-                *current_file_clone.borrow_mut() = Some(file);
-
-                btn_split_toggle_open.set_active(false);
-                edit_scroll_open.set_visible(false);
-                preview_scroll_open.set_visible(true);
-                btn_mode_toggle_open.set_icon_name("document-edit-symbolic");
-                btn_mode_toggle_open.set_tooltip_text(Some(&gettext("Edit Document")));
+            let parent = target.window.clone();
+            if let Ok(file) = dialog.open_future(Some(&parent)).await {
+                load_document_file(file, target, true).await;
             }
         });
     });
@@ -967,27 +1217,9 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         let edit_buffer_clone = edit_buffer_clone.clone();
         let current_file_clone = current_file_clone.clone();
         glib::spawn_future_local(async move {
-            if let Ok(file) = dialog.save_future(Some(&window_clone)).await
-                && let Some(path) = file.path()
-            {
-                let text = edit_buffer_clone.text(
-                    &edit_buffer_clone.start_iter(),
-                    &edit_buffer_clone.end_iter(),
-                    false,
-                );
-                if let Err(e) = tokio::fs::write(&path, text.as_str()).await {
-                    let alert = adw::AlertDialog::builder()
-                        .heading(&gettext("Error Saving File"))
-                        .body(&format!("{}: {}", gettext("Could not save the file"), e))
-                        .build();
-                    alert.add_response("ok", &gettext("OK"));
-                    alert.present(Some(&window_clone));
-                } else {
-                    edit_buffer_clone.set_modified(false);
-                    window_clone
-                        .set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
-                    *current_file_clone.borrow_mut() = Some(file);
-                }
+            if let Ok(file) = dialog.save_future(Some(&window_clone)).await {
+                save_document_to_file(file, &window_clone, &edit_buffer_clone, &current_file_clone)
+                    .await;
             }
         });
     });
@@ -999,54 +1231,40 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let app_clone = app.clone();
     let window_clone_save = window.clone();
     action_save.connect_activate(move |_, _| {
-        let file_opt = current_file_clone.borrow().clone();
-        if let Some(file) = file_opt {
-            if let Some(path) = file.path() {
-                let text = edit_buffer_clone.text(
-                    &edit_buffer_clone.start_iter(),
-                    &edit_buffer_clone.end_iter(),
-                    false,
-                );
-                let window_clone_inner = window_clone_save.clone();
-                let edit_buffer_inner = edit_buffer_clone.clone();
-                glib::spawn_future_local(async move {
-                    if let Err(e) = tokio::fs::write(&path, text.as_str()).await {
-                        let alert = adw::AlertDialog::builder()
-                            .heading(&gettext("Error Saving File"))
-                            .body(&format!("{}: {}", gettext("Could not save the file"), e))
-                            .build();
-                        alert.add_response("ok", &gettext("OK"));
-                        alert.present(Some(&window_clone_inner));
-                    } else {
-                        edit_buffer_inner.set_modified(false);
-                    }
-                });
+        let window_clone_inner = window_clone_save.clone();
+        let edit_buffer_inner = edit_buffer_clone.clone();
+        let current_file_inner = current_file_clone.clone();
+        let app_inner = app_clone.clone();
+        glib::spawn_future_local(async move {
+            if current_file_inner.borrow().is_some() {
+                save_current_document(&window_clone_inner, &edit_buffer_inner, &current_file_inner)
+                    .await;
+            } else {
+                app_inner.activate_action("save-as", None);
             }
-        } else {
-            app_clone.activate_action("save-as", None);
-        }
+        });
     });
     app.add_action(&action_save);
 
     let current_file_autosave = current_file.clone();
     let edit_buffer_autosave = edit_buffer.clone();
+    let status_label_autosave = status_label.clone();
     glib::timeout_add_seconds_local(10, move || {
-        if edit_buffer_autosave.is_modified() {
-            if let Some(file) = current_file_autosave.borrow().as_ref() {
-                if let Some(path) = file.path() {
-                    let text = edit_buffer_autosave.text(
-                        &edit_buffer_autosave.start_iter(),
-                        &edit_buffer_autosave.end_iter(),
-                        false,
-                    );
-                    let edit_buf_clone = edit_buffer_autosave.clone();
-                    glib::spawn_future_local(async move {
-                        if tokio::fs::write(&path, text.as_str()).await.is_ok() {
-                            edit_buf_clone.set_modified(false);
-                        }
-                    });
+        let file = current_file_autosave.borrow().clone();
+        if edit_buffer_autosave.is_modified()
+            && let Some(file) = file
+            && let Ok(path) = file_path(&file)
+        {
+            let text = buffer_text(&edit_buffer_autosave);
+            let edit_buf_clone = edit_buffer_autosave.clone();
+            let status_label = status_label_autosave.clone();
+            glib::spawn_future_local(async move {
+                if write_text_atomically(&path, &text).await.is_ok() {
+                    edit_buf_clone.set_modified(false);
+                } else {
+                    status_label.set_label(&gettext("Autosave failed"));
                 }
-            }
+            });
         }
         glib::ControlFlow::Continue
     });
@@ -1058,13 +1276,15 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     action_quit.connect_activate(move |_, _| {
         if edit_buffer_clone_quit.is_modified() {
             let alert = adw::AlertDialog::builder()
-                .heading(&gettext("Unsaved Changes"))
-                .body(&gettext("You have unsaved changes. Do you want to close without saving?"))
+                .heading(gettext("Unsaved Changes"))
+                .body(gettext(
+                    "You have unsaved changes. Do you want to close without saving?",
+                ))
                 .build();
             alert.add_response("cancel", &gettext("Cancel"));
             alert.add_response("close", &gettext("Close Without Saving"));
             alert.set_response_appearance("close", adw::ResponseAppearance::Destructive);
-            
+
             let app_clone_inner = app_clone.clone();
             alert.connect_response(None, move |_, response| {
                 if response == "close" {
@@ -1189,16 +1409,16 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
                     &edit_buffer_clone.end_iter(),
                     false,
                 );
-                
+
                 let mut options = pulldown_cmark::Options::empty();
                 options.insert(pulldown_cmark::Options::ENABLE_TABLES);
                 options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
                 options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
                 let parser = pulldown_cmark::Parser::new_ext(text.as_str(), options);
-                
+
                 let mut html_output = String::new();
                 pulldown_cmark::html::push_html(&mut html_output, parser);
-                
+
                 let css = "
 * { box-sizing: border-box; }
 body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 100%; margin: 0; padding: 20px; color: #333; }
@@ -1219,13 +1439,12 @@ img { max-width: 100%; border-radius: 8px; }
 }";
                 let html_doc = format!("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Export</title>\n<style>\n{}\n</style>\n</head>\n<body>\n{}\n</body>\n</html>", css, html_output);
 
-                if let Err(e) = tokio::fs::write(&path, html_doc).await {
-                    let alert = adw::AlertDialog::builder()
-                        .heading(&gettext("Error Exporting HTML"))
-                        .body(&format!("{}: {}", gettext("Could not export the file"), e))
-                        .build();
-                    alert.add_response("ok", &gettext("OK"));
-                    alert.present(Some(&window_clone));
+                if let Err(e) = write_text_atomically(&path, &html_doc).await {
+                    present_error(
+                        &window_clone,
+                        gettext("Error Exporting HTML"),
+                        format!("{}: {}", gettext("Could not export the file"), e),
+                    );
                 }
             }
         });
@@ -1239,13 +1458,13 @@ img { max-width: 100%; border-radius: 8px; }
             .application_name("Blink")
             .application_icon("com.github.sachesi.blink")
             .developer_name("sachesi")
-            .version("0.1.3")
-            .comments(&gettext("A fast and minimal Markdown editor"))
+            .version("0.1.4")
+            .comments(gettext("A fast and minimal Markdown editor"))
             .website("https://github.com/sachesi/blink")
             .issue_url("https://github.com/sachesi/blink/issues")
             .license_type(gtk::License::Gpl30)
             .build();
-            
+
         // Provide standard End User License Agreement / Disclaimer
         about.add_legal_section(
             &gettext("End User Agreement"),
@@ -1253,7 +1472,7 @@ img { max-width: 100%; border-radius: 8px; }
             gtk::License::Custom,
             Some(&gettext("This software is provided 'as is', without warranty of any kind, express or implied. By using this software, you agree to these terms and the terms of the GNU General Public License version 3."))
         );
-        
+
         about.present(Some(&window_clone_about));
     });
     app.add_action(&action_about);
@@ -1283,38 +1502,29 @@ img { max-width: 100%; border-radius: 8px; }
     });
 
     if let Some(file) = initial_file {
-        let window_clone = window.clone();
-        let edit_buffer_clone = edit_buffer.clone();
-        let current_file_clone = current_file.clone();
-        let btn_split_toggle_open = btn_split_toggle.clone();
-        let btn_mode_toggle_open = btn_mode_toggle.clone();
-        let edit_scroll_open = edit_scroll.clone();
-        let preview_scroll_open = preview_scroll.clone();
-        
-        glib::spawn_future_local(async move {
-            if let Some(path) = file.path() {
-                if let Ok(text) = tokio::fs::read_to_string(&path).await {
-                    edit_buffer_clone.set_text(&text);
-                    edit_buffer_clone.set_modified(false);
-                    window_clone.set_title(Some(&file.basename().unwrap_or_default().to_string_lossy()));
-                    *current_file_clone.borrow_mut() = Some(file);
+        let target = document_target.clone();
 
-                    btn_split_toggle_open.set_active(false);
-                    edit_scroll_open.set_visible(false);
-                    preview_scroll_open.set_visible(true);
-                    btn_mode_toggle_open.set_icon_name("document-edit-symbolic");
-                    btn_mode_toggle_open.set_tooltip_text(Some(&gettext("Edit Document")));
-                } else {
-                    let alert = adw::AlertDialog::builder()
-                        .heading(&gettext("Error Opening File"))
-                        .body(&format!("{}: {}", gettext("Could not open the file"), path.display()))
-                        .build();
-                    alert.add_response("ok", &gettext("OK"));
-                    alert.present(Some(&window_clone));
-                }
-            }
+        glib::spawn_future_local(async move {
+            load_document_file(file, target, false).await;
         });
     }
 
     window.present();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_text_atomically;
+    use std::fs;
+
+    #[tokio::test]
+    async fn atomic_write_replaces_existing_file() {
+        let path = std::env::temp_dir().join(format!("blink-save-test-{}.md", std::process::id()));
+        fs::write(&path, "old").unwrap();
+
+        write_text_atomically(&path, "new").await.unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        let _ = fs::remove_file(path);
+    }
 }

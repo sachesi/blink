@@ -8,7 +8,7 @@ A GTK4/libadwaita Markdown editor written in Rust.
 - Image rendering from local disk
 - Focus mode (F11)
 - Background auto-save (every 10s)
-- PDF and HTML export
+- HTML export
 - Ukrainian localization (`uk_UA`)
 
 ## Build dependencies

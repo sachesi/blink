@@ -1,15 +1,19 @@
 [package]
 name = "blink"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
+rust-version = "1.92"
 authors = ["sachesi <xsachesi@pm.me>"]
+description = "A fast and minimal Markdown editor"
 license = "GPL-3.0-or-later"
+repository = "https://github.com/sachesi/blink"
+homepage = "https://github.com/sachesi/blink"
+readme = "README.md"
 
 [dependencies]
 gtk = { package = "gtk4", version = "0.11", features = ["v4_10"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_6"] }
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "fs"] }
 pulldown-cmark = "0.13"
-glib = "0.20"
 gettext-rs = { version = "0.7.7", features = ["gettext-system"] }
 sourceview5 = "0.11.0"

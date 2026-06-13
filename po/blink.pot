@@ -29,10 +29,6 @@ msgstr ""
 msgid "Export HTML…"
 msgstr ""
 
-#: src/main.rs:214
-msgid "Export PDF…"
-msgstr ""
-
 #: src/main.rs:215
 msgid "Save As…"
 msgstr ""
@@ -126,6 +122,10 @@ msgstr ""
 msgid "Untitled Document"
 msgstr ""
 
+#: src/main.rs:31
+msgid "Only local files are supported"
+msgstr ""
+
 #: src/main.rs:437 src/main.rs:805
 msgid "Error Opening File"
 msgstr ""
@@ -159,8 +159,24 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
+#: src/main.rs:176
+msgid "Opening another file will discard unsaved changes."
+msgstr ""
+
+#: src/main.rs:180
+msgid "Save"
+msgstr ""
+
+#: src/main.rs:181
+msgid "Discard Changes"
+msgstr ""
+
 #: src/main.rs:595
 msgid "Close Without Saving"
+msgstr ""
+
+#: src/main.rs:1240
+msgid "Autosave failed"
 msgstr ""
 
 #: src/main.rs:682
