@@ -1479,12 +1479,19 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     window.add_action(&action_link);
 
     let search_entry_find = search_entry.clone();
+    let search_panel_find = search_panel.clone();
     let show_search_panel_find = show_search_panel.clone();
+    let close_search_panel_find = close_search_panel.clone();
     let refresh_search_find = refresh_search_state.clone();
     let searching_preview_find = searching_preview.clone();
     let preview_search_find = preview_search_step.clone();
     let action_find = gio::SimpleAction::new("find", None);
     action_find.connect_activate(move |_, _| {
+        // Ctrl+F toggles the panel: close it if already open.
+        if search_panel_find.is_visible() {
+            close_search_panel_find();
+            return;
+        }
         show_search_panel_find();
         search_entry_find.grab_focus();
         if searching_preview_find.get() {
