@@ -30,16 +30,30 @@ fn select_search_match(
     search_context: &SearchContext,
     forward: bool,
 ) -> bool {
+    let offset = if let Some((start, end)) = edit_buffer.selection_bounds() {
+        if forward {
+            end.offset()
+        } else {
+            start.offset()
+        }
+    } else {
+        edit_buffer.cursor_position()
+    };
+
+    select_search_match_from_offset(edit_buffer, search_context, offset, forward)
+}
+
+fn select_search_match_from_offset(
+    edit_buffer: &SourceBuffer,
+    search_context: &SearchContext,
+    offset: i32,
+    forward: bool,
+) -> bool {
     if !has_search_text(search_context) {
         return false;
     }
 
-    let iter = if let Some((start, end)) = edit_buffer.selection_bounds() {
-        if forward { end } else { start }
-    } else {
-        edit_buffer.iter_at_offset(edit_buffer.cursor_position())
-    };
-
+    let iter = edit_buffer.iter_at_offset(offset);
     let found = if forward {
         search_context.forward(&iter)
     } else {
@@ -107,6 +121,11 @@ fn replace_all_search_matches(
         }
         matches.push((start.offset(), end.offset()));
         iter = end;
+    }
+
+    if matches.is_empty() {
+        settings.set_wrap_around(was_wrap_around);
+        return 0;
     }
 
     let mut replaced = 0;
@@ -496,6 +515,8 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         .build();
     let search_status_label = Label::builder()
         .halign(gtk::Align::Start)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .max_width_chars(24)
         .width_chars(16)
         .build();
     let btn_search_prev = gtk::Button::builder()
@@ -534,7 +555,7 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let search_context = sourceview5::SearchContext::builder()
         .buffer(&edit_buffer)
         .settings(&search_settings)
-        .highlight(true)
+        .highlight(false)
         .build();
 
     set_replace_controls_sensitive(&search_context, &btn_replace, &btn_replace_all);
@@ -641,9 +662,18 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let show_search_panel_search = show_search_panel.clone();
     let refresh_search = refresh_search_state.clone();
     search_entry.connect_search_changed(move |entry| {
+        let search_offset = edit_buffer_search
+            .selection_bounds()
+            .map(|(start, _)| start.offset())
+            .unwrap_or_else(|| edit_buffer_search.cursor_position());
         search_settings.set_search_text(Some(entry.text().as_str()));
         show_search_panel_search();
-        select_search_match(&edit_buffer_search, &search_context_search, true);
+        select_search_match_from_offset(
+            &edit_buffer_search,
+            &search_context_search,
+            search_offset,
+            true,
+        );
         refresh_search();
     });
 
