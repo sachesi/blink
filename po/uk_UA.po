@@ -62,6 +62,58 @@ msgstr "Відкрити документ"
 msgid "Save Document"
 msgstr "Зберегти документ"
 
+#: src/main.rs:406
+msgid "Search"
+msgstr "Пошук"
+
+#: src/main.rs:410 src/main.rs:421
+msgid "Replace"
+msgstr "Замінити"
+
+#: src/main.rs:414
+msgid "Previous Match"
+msgstr "Попередній збіг"
+
+#: src/main.rs:418
+msgid "Next Match"
+msgstr "Наступний збіг"
+
+#: src/main.rs:422
+msgid "Replace Match"
+msgstr "Замінити збіг"
+
+#: src/main.rs:425
+msgid "All"
+msgstr "Усі"
+
+#: src/main.rs:426
+msgid "Replace All Matches"
+msgstr "Замінити всі збіги"
+
+#: src/main.rs:430
+msgid "Close Search"
+msgstr "Закрити пошук"
+
+#: src/main.rs:118
+msgid "Searching…"
+msgstr "Пошук…"
+
+#: src/main.rs:118
+msgid "No matches"
+msgstr "Немає збігів"
+
+#: src/main.rs:126
+msgid "{} of {} matches"
+msgstr "{} з {} збігів"
+
+#: src/main.rs:134
+msgid "{} matches"
+msgstr "{} збігів"
+
+#: src/main.rs:568 src/main.rs:1040
+msgid "{} matches replaced"
+msgstr "Замінено {} збігів"
+
 #: src/main.rs:358
 msgid "Drop Markdown file to open"
 msgstr "Перетягніть файл Markdown для відкриття"

@@ -5,11 +5,175 @@ use gtk::{
 };
 use gettextrs::{gettext, setlocale, textdomain, bindtextdomain, LocaleCategory};
 use sourceview5::prelude::*;
-use sourceview5::{Buffer as SourceBuffer, View as SourceView, LanguageManager};
+use sourceview5::{Buffer as SourceBuffer, LanguageManager, SearchContext, View as SourceView};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 mod markdown;
+
+#[derive(Clone, Copy)]
+enum SearchRestoreMode {
+    Edit,
+    Preview,
+    Split,
+}
+
+fn has_search_text(search_context: &SearchContext) -> bool {
+    search_context
+        .settings()
+        .search_text()
+        .is_some_and(|text| !text.is_empty())
+}
+
+fn select_search_match(
+    edit_buffer: &SourceBuffer,
+    search_context: &SearchContext,
+    forward: bool,
+) -> bool {
+    if !has_search_text(search_context) {
+        return false;
+    }
+
+    let iter = if let Some((start, end)) = edit_buffer.selection_bounds() {
+        if forward { end } else { start }
+    } else {
+        edit_buffer.iter_at_offset(edit_buffer.cursor_position())
+    };
+
+    let found = if forward {
+        search_context.forward(&iter)
+    } else {
+        search_context.backward(&iter)
+    };
+
+    if let Some((start, end, _)) = found {
+        edit_buffer.select_range(&start, &end);
+        true
+    } else {
+        false
+    }
+}
+
+fn selection_is_search_match(edit_buffer: &SourceBuffer, search_context: &SearchContext) -> bool {
+    edit_buffer
+        .selection_bounds()
+        .is_some_and(|(start, end)| search_context.occurrence_position(&start, &end) > 0)
+}
+
+fn replace_search_match(
+    edit_buffer: &SourceBuffer,
+    search_context: &SearchContext,
+    replacement: &str,
+) -> bool {
+    if !has_search_text(search_context) {
+        return false;
+    }
+
+    if selection_is_search_match(edit_buffer, search_context)
+        && let Some((mut start, mut end)) = edit_buffer.selection_bounds()
+        && search_context.replace(&mut start, &mut end, replacement).is_ok()
+    {
+        return true;
+    }
+
+    if select_search_match(edit_buffer, search_context, true)
+        && let Some((mut start, mut end)) = edit_buffer.selection_bounds()
+        && search_context.replace(&mut start, &mut end, replacement).is_ok()
+    {
+        return true;
+    }
+
+    false
+}
+
+fn replace_all_search_matches(
+    edit_buffer: &SourceBuffer,
+    search_context: &SearchContext,
+    replacement: &str,
+) -> usize {
+    if !has_search_text(search_context) {
+        return 0;
+    }
+
+    let settings = search_context.settings();
+    let was_wrap_around = settings.wraps_around();
+    settings.set_wrap_around(false);
+
+    let mut matches = Vec::new();
+    let mut iter = edit_buffer.start_iter();
+    while let Some((start, end, _)) = search_context.forward(&iter) {
+        if start.offset() == end.offset() {
+            break;
+        }
+        matches.push((start.offset(), end.offset()));
+        iter = end;
+    }
+
+    let mut replaced = 0;
+    edit_buffer.begin_user_action();
+    for (start_offset, end_offset) in matches.iter().rev() {
+        let mut start = edit_buffer.iter_at_offset(*start_offset);
+        let mut end = edit_buffer.iter_at_offset(*end_offset);
+        if search_context
+            .replace(&mut start, &mut end, replacement)
+            .is_ok()
+        {
+            replaced += 1;
+        }
+    }
+    edit_buffer.end_user_action();
+
+    settings.set_wrap_around(was_wrap_around);
+    replaced
+}
+
+fn update_search_status(
+    search_context: &SearchContext,
+    edit_buffer: &SourceBuffer,
+    status_label: &Label,
+) {
+    if !has_search_text(search_context) {
+        status_label.set_label("");
+        return;
+    }
+
+    let count = search_context.occurrences_count();
+    if count < 0 {
+        status_label.set_label(&gettext("Searching…"));
+        return;
+    }
+
+    if count == 0 {
+        status_label.set_label(&gettext("No matches"));
+        return;
+    }
+
+    if let Some((start, end)) = edit_buffer.selection_bounds() {
+        let position = search_context.occurrence_position(&start, &end);
+        if position > 0 && count > 0 {
+            let status = gettext("{} of {} matches")
+                .replacen("{}", &position.to_string(), 1)
+                .replacen("{}", &count.to_string(), 1);
+            status_label.set_label(&status);
+            return;
+        }
+    }
+
+    if count > 0 {
+        let status = gettext("{} matches").replacen("{}", &count.to_string(), 1);
+        status_label.set_label(&status);
+    }
+}
+
+fn set_replace_controls_sensitive(
+    search_context: &SearchContext,
+    replace_button: &gtk::Button,
+    replace_all_button: &gtk::Button,
+) {
+    let enabled = has_search_text(search_context) && search_context.occurrences_count() > 0;
+    replace_button.set_sensitive(enabled);
+    replace_all_button.set_sensitive(enabled);
+}
 
 #[tokio::main]
 async fn main() -> glib::ExitCode {
@@ -39,7 +203,11 @@ async fn main() -> glib::ExitCode {
         app.set_accels_for_action("app.format-bold", &["<Ctrl>b"]);
         app.set_accels_for_action("app.format-italic", &["<Ctrl>i"]);
         app.set_accels_for_action("app.format-link", &["<Ctrl>k"]);
-        app.set_accels_for_action("app.find", &["<Ctrl>f"]);
+        app.set_accels_for_action("win.find", &["<Ctrl>f"]);
+        app.set_accels_for_action("win.find-next", &["<Ctrl>g"]);
+        app.set_accels_for_action("win.find-previous", &["<Ctrl><Shift>g"]);
+        app.set_accels_for_action("win.replace", &["<Ctrl>h"]);
+        app.set_accels_for_action("win.replace-all", &["<Ctrl><Shift>h"]);
         app.set_accels_for_action("app.focus-mode", &["F11"]);
     });
 
@@ -298,24 +466,290 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     bottom_box.append(&spacer);
     bottom_box.append(&status_label);
 
-    let search_bar = gtk::SearchBar::builder().build();
-    let search_entry = gtk::SearchEntry::builder().hexpand(true).build();
-    search_bar.set_child(Some(&search_entry));
+    let search_panel = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .css_classes(["toolbar"])
+        .spacing(6)
+        .margin_start(6)
+        .margin_end(6)
+        .margin_top(6)
+        .margin_bottom(6)
+        .visible(false)
+        .build();
+    let search_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .build();
+    let replace_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .build();
+    let search_entry = gtk::SearchEntry::builder()
+        .hexpand(true)
+        .width_chars(24)
+        .placeholder_text(gettext("Search"))
+        .build();
+    let replace_entry = gtk::Entry::builder()
+        .hexpand(true)
+        .width_chars(24)
+        .placeholder_text(gettext("Replace"))
+        .build();
+    let search_status_label = Label::builder()
+        .halign(gtk::Align::Start)
+        .width_chars(16)
+        .build();
+    let btn_search_prev = gtk::Button::builder()
+        .icon_name("go-up-symbolic")
+        .tooltip_text(gettext("Previous Match"))
+        .build();
+    let btn_search_next = gtk::Button::builder()
+        .icon_name("go-down-symbolic")
+        .tooltip_text(gettext("Next Match"))
+        .build();
+    let btn_replace = gtk::Button::builder()
+        .label(gettext("Replace"))
+        .tooltip_text(gettext("Replace Match"))
+        .build();
+    let btn_replace_all = gtk::Button::builder()
+        .label(gettext("All"))
+        .tooltip_text(gettext("Replace All Matches"))
+        .build();
+    let btn_search_close = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text(gettext("Close Search"))
+        .build();
+    search_row.append(&search_entry);
+    search_row.append(&search_status_label);
+    search_row.append(&btn_search_prev);
+    search_row.append(&btn_search_next);
+    search_row.append(&btn_search_close);
+    replace_row.append(&replace_entry);
+    replace_row.append(&btn_replace);
+    replace_row.append(&btn_replace_all);
+    search_panel.append(&search_row);
+    search_panel.append(&replace_row);
 
     let search_settings = sourceview5::SearchSettings::builder().build();
-    let _search_context = sourceview5::SearchContext::builder()
+    search_settings.set_wrap_around(true);
+    let search_context = sourceview5::SearchContext::builder()
         .buffer(&edit_buffer)
         .settings(&search_settings)
         .highlight(true)
         .build();
 
+    set_replace_controls_sensitive(&search_context, &btn_replace, &btn_replace_all);
+
+    let search_restore_mode = Rc::new(RefCell::new(None::<SearchRestoreMode>));
+
+    let show_search_panel: Rc<dyn Fn()> = Rc::new({
+        let search_panel = search_panel.clone();
+        let search_context = search_context.clone();
+        let search_restore_mode = search_restore_mode.clone();
+        let btn_split_toggle = btn_split_toggle.clone();
+        let edit_scroll = edit_scroll.clone();
+        let preview_scroll = preview_scroll.clone();
+        let btn_mode_toggle = btn_mode_toggle.clone();
+        move || {
+            search_context.set_highlight(true);
+
+            let current_mode = if btn_split_toggle.is_active() {
+                SearchRestoreMode::Split
+            } else if preview_scroll.is_visible() && !edit_scroll.is_visible() {
+                SearchRestoreMode::Preview
+            } else {
+                SearchRestoreMode::Edit
+            };
+
+            if !search_panel.is_visible() {
+                *search_restore_mode.borrow_mut() = Some(current_mode);
+                search_panel.set_visible(true);
+            }
+
+            if matches!(current_mode, SearchRestoreMode::Preview) || !edit_scroll.is_visible() {
+                btn_split_toggle.set_active(true);
+                edit_scroll.set_visible(true);
+                preview_scroll.set_visible(true);
+                btn_mode_toggle.set_sensitive(false);
+            }
+        }
+    });
+
+    let close_search_panel: Rc<dyn Fn()> = Rc::new({
+        let search_panel = search_panel.clone();
+        let search_context = search_context.clone();
+        let search_status_label = search_status_label.clone();
+        let search_restore_mode = search_restore_mode.clone();
+        let btn_split_toggle = btn_split_toggle.clone();
+        let edit_scroll = edit_scroll.clone();
+        let preview_scroll = preview_scroll.clone();
+        let btn_mode_toggle = btn_mode_toggle.clone();
+        move || {
+            search_panel.set_visible(false);
+            search_context.set_highlight(false);
+            search_status_label.set_label("");
+
+            let Some(mode) = search_restore_mode.borrow_mut().take() else {
+                return;
+            };
+
+            match mode {
+                SearchRestoreMode::Split => {
+                    btn_split_toggle.set_active(true);
+                    edit_scroll.set_visible(true);
+                    preview_scroll.set_visible(true);
+                    btn_mode_toggle.set_sensitive(false);
+                }
+                SearchRestoreMode::Preview => {
+                    btn_mode_toggle.set_icon_name("document-edit-symbolic");
+                    btn_mode_toggle.set_tooltip_text(Some(&gettext("Edit Document")));
+                    btn_split_toggle.set_active(false);
+                    btn_mode_toggle.set_sensitive(true);
+                    edit_scroll.set_visible(false);
+                    preview_scroll.set_visible(true);
+                }
+                SearchRestoreMode::Edit => {
+                    btn_mode_toggle.set_icon_name("view-reveal-symbolic");
+                    btn_mode_toggle.set_tooltip_text(Some(&gettext("Preview Document")));
+                    btn_split_toggle.set_active(false);
+                    btn_mode_toggle.set_sensitive(true);
+                    edit_scroll.set_visible(true);
+                    preview_scroll.set_visible(false);
+                }
+            }
+        }
+    });
+
+    let refresh_search_state: Rc<dyn Fn()> = Rc::new({
+        let search_context = search_context.clone();
+        let edit_buffer = edit_buffer.clone();
+        let search_status_label = search_status_label.clone();
+        let btn_replace = btn_replace.clone();
+        let btn_replace_all = btn_replace_all.clone();
+        move || {
+            update_search_status(&search_context, &edit_buffer, &search_status_label);
+            set_replace_controls_sensitive(&search_context, &btn_replace, &btn_replace_all);
+        }
+    });
+
+    let refresh_search_state_notify = refresh_search_state.clone();
+    search_context.connect_occurrences_count_notify(move |_| {
+        refresh_search_state_notify();
+    });
+
+    let edit_buffer_search = edit_buffer.clone();
+    let search_context_search = search_context.clone();
+    let show_search_panel_search = show_search_panel.clone();
+    let refresh_search = refresh_search_state.clone();
     search_entry.connect_search_changed(move |entry| {
         search_settings.set_search_text(Some(entry.text().as_str()));
+        show_search_panel_search();
+        select_search_match(&edit_buffer_search, &search_context_search, true);
+        refresh_search();
+    });
+
+    let edit_buffer_search_activate = edit_buffer.clone();
+    let search_context_search_activate = search_context.clone();
+    let show_search_panel_search_activate = show_search_panel.clone();
+    let refresh_search_activate = refresh_search_state.clone();
+    search_entry.connect_activate(move |_| {
+        show_search_panel_search_activate();
+        select_search_match(
+            &edit_buffer_search_activate,
+            &search_context_search_activate,
+            true,
+        );
+        refresh_search_activate();
+    });
+
+    let edit_buffer_next = edit_buffer.clone();
+    let search_context_next = search_context.clone();
+    let show_search_panel_next = show_search_panel.clone();
+    let refresh_search_next = refresh_search_state.clone();
+    btn_search_next.connect_clicked(move |_| {
+        show_search_panel_next();
+        select_search_match(&edit_buffer_next, &search_context_next, true);
+        refresh_search_next();
+    });
+
+    let edit_buffer_prev = edit_buffer.clone();
+    let search_context_prev = search_context.clone();
+    let show_search_panel_prev = show_search_panel.clone();
+    let refresh_search_prev = refresh_search_state.clone();
+    btn_search_prev.connect_clicked(move |_| {
+        show_search_panel_prev();
+        select_search_match(&edit_buffer_prev, &search_context_prev, false);
+        refresh_search_prev();
+    });
+
+    let edit_buffer_replace = edit_buffer.clone();
+    let search_context_replace = search_context.clone();
+    let replace_entry_replace = replace_entry.clone();
+    let show_search_panel_replace = show_search_panel.clone();
+    let refresh_search_replace = refresh_search_state.clone();
+    btn_replace.connect_clicked(move |_| {
+        show_search_panel_replace();
+        if replace_search_match(
+            &edit_buffer_replace,
+            &search_context_replace,
+            replace_entry_replace.text().as_str(),
+        ) {
+            select_search_match(&edit_buffer_replace, &search_context_replace, true);
+        }
+        refresh_search_replace();
+    });
+
+    let edit_buffer_replace_activate = edit_buffer.clone();
+    let search_context_replace_activate = search_context.clone();
+    let replace_entry_activate = replace_entry.clone();
+    let show_search_panel_replace_activate = show_search_panel.clone();
+    let refresh_search_replace_activate = refresh_search_state.clone();
+    replace_entry.connect_activate(move |_| {
+        show_search_panel_replace_activate();
+        if replace_search_match(
+            &edit_buffer_replace_activate,
+            &search_context_replace_activate,
+            replace_entry_activate.text().as_str(),
+        ) {
+            select_search_match(
+                &edit_buffer_replace_activate,
+                &search_context_replace_activate,
+                true,
+            );
+        }
+        refresh_search_replace_activate();
+    });
+
+    let edit_buffer_replace_all = edit_buffer.clone();
+    let search_context_replace_all = search_context.clone();
+    let replace_entry_replace_all = replace_entry.clone();
+    let search_status_label_replace_all = search_status_label.clone();
+    let show_search_panel_replace_all = show_search_panel.clone();
+    let refresh_search_replace_all = refresh_search_state.clone();
+    btn_replace_all.connect_clicked(move |_| {
+        show_search_panel_replace_all();
+        let replaced = replace_all_search_matches(
+            &edit_buffer_replace_all,
+            &search_context_replace_all,
+            replace_entry_replace_all.text().as_str(),
+        );
+        refresh_search_replace_all();
+        let status = gettext("{} matches replaced").replacen("{}", &replaced.to_string(), 1);
+        search_status_label_replace_all.set_label(&status);
+    });
+
+    let close_search_panel_button = close_search_panel.clone();
+    btn_search_close.connect_clicked(move |_| {
+        close_search_panel_button();
+    });
+
+    let close_search_panel_entry = close_search_panel.clone();
+    search_entry.connect_stop_search(move |_| {
+        close_search_panel_entry();
     });
 
     let toolbar_view = adw::ToolbarView::builder().content(&split_box).build();
     toolbar_view.add_top_bar(&header_bar);
-    toolbar_view.add_top_bar(&search_bar);
+    toolbar_view.add_top_bar(&search_panel);
     toolbar_view.add_bottom_bar(&bottom_box);
 
     let drop_overlay = gtk::Box::builder()
@@ -648,12 +1082,66 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     });
     app.add_action(&action_link);
 
-    let search_bar_clone = search_bar.clone();
+    let search_entry_find = search_entry.clone();
+    let show_search_panel_find = show_search_panel.clone();
+    let refresh_search_find = refresh_search_state.clone();
     let action_find = gio::SimpleAction::new("find", None);
     action_find.connect_activate(move |_, _| {
-        search_bar_clone.set_search_mode(true);
+        show_search_panel_find();
+        search_entry_find.grab_focus();
+        refresh_search_find();
     });
-    app.add_action(&action_find);
+    window.add_action(&action_find);
+
+    let edit_buffer_find_next = edit_buffer.clone();
+    let search_context_find_next = search_context.clone();
+    let show_search_panel_find_next = show_search_panel.clone();
+    let refresh_search_find_next = refresh_search_state.clone();
+    let action_find_next = gio::SimpleAction::new("find-next", None);
+    action_find_next.connect_activate(move |_, _| {
+        show_search_panel_find_next();
+        select_search_match(&edit_buffer_find_next, &search_context_find_next, true);
+        refresh_search_find_next();
+    });
+    window.add_action(&action_find_next);
+
+    let edit_buffer_find_previous = edit_buffer.clone();
+    let search_context_find_previous = search_context.clone();
+    let show_search_panel_find_previous = show_search_panel.clone();
+    let refresh_search_find_previous = refresh_search_state.clone();
+    let action_find_previous = gio::SimpleAction::new("find-previous", None);
+    action_find_previous.connect_activate(move |_, _| {
+        show_search_panel_find_previous();
+        select_search_match(
+            &edit_buffer_find_previous,
+            &search_context_find_previous,
+            false,
+        );
+        refresh_search_find_previous();
+    });
+    window.add_action(&action_find_previous);
+
+    let replace_entry_action = replace_entry.clone();
+    let show_search_panel_replace_action = show_search_panel.clone();
+    let refresh_search_replace_action = refresh_search_state.clone();
+    let action_replace = gio::SimpleAction::new("replace", None);
+    action_replace.connect_activate(move |_, _| {
+        show_search_panel_replace_action();
+        replace_entry_action.grab_focus();
+        refresh_search_replace_action();
+    });
+    window.add_action(&action_replace);
+
+    let replace_entry_replace_all_action = replace_entry.clone();
+    let show_search_panel_replace_all_action = show_search_panel.clone();
+    let refresh_search_replace_all_action = refresh_search_state.clone();
+    let action_replace_all = gio::SimpleAction::new("replace-all", None);
+    action_replace_all.connect_activate(move |_, _| {
+        show_search_panel_replace_all_action();
+        replace_entry_replace_all_action.grab_focus();
+        refresh_search_replace_all_action();
+    });
+    window.add_action(&action_replace_all);
 
     let action_export_html = gio::SimpleAction::new("export-html", None);
     let window_clone_export = window.clone();
