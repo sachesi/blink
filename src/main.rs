@@ -12,13 +12,6 @@ use std::rc::Rc;
 
 mod markdown;
 
-#[derive(Clone, Copy)]
-enum SearchRestoreMode {
-    Edit,
-    Preview,
-    Split,
-}
-
 #[derive(Clone)]
 struct DocumentTarget {
     window: adw::ApplicationWindow,
@@ -995,38 +988,27 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     set_replace_controls_sensitive(&search_context, &btn_replace, &btn_replace_all);
 
-    let search_restore_mode = Rc::new(RefCell::new(None::<SearchRestoreMode>));
     // True while the search panel targets the read-only preview (render mode):
-    // search only, no replace, and the view is left untouched.
+    // search only, no replace.
     let searching_preview = Rc::new(Cell::new(false));
 
     let show_search_panel: Rc<dyn Fn()> = Rc::new({
         let search_panel = search_panel.clone();
         let search_context = search_context.clone();
-        let search_restore_mode = search_restore_mode.clone();
         let btn_split_toggle = btn_split_toggle.clone();
         let edit_scroll = edit_scroll.clone();
         let preview_scroll = preview_scroll.clone();
         let replace_row = replace_row.clone();
         let searching_preview = searching_preview.clone();
         move || {
-            let current_mode = if btn_split_toggle.is_active() {
-                SearchRestoreMode::Split
-            } else if preview_scroll.is_visible() && !edit_scroll.is_visible() {
-                SearchRestoreMode::Preview
-            } else {
-                SearchRestoreMode::Edit
-            };
+            search_panel.set_visible(true);
 
-            if !search_panel.is_visible() {
-                *search_restore_mode.borrow_mut() = Some(current_mode);
-                search_panel.set_visible(true);
-            }
-
-            // Render mode: search the preview only, hide replace, keep the view
-            // as-is. Edit/split: source-view search with replace and match
-            // highlighting in the editor.
-            let preview_search = matches!(current_mode, SearchRestoreMode::Preview);
+            // Render mode = preview visible and not split: search the preview
+            // only, hide replace. Edit/split: source-view search with replace
+            // and match highlighting in the editor. The view is left as-is.
+            let preview_search = !btn_split_toggle.is_active()
+                && preview_scroll.is_visible()
+                && !edit_scroll.is_visible();
             searching_preview.set(preview_search);
             replace_row.set_visible(!preview_search);
             search_context.set_highlight(!preview_search);
@@ -1037,13 +1019,6 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         let search_panel = search_panel.clone();
         let search_context = search_context.clone();
         let search_status_label = search_status_label.clone();
-        let search_restore_mode = search_restore_mode.clone();
-        let btn_split_toggle = btn_split_toggle.clone();
-        let edit_scroll = edit_scroll.clone();
-        let preview_scroll = preview_scroll.clone();
-        let btn_mode_toggle = btn_mode_toggle.clone();
-        let preview_mode = preview_mode.clone();
-        let flush_preview = flush_preview.clone();
         let preview_view = preview_view.clone();
         let searching_preview = searching_preview.clone();
         move || {
@@ -1052,40 +1027,15 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
             clear_preview_search(&preview_view.buffer());
             searching_preview.set(false);
             search_status_label.set_label("");
-
-            let Some(mode) = search_restore_mode.borrow_mut().take() else {
-                return;
-            };
-
-            match mode {
-                SearchRestoreMode::Split => {
-                    btn_split_toggle.set_active(true);
-                    edit_scroll.set_visible(true);
-                    preview_scroll.set_visible(true);
-                    btn_mode_toggle.set_sensitive(false);
-                }
-                SearchRestoreMode::Preview => {
-                    preview_mode.set(true);
-                    btn_mode_toggle.set_icon_name("document-edit-symbolic");
-                    btn_mode_toggle.set_tooltip_text(Some(&gettext("Edit Document")));
-                    btn_split_toggle.set_active(false);
-                    btn_mode_toggle.set_sensitive(true);
-                    edit_scroll.set_visible(false);
-                    preview_scroll.set_visible(true);
-                    flush_preview();
-                }
-                SearchRestoreMode::Edit => {
-                    preview_mode.set(false);
-                    btn_mode_toggle.set_icon_name("view-reveal-symbolic");
-                    btn_mode_toggle.set_tooltip_text(Some(&gettext("Preview Document")));
-                    btn_split_toggle.set_active(false);
-                    btn_mode_toggle.set_sensitive(true);
-                    edit_scroll.set_visible(true);
-                    preview_scroll.set_visible(false);
-                }
-            }
         }
     });
+
+    // Switching view mode dismisses any open search so its state never lingers
+    // across modes (e.g. preview highlights or a hidden replace row).
+    let close_on_mode_toggle = close_search_panel.clone();
+    btn_mode_toggle.connect_clicked(move |_| close_on_mode_toggle());
+    let close_on_split_toggle = close_search_panel.clone();
+    btn_split_toggle.connect_toggled(move |_| close_on_split_toggle());
 
     let refresh_search_state: Rc<dyn Fn()> = Rc::new({
         let search_context = search_context.clone();
