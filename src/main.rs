@@ -422,6 +422,71 @@ fn replace_all_search_matches(
     replaced
 }
 
+fn clear_preview_search(buffer: &TextBuffer) {
+    buffer.remove_tag_by_name("search-match", &buffer.start_iter(), &buffer.end_iter());
+}
+
+/// Searches the read-only preview buffer, highlighting and scrolling to the
+/// match. Used in render mode, where the source-view search is unavailable.
+/// `from_selection_start` keeps the current match in range while the query is
+/// being typed; otherwise the search advances past the current selection.
+fn search_preview_text(
+    view: &TextView,
+    query: &str,
+    forward: bool,
+    from_selection_start: bool,
+) -> bool {
+    let buffer = view.buffer();
+    clear_preview_search(&buffer);
+    if query.is_empty() {
+        return false;
+    }
+
+    let flags = gtk::TextSearchFlags::CASE_INSENSITIVE | gtk::TextSearchFlags::VISIBLE_ONLY;
+    let from = match buffer.selection_bounds() {
+        Some((start, end)) => {
+            if from_selection_start {
+                start
+            } else if forward {
+                end
+            } else {
+                start
+            }
+        }
+        None if forward => buffer.start_iter(),
+        None => buffer.end_iter(),
+    };
+
+    let found = if forward {
+        from.forward_search(query, flags, None)
+    } else {
+        from.backward_search(query, flags, None)
+    }
+    .or_else(|| {
+        // Wrap around from the opposite edge of the buffer.
+        let edge = if forward {
+            buffer.start_iter()
+        } else {
+            buffer.end_iter()
+        };
+        if forward {
+            edge.forward_search(query, flags, None)
+        } else {
+            edge.backward_search(query, flags, None)
+        }
+    });
+
+    if let Some((start, end)) = found {
+        buffer.select_range(&start, &end);
+        buffer.apply_tag_by_name("search-match", &start, &end);
+        let mut scroll_iter = start;
+        view.scroll_to_iter(&mut scroll_iter, 0.1, false, 0.0, 0.0);
+        true
+    } else {
+        false
+    }
+}
+
 fn update_search_status(
     search_context: &SearchContext,
     edit_buffer: &SourceBuffer,
@@ -596,6 +661,10 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
 
     let preview_buffer = TextBuffer::new(None);
     markdown::setup_tags(&preview_buffer);
+    preview_buffer.create_tag(
+        Some("search-match"),
+        &[("background", &"#f5c211"), ("foreground", &"#000000")],
+    );
     let preview_view = TextView::builder()
         .buffer(&preview_buffer)
         .editable(false)
@@ -927,6 +996,9 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     set_replace_controls_sensitive(&search_context, &btn_replace, &btn_replace_all);
 
     let search_restore_mode = Rc::new(RefCell::new(None::<SearchRestoreMode>));
+    // True while the search panel targets the read-only preview (render mode):
+    // search only, no replace, and the view is left untouched.
+    let searching_preview = Rc::new(Cell::new(false));
 
     let show_search_panel: Rc<dyn Fn()> = Rc::new({
         let search_panel = search_panel.clone();
@@ -935,10 +1007,9 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         let btn_split_toggle = btn_split_toggle.clone();
         let edit_scroll = edit_scroll.clone();
         let preview_scroll = preview_scroll.clone();
-        let btn_mode_toggle = btn_mode_toggle.clone();
+        let replace_row = replace_row.clone();
+        let searching_preview = searching_preview.clone();
         move || {
-            search_context.set_highlight(true);
-
             let current_mode = if btn_split_toggle.is_active() {
                 SearchRestoreMode::Split
             } else if preview_scroll.is_visible() && !edit_scroll.is_visible() {
@@ -952,12 +1023,13 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
                 search_panel.set_visible(true);
             }
 
-            if matches!(current_mode, SearchRestoreMode::Preview) || !edit_scroll.is_visible() {
-                btn_split_toggle.set_active(true);
-                edit_scroll.set_visible(true);
-                preview_scroll.set_visible(true);
-                btn_mode_toggle.set_sensitive(false);
-            }
+            // Render mode: search the preview only, hide replace, keep the view
+            // as-is. Edit/split: source-view search with replace and match
+            // highlighting in the editor.
+            let preview_search = matches!(current_mode, SearchRestoreMode::Preview);
+            searching_preview.set(preview_search);
+            replace_row.set_visible(!preview_search);
+            search_context.set_highlight(!preview_search);
         }
     });
 
@@ -972,9 +1044,13 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         let btn_mode_toggle = btn_mode_toggle.clone();
         let preview_mode = preview_mode.clone();
         let flush_preview = flush_preview.clone();
+        let preview_view = preview_view.clone();
+        let searching_preview = searching_preview.clone();
         move || {
             search_panel.set_visible(false);
             search_context.set_highlight(false);
+            clear_preview_search(&preview_view.buffer());
+            searching_preview.set(false);
             search_status_label.set_label("");
 
             let Some(mode) = search_restore_mode.borrow_mut().take() else {
@@ -1028,17 +1104,40 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
         refresh_search_state_notify();
     });
 
+    // One search step against the preview buffer, updating the status label.
+    let preview_search_step: Rc<dyn Fn(bool, bool)> = Rc::new({
+        let preview_view = preview_view.clone();
+        let search_entry = search_entry.clone();
+        let search_status_label = search_status_label.clone();
+        move |forward, from_selection_start| {
+            let query = search_entry.text();
+            let found =
+                search_preview_text(&preview_view, query.as_str(), forward, from_selection_start);
+            if query.is_empty() || found {
+                search_status_label.set_label("");
+            } else {
+                search_status_label.set_label(&gettext("No matches"));
+            }
+        }
+    });
+
     let edit_buffer_search = edit_buffer.clone();
     let search_context_search = search_context.clone();
     let show_search_panel_search = show_search_panel.clone();
     let refresh_search = refresh_search_state.clone();
+    let searching_preview_search = searching_preview.clone();
+    let preview_search_changed = preview_search_step.clone();
     search_entry.connect_search_changed(move |entry| {
+        show_search_panel_search();
+        if searching_preview_search.get() {
+            preview_search_changed(true, true);
+            return;
+        }
         let search_offset = edit_buffer_search
             .selection_bounds()
             .map(|(start, _)| start.offset())
             .unwrap_or_else(|| edit_buffer_search.cursor_position());
         search_settings.set_search_text(Some(entry.text().as_str()));
-        show_search_panel_search();
         select_search_match_from_offset(
             &edit_buffer_search,
             &search_context_search,
@@ -1052,8 +1151,14 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let search_context_search_activate = search_context.clone();
     let show_search_panel_search_activate = show_search_panel.clone();
     let refresh_search_activate = refresh_search_state.clone();
+    let searching_preview_activate = searching_preview.clone();
+    let preview_search_activate = preview_search_step.clone();
     search_entry.connect_activate(move |_| {
         show_search_panel_search_activate();
+        if searching_preview_activate.get() {
+            preview_search_activate(true, false);
+            return;
+        }
         select_search_match(
             &edit_buffer_search_activate,
             &search_context_search_activate,
@@ -1066,8 +1171,14 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let search_context_next = search_context.clone();
     let show_search_panel_next = show_search_panel.clone();
     let refresh_search_next = refresh_search_state.clone();
+    let searching_preview_next = searching_preview.clone();
+    let preview_search_next = preview_search_step.clone();
     btn_search_next.connect_clicked(move |_| {
         show_search_panel_next();
+        if searching_preview_next.get() {
+            preview_search_next(true, false);
+            return;
+        }
         select_search_match(&edit_buffer_next, &search_context_next, true);
         refresh_search_next();
     });
@@ -1076,8 +1187,14 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let search_context_prev = search_context.clone();
     let show_search_panel_prev = show_search_panel.clone();
     let refresh_search_prev = refresh_search_state.clone();
+    let searching_preview_prev = searching_preview.clone();
+    let preview_search_prev = preview_search_step.clone();
     btn_search_prev.connect_clicked(move |_| {
         show_search_panel_prev();
+        if searching_preview_prev.get() {
+            preview_search_prev(false, false);
+            return;
+        }
         select_search_match(&edit_buffer_prev, &search_context_prev, false);
         refresh_search_prev();
     });
@@ -1414,11 +1531,17 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let search_entry_find = search_entry.clone();
     let show_search_panel_find = show_search_panel.clone();
     let refresh_search_find = refresh_search_state.clone();
+    let searching_preview_find = searching_preview.clone();
+    let preview_search_find = preview_search_step.clone();
     let action_find = gio::SimpleAction::new("find", None);
     action_find.connect_activate(move |_, _| {
         show_search_panel_find();
         search_entry_find.grab_focus();
-        refresh_search_find();
+        if searching_preview_find.get() {
+            preview_search_find(true, true);
+        } else {
+            refresh_search_find();
+        }
     });
     window.add_action(&action_find);
 
@@ -1426,9 +1549,15 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let search_context_find_next = search_context.clone();
     let show_search_panel_find_next = show_search_panel.clone();
     let refresh_search_find_next = refresh_search_state.clone();
+    let searching_preview_find_next = searching_preview.clone();
+    let preview_search_find_next = preview_search_step.clone();
     let action_find_next = gio::SimpleAction::new("find-next", None);
     action_find_next.connect_activate(move |_, _| {
         show_search_panel_find_next();
+        if searching_preview_find_next.get() {
+            preview_search_find_next(true, false);
+            return;
+        }
         select_search_match(&edit_buffer_find_next, &search_context_find_next, true);
         refresh_search_find_next();
     });
@@ -1438,9 +1567,15 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     let search_context_find_previous = search_context.clone();
     let show_search_panel_find_previous = show_search_panel.clone();
     let refresh_search_find_previous = refresh_search_state.clone();
+    let searching_preview_find_prev = searching_preview.clone();
+    let preview_search_find_prev = preview_search_step.clone();
     let action_find_previous = gio::SimpleAction::new("find-previous", None);
     action_find_previous.connect_activate(move |_, _| {
         show_search_panel_find_previous();
+        if searching_preview_find_prev.get() {
+            preview_search_find_prev(false, false);
+            return;
+        }
         select_search_match(
             &edit_buffer_find_previous,
             &search_context_find_previous,
@@ -1451,22 +1586,35 @@ fn build_ui(app: &Application, initial_file: Option<gio::File>) {
     window.add_action(&action_find_previous);
 
     let replace_entry_action = replace_entry.clone();
+    let search_entry_replace_action = search_entry.clone();
     let show_search_panel_replace_action = show_search_panel.clone();
     let refresh_search_replace_action = refresh_search_state.clone();
+    let searching_preview_replace = searching_preview.clone();
     let action_replace = gio::SimpleAction::new("replace", None);
     action_replace.connect_activate(move |_, _| {
         show_search_panel_replace_action();
+        // Replace is unavailable in render mode; fall back to plain search.
+        if searching_preview_replace.get() {
+            search_entry_replace_action.grab_focus();
+            return;
+        }
         replace_entry_action.grab_focus();
         refresh_search_replace_action();
     });
     window.add_action(&action_replace);
 
     let replace_entry_replace_all_action = replace_entry.clone();
+    let search_entry_replace_all_action = search_entry.clone();
     let show_search_panel_replace_all_action = show_search_panel.clone();
     let refresh_search_replace_all_action = refresh_search_state.clone();
+    let searching_preview_replace_all = searching_preview.clone();
     let action_replace_all = gio::SimpleAction::new("replace-all", None);
     action_replace_all.connect_activate(move |_, _| {
         show_search_panel_replace_all_action();
+        if searching_preview_replace_all.get() {
+            search_entry_replace_all_action.grab_focus();
+            return;
+        }
         replace_entry_replace_all_action.grab_focus();
         refresh_search_replace_all_action();
     });
