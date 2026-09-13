@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Blink
+GenericName=Markdown Editor
+Comment=Edit Markdown with a live preview
+Exec=blink %U
+Icon=io.github.sachesi.blink
+Terminal=false
+Type=Application
+Categories=GTK;GNOME;Utility;TextEditor;
+Keywords=markdown;md;editor;text;preview;
+StartupNotify=true
+MimeType=text/markdown;

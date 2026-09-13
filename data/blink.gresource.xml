@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/io/github/sachesi/blink">
+    <file>style.css</file>
+    <file preprocess="xml-stripblanks">ui/window.ui</file>
+    <file preprocess="xml-stripblanks">ui/preferences_dialog.ui</file>
+    <file preprocess="xml-stripblanks" alias="shortcuts-dialog.ui">ui/shortcuts_dialog.ui</file>
+    <file preprocess="xml-stripblanks" alias="icons/scalable/apps/io.github.sachesi.blink.svg">icons/hicolor/scalable/apps/io.github.sachesi.blink.svg</file>
+    <file preprocess="xml-stripblanks" alias="icons/symbolic/apps/io.github.sachesi.blink-symbolic.svg">icons/hicolor/symbolic/apps/io.github.sachesi.blink-symbolic.svg</file>
+  </gresource>
+</gresources>

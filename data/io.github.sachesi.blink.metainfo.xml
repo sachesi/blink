@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.sachesi.blink</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Blink</name>
+  <summary>Edit Markdown with a live preview</summary>
+  <description>
+    <p>Blink is a Markdown editor for GNOME, built with GTK 4 and libadwaita. It shows a document as source, as rendered text, or both side by side, and it keeps unsaved work safe: changes are saved to the file as you type, backed up for recovery after a crash, and never written over a change another program made to the file.</p>
+    <ul>
+      <li>Rendered preview with tables, task lists, footnotes, images from the document's folder and syntax-coloured code blocks</li>
+      <li>Find and replace in the source, and find in the rendered text</li>
+      <li>Focus mode, full screen with nothing but the text</li>
+      <li>Export to a standalone HTML file</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.sachesi.blink.desktop</launchable>
+  <url type="homepage">https://github.com/sachesi/blink</url>
+  <url type="bugtracker">https://github.com/sachesi/blink/issues</url>
+  <url type="vcs-browser">https://github.com/sachesi/blink</url>
+  <developer id="io.github.sachesi">
+    <name translate="no">sachesi</name>
+  </developer>
+  <branding>
+    <color type="primary" scheme_preference="light">#57e389</color>
+    <color type="primary" scheme_preference="dark">#26a269</color>
+  </branding>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <provides>
+    <mediatype>text/markdown</mediatype>
+  </provides>
+  <releases>
+    <release version="0.5.0" date="2026-09-13">
+      <description>
+        <p>The window is rebuilt on libadwaita's own widgets. Editing, the preview and the split view are three toggles in the header bar, and the split view can be picked at the size the window first opens with. Keyboard shortcuts have their own dialog, with a search, and Preferences sorts the style apart from the editor settings. Settings are kept in GSettings; those of earlier versions are not carried over.</p>
+        <p>Backups of unsaved work can be recovered after a crash every time: about half of them used to be lost, because their record could not be written. Dismissing the recovery question keeps the backup for next time instead of deleting it. Saving a file reached through a symbolic link writes the file it points to and keeps the link. Bold, italic and link shortcuts no longer change the hidden source while the preview is shown, the preview follows a change of accent colour, and the split view button shows an icon that exists in the Adwaita icon theme.</p>
+      </description>
+    </release>
+    <release version="0.4.0" date="2026-09-08">
+      <description>
+        <p>Preview rendering fixes: images, thematic breaks, list and blockquote indentation, embedded HTML, table links and footnotes.</p>
+      </description>
+    </release>
+    <release version="0.3.0" date="2026-07-07">
+      <description>
+        <p>Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility polish.</p>
+      </description>
+    </release>
+  </releases>
+</component>

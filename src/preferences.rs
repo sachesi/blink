@@ -1,0 +1,86 @@
+//! Preferences, bound straight to the settings: a change applies at once.
+
+use adw::prelude::*;
+use adw::subclass::prelude::*;
+use gtk::glib;
+
+use crate::config;
+
+/// The `color-scheme` nicks, in the order of the style row's list.
+const SCHEMES: [&str; 3] = ["system", "light", "dark"];
+
+mod imp {
+    use super::*;
+
+    #[derive(Default, gtk::CompositeTemplate)]
+    #[template(resource = "/io/github/sachesi/blink/ui/preferences_dialog.ui")]
+    pub struct BlinkPreferencesDialog {
+        #[template_child]
+        pub style_row: TemplateChild<adw::ComboRow>,
+        #[template_child]
+        pub wrap_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub line_numbers_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub tab_width_row: TemplateChild<adw::SpinRow>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for BlinkPreferencesDialog {
+        const NAME: &'static str = "BlinkPreferencesDialog";
+        type Type = super::BlinkPreferencesDialog;
+        type ParentType = adw::PreferencesDialog;
+
+        fn class_init(klass: &mut Self::Class) {
+            klass.bind_template();
+        }
+
+        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
+            obj.init_template();
+        }
+    }
+
+    impl ObjectImpl for BlinkPreferencesDialog {
+        fn constructed(&self) {
+            self.parent_constructed();
+            let settings = config::settings();
+            settings
+                .bind("color-scheme", &*self.style_row, "selected")
+                .mapping(|value, _| {
+                    let nick = value.str()?;
+                    let index = SCHEMES.iter().position(|scheme| *scheme == nick)?;
+                    Some((index as u32).to_value())
+                })
+                .set_mapping(|value, _| {
+                    let index = value.get::<u32>().ok()?;
+                    SCHEMES.get(index as usize).map(|nick| nick.to_variant())
+                })
+                .build();
+            settings
+                .bind("wrap-text", &*self.wrap_row, "active")
+                .build();
+            settings
+                .bind("show-line-numbers", &*self.line_numbers_row, "active")
+                .build();
+            settings
+                .bind("tab-width", &*self.tab_width_row, "value")
+                .build();
+        }
+    }
+
+    impl WidgetImpl for BlinkPreferencesDialog {}
+    impl AdwDialogImpl for BlinkPreferencesDialog {}
+    impl PreferencesDialogImpl for BlinkPreferencesDialog {}
+}
+
+glib::wrapper! {
+    pub struct BlinkPreferencesDialog(ObjectSubclass<imp::BlinkPreferencesDialog>)
+        @extends adw::PreferencesDialog, adw::Dialog, gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::ShortcutManager;
+}
+
+impl BlinkPreferencesDialog {
+    pub fn new() -> Self {
+        glib::Object::new()
+    }
+}

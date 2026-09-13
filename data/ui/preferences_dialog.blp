@@ -1,0 +1,47 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $BlinkPreferencesDialog: Adw.PreferencesDialog {
+  search-enabled: false;
+
+  Adw.PreferencesPage {
+    Adw.PreferencesGroup {
+      title: _("Appearance");
+
+      Adw.ComboRow style_row {
+        title: _("Style");
+
+        model: Gtk.StringList {
+          strings [
+            _("System"),
+            _("Light"),
+            _("Dark"),
+          ]
+        };
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Editor");
+
+      Adw.SwitchRow wrap_row {
+        title: _("Wrap Text");
+      }
+
+      Adw.SwitchRow line_numbers_row {
+        title: _("Line Numbers");
+      }
+
+      Adw.SpinRow tab_width_row {
+        title: _("Tab Width");
+
+        adjustment: Gtk.Adjustment {
+          lower: 1;
+          upper: 16;
+          step-increment: 1;
+          page-increment: 4;
+        };
+      }
+    }
+  }
+}

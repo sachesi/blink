@@ -1,0 +1,119 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ShortcutsDialog shortcuts_dialog {
+  Adw.ShortcutsSection {
+    title: _("Documents");
+
+    Adw.ShortcutsItem {
+      title: _("New Document");
+      accelerator: "<Control>n";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Open");
+      accelerator: "<Control>o";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Save");
+      accelerator: "<Control>s";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Save As");
+      accelerator: "<Control><Shift>s";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("Editing");
+
+    Adw.ShortcutsItem {
+      title: _("Bold");
+      accelerator: "<Control>b";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Italic");
+      accelerator: "<Control>i";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Link");
+      accelerator: "<Control>k";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("Find and Replace");
+
+    Adw.ShortcutsItem {
+      title: _("Find");
+      accelerator: "<Control>f";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Find Next");
+      accelerator: "<Control>g";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Find Previous");
+      accelerator: "<Control><Shift>g";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Replace");
+      accelerator: "<Control>h";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Replace All");
+      accelerator: "<Control><Shift>h";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("View");
+
+    Adw.ShortcutsItem {
+      title: _("Zoom In");
+      accelerator: "<Control>plus <Control>equal";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Zoom Out");
+      accelerator: "<Control>minus";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Reset Zoom");
+      accelerator: "<Control>0";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Focus Mode");
+      accelerator: "F11";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("General");
+
+    Adw.ShortcutsItem {
+      title: _("Preferences");
+      accelerator: "<Control>comma";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Keyboard Shortcuts");
+      accelerator: "<Control>question";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Quit");
+      accelerator: "<Control>q";
+    }
+  }
+}

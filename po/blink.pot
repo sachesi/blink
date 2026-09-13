@@ -1,0 +1,618 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the blink package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: blink 0.5.0\n"
+"Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
+"POT-Creation-Date: 2026-09-13 23:52+0300\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#: data/io.github.sachesi.blink.desktop:2
+#: data/io.github.sachesi.blink.metainfo.xml:6
+msgid "Blink"
+msgstr ""
+
+#: data/io.github.sachesi.blink.desktop:3
+msgid "Markdown Editor"
+msgstr ""
+
+#: data/io.github.sachesi.blink.desktop:4
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:164
+#, no-c-format
+msgid "Edit Markdown with a live preview"
+msgstr ""
+
+#: data/io.github.sachesi.blink.desktop:10
+msgid "markdown;md;editor;text;preview;"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:11
+msgid "Light or dark style"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:12
+msgid "“system” follows the desktop, “light” and “dark” override it."
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:16
+msgid "Wrap long lines in the editor"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:20
+msgid "Show line numbers in the editor"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:25
+msgid "Width of a tab in the editor, in spaces"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:30
+msgid "Text size, in points above or below 11"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:34
+msgid "Font family of the editor"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:35
+msgid "Empty for the system monospace font."
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:39
+msgid "Recently opened files, newest first"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:43
+msgid "Window size"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:47
+msgid "Window maximized"
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:9
+msgid ""
+"Blink is a Markdown editor for GNOME, built with GTK 4 and libadwaita. It "
+"shows a document as source, as rendered text, or both side by side, and it "
+"keeps unsaved work safe: changes are saved to the file as you type, backed "
+"up for recovery after a crash, and never written over a change another "
+"program made to the file."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:11
+msgid ""
+"Rendered preview with tables, task lists, footnotes, images from the "
+"document's folder and syntax-coloured code blocks"
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:12
+msgid "Find and replace in the source, and find in the rendered text"
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:13
+msgid "Focus mode, full screen with nothing but the text"
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:14
+msgid "Export to a standalone HTML file"
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:43
+msgid ""
+"The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
+"the split view are three toggles in the header bar, and the split view can "
+"be picked at the size the window first opens with. Keyboard shortcuts have "
+"their own dialog, with a search, and Preferences sorts the style apart from "
+"the editor settings. Settings are kept in GSettings; those of earlier "
+"versions are not carried over."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:44
+msgid ""
+"Backups of unsaved work can be recovered after a crash every time: about "
+"half of them used to be lost, because their record could not be written. "
+"Dismissing the recovery question keeps the backup for next time instead of "
+"deleting it. Saving a file reached through a symbolic link writes the file "
+"it points to and keeps the link. Bold, italic and link shortcuts no longer "
+"change the hidden source while the preview is shown, the preview follows a "
+"change of accent colour, and the split view button shows an icon that exists "
+"in the Adwaita icon theme."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:49
+msgid ""
+"Preview rendering fixes: images, thematic breaks, list and blockquote "
+"indentation, embedded HTML, table links and footnotes."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:54
+msgid ""
+"Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
+"polish."
+msgstr ""
+
+#. Translators: put your name here, one per line, optionally with an email address.
+#: src/application.rs:169
+#, no-c-format
+msgid "translator-credits"
+msgstr ""
+
+#: src/window.rs:598 src/window/document.rs:326 src/window/document.rs:574
+#: src/window/recovery.rs:120 ui/window.ui:49 ui/window.ui:85
+#, no-c-format
+msgid "Untitled Document"
+msgstr ""
+
+#: src/window/document.rs:161 src/window/document.rs:184
+#, no-c-format
+msgid "Error Opening File"
+msgstr ""
+
+#: src/window/document.rs:162 src/window/document.rs:209
+#, no-c-format
+msgid "Only local files are supported"
+msgstr ""
+
+#: src/window/document.rs:187
+#, no-c-format
+msgid "Could not open the file"
+msgstr ""
+
+#: src/window/document.rs:208 src/window/document.rs:235
+#, no-c-format
+msgid "Error Saving File"
+msgstr ""
+
+#: src/window/document.rs:238
+#, no-c-format
+msgid "Could not save the file"
+msgstr ""
+
+#: src/window/document.rs:261
+#, no-c-format
+msgid "Untitled.md"
+msgstr ""
+
+#: src/window/document.rs:276 src/window/document.rs:343
+#, no-c-format
+msgid "Unsaved Changes"
+msgstr ""
+
+#: src/window/document.rs:278
+#, no-c-format
+msgid "Opening another file will discard unsaved changes."
+msgstr ""
+
+#: src/window/document.rs:281 src/window/document.rs:348
+#, no-c-format
+msgid "Cancel"
+msgstr ""
+
+#: src/window/document.rs:282
+#, no-c-format
+msgid "Discard Changes"
+msgstr ""
+
+#: src/window/document.rs:283 ui/shortcuts_dialog.ui:27
+#, no-c-format
+msgid "Save"
+msgstr ""
+
+#: src/window/document.rs:304
+#, no-c-format
+msgid "HTML Files"
+msgstr ""
+
+#: src/window/document.rs:314
+#, no-c-format
+msgid "Untitled"
+msgstr ""
+
+#: src/window/document.rs:330
+#, no-c-format
+msgid "Error Exporting HTML"
+msgstr ""
+
+#: src/window/document.rs:333
+#, no-c-format
+msgid "Could not export the file"
+msgstr ""
+
+#: src/window/document.rs:345
+#, no-c-format
+msgid "You have unsaved changes. Do you want to close without saving?"
+msgstr ""
+
+#: src/window/document.rs:349
+#, no-c-format
+msgid "Close Without Saving"
+msgstr ""
+
+#: src/window/document.rs:405
+#, no-c-format
+msgid "File changed on disk — autosave paused"
+msgstr ""
+
+#: src/window/document.rs:408
+#, no-c-format
+msgid "File no longer exists"
+msgstr ""
+
+#: src/window/document.rs:413
+#, no-c-format
+msgid "Autosave failed"
+msgstr ""
+
+#: src/window/document.rs:510
+#, no-c-format
+msgid "File was deleted on disk — save to keep your changes"
+msgstr ""
+
+#: src/window/document.rs:522
+#, no-c-format
+msgid "File Changed on Disk"
+msgstr ""
+
+#: src/window/document.rs:524
+#, no-c-format
+msgid ""
+"This file was modified by another program. Reload to discard your changes, "
+"or overwrite to keep them."
+msgstr ""
+
+#: src/window/document.rs:527
+#, no-c-format
+msgid "Save As…"
+msgstr ""
+
+#: src/window/document.rs:528
+#, no-c-format
+msgid "Overwrite"
+msgstr ""
+
+#: src/window/document.rs:529
+#, no-c-format
+msgid "Reload"
+msgstr ""
+
+#: src/window/document.rs:558
+#, no-c-format
+msgid "OK"
+msgstr ""
+
+#: src/window/document.rs:594
+#, no-c-format
+msgid "Markdown Files"
+msgstr ""
+
+#: src/window/document.rs:599
+#, no-c-format
+msgid "All Files"
+msgstr ""
+
+#: src/window/document.rs:612
+#, no-c-format
+msgid "You do not have permission to access this file."
+msgstr ""
+
+#: src/window/document.rs:613
+#, no-c-format
+msgid "The file no longer exists."
+msgstr ""
+
+#: src/window/document.rs:614
+#, no-c-format
+msgid "There is not enough space left on the disk."
+msgstr ""
+
+#: src/window/document.rs:615
+#, no-c-format
+msgid "The location is read-only."
+msgstr ""
+
+#: src/window/preview.rs:196
+#, no-c-format
+msgid "{} word"
+msgid_plural "{} words"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/window/preview.rs:201
+#, no-c-format
+msgid "{} character"
+msgid_plural "{} characters"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/window/recovery.rs:128
+#, no-c-format
+msgid "Backup failed"
+msgstr ""
+
+#: src/window/recovery.rs:188
+#, no-c-format
+msgid "Unsaved changes to \"{}\" were found from a previous session."
+msgstr ""
+
+#: src/window/recovery.rs:191
+#, no-c-format
+msgid "Recover Unsaved Document?"
+msgstr ""
+
+#: src/window/recovery.rs:194
+#, no-c-format
+msgid "Discard"
+msgstr ""
+
+#: src/window/recovery.rs:195
+#, no-c-format
+msgid "Restore"
+msgstr ""
+
+#: src/window/recovery.rs:216
+#, no-c-format
+msgid "Recovery Failed"
+msgstr ""
+
+#: src/window/recovery.rs:219
+#, no-c-format
+msgid "Could not read the recovered document"
+msgstr ""
+
+#: src/window/search.rs:197
+#, no-c-format
+msgid "{} match replaced"
+msgid_plural "{} matches replaced"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/window/search.rs:234 src/window/search.rs:415
+#, no-c-format
+msgid "No matches"
+msgstr ""
+
+#: src/window/search.rs:254 src/window/search.rs:420
+#, no-c-format
+msgid "{} of {} match"
+msgid_plural "{} of {} matches"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/window/search.rs:412
+#, no-c-format
+msgid "Searching…"
+msgstr ""
+
+#: src/window/search.rs:425
+#, no-c-format
+msgid "{} matches"
+msgstr ""
+
+#: ui/preferences_dialog.ui:15
+msgid "Appearance"
+msgstr ""
+
+#: ui/preferences_dialog.ui:18
+msgid "Style"
+msgstr ""
+
+#: ui/preferences_dialog.ui:22
+msgid "System"
+msgstr ""
+
+#: ui/preferences_dialog.ui:23
+msgid "Light"
+msgstr ""
+
+#: ui/preferences_dialog.ui:24
+msgid "Dark"
+msgstr ""
+
+#: ui/preferences_dialog.ui:34
+msgid "Editor"
+msgstr ""
+
+#: ui/preferences_dialog.ui:37
+msgid "Wrap Text"
+msgstr ""
+
+#: ui/preferences_dialog.ui:42
+msgid "Line Numbers"
+msgstr ""
+
+#: ui/preferences_dialog.ui:47
+msgid "Tab Width"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:12
+msgid "Documents"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:15
+msgid "New Document"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:21
+msgid "Open"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:33
+msgid "Save As"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:41
+msgid "Editing"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:44
+msgid "Bold"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:50
+msgid "Italic"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:56
+msgid "Link"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:64
+msgid "Find and Replace"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:67
+msgid "Find"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:73
+msgid "Find Next"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:79
+msgid "Find Previous"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:85 ui/window.ui:187 ui/window.ui:193
+msgid "Replace"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:91 ui/window.ui:200
+msgid "Replace All"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:99
+msgid "View"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:102
+msgid "Zoom In"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:108
+msgid "Zoom Out"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:114
+msgid "Reset Zoom"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:120
+msgid "Focus Mode"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:128
+msgid "General"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:131
+msgid "Preferences"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:137
+msgid "Keyboard Shortcuts"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:143
+msgid "Quit"
+msgstr ""
+
+#: ui/window.ui:12
+msgid "_New Document"
+msgstr ""
+
+#: ui/window.ui:16
+msgid "Open _Recent"
+msgstr ""
+
+#: ui/window.ui:19
+msgid "Save _As…"
+msgstr ""
+
+#: ui/window.ui:23
+msgid "_Export as HTML…"
+msgstr ""
+
+#: ui/window.ui:29
+msgid "_Focus Mode"
+msgstr ""
+
+#: ui/window.ui:35
+msgid "_Preferences"
+msgstr ""
+
+#: ui/window.ui:39
+msgid "_Keyboard Shortcuts"
+msgstr ""
+
+#: ui/window.ui:43
+msgid "_About Blink"
+msgstr ""
+
+#: ui/window.ui:72
+msgid "Open Document"
+msgstr ""
+
+#: ui/window.ui:79
+msgid "Save Document"
+msgstr ""
+
+#: ui/window.ui:91
+msgid "Main Menu"
+msgstr ""
+
+#: ui/window.ui:103
+msgid "Edit Document"
+msgstr ""
+
+#: ui/window.ui:110
+msgid "Preview Document"
+msgstr ""
+
+#: ui/window.ui:117
+msgid "Split View"
+msgstr ""
+
+#: ui/window.ui:143
+msgid "Search"
+msgstr ""
+
+#: ui/window.ui:160
+msgid "Previous Match"
+msgstr ""
+
+#: ui/window.ui:167
+msgid "Next Match"
+msgstr ""
+
+#: ui/window.ui:174
+msgid "Close Search"
+msgstr ""
+
+#: ui/window.ui:194
+msgid "Replace Match"
+msgstr ""
+
+#: ui/window.ui:201
+msgid "Replace All Matches"
+msgstr ""
+
+#: ui/window.ui:211
+msgid ""
+"Changes other programs make to this file will not be noticed until the next "
+"save"
+msgstr ""
+
+#: ui/window.ui:314
+msgid "Drop Markdown file to open"
+msgstr ""

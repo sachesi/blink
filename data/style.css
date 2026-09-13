@@ -1,0 +1,37 @@
+/* Structural styling. Colours come from libadwaita variables; the syntax colours of the
+   editor and the code blocks come from the GtkSourceView style scheme. */
+
+textview.transparent-bg {
+  background: transparent;
+  color: var(--view-fg-color);
+}
+
+/* A GtkSourceView style scheme paints its own surface and body text, which would override
+   the desktop theme with the scheme author's palette. Take only the syntax colours from
+   it: the surface, body text, caret and line numbers come from the theme. */
+textview.editor-view {
+  border-radius: 12px;
+  background-color: var(--view-bg-color);
+  color: var(--view-fg-color);
+  caret-color: var(--view-fg-color);
+}
+textview.editor-view text {
+  background-color: transparent;
+}
+textview.editor-view gutter {
+  background-color: transparent;
+  color: color-mix(in srgb, var(--view-fg-color) 55%, transparent);
+}
+
+.split-preview {
+  border-left: 1px solid alpha(currentColor, 0.06);
+}
+@media (prefers-contrast: more) {
+  .split-preview {
+    border-left-color: var(--border-color);
+  }
+}
+
+.drop-overlay {
+  background: color-mix(in srgb, var(--window-bg-color) 90%, transparent);
+}

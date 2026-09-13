@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="blink">
+  <enum id="io.github.sachesi.blink.ColorScheme">
+    <value nick="system" value="0"/>
+    <value nick="light" value="1"/>
+    <value nick="dark" value="2"/>
+  </enum>
+  <schema id="io.github.sachesi.blink" path="/io/github/sachesi/blink/">
+    <key name="color-scheme" enum="io.github.sachesi.blink.ColorScheme">
+      <default>'system'</default>
+      <summary>Light or dark style</summary>
+      <description>“system” follows the desktop, “light” and “dark” override it.</description>
+    </key>
+    <key name="wrap-text" type="b">
+      <default>true</default>
+      <summary>Wrap long lines in the editor</summary>
+    </key>
+    <key name="show-line-numbers" type="b">
+      <default>true</default>
+      <summary>Show line numbers in the editor</summary>
+    </key>
+    <key name="tab-width" type="u">
+      <range min="1" max="16"/>
+      <default>4</default>
+      <summary>Width of a tab in the editor, in spaces</summary>
+    </key>
+    <key name="zoom" type="i">
+      <range min="-5" max="21"/>
+      <default>0</default>
+      <summary>Text size, in points above or below 11</summary>
+    </key>
+    <key name="editor-font" type="s">
+      <default>''</default>
+      <summary>Font family of the editor</summary>
+      <description>Empty for the system monospace font.</description>
+    </key>
+    <key name="recent-files" type="as">
+      <default>[]</default>
+      <summary>Recently opened files, newest first</summary>
+    </key>
+    <key name="window-size" type="(ii)">
+      <default>(960, 720)</default>
+      <summary>Window size</summary>
+    </key>
+    <key name="window-maximized" type="b">
+      <default>false</default>
+      <summary>Window maximized</summary>
+    </key>
+  </schema>
+</schemalist>
