@@ -57,13 +57,21 @@ textview.editor-view gutter {
   background-color: alpha(currentColor, 0.05);
 }
 
-/* The box of a task list item as wide as a bullet and its space, so that the wrapped lines
-   of the item line up with its text, and sitting on the line as the text does. */
+/* The box of a task list item: as wide as a bullet and its space, so that the wrapped lines
+   of the item line up with its text, about as tall as a capital letter, and centred on the
+   lower-case letters of the line. */
 checkbutton.task-check {
   padding: 0;
-  margin: 0 4px -3px 0;
+  margin: 0 6px -2px 0;
 }
 checkbutton.task-check check {
+  min-width: 14px;
+  min-height: 14px;
   margin: 0;
-  padding: 1px;
+  padding: 0;
+  border-radius: 4px;
+  -gtk-icon-size: 12px;
+}
+checkbutton.task-check check:not(:checked) {
+  box-shadow: inset 0 0 0 1.5px alpha(currentColor, 0.4);
 }
