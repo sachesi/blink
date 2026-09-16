@@ -1140,6 +1140,9 @@ pub fn render_markdown(
                             .child(&grid)
                             .build();
                         scroll.add_css_class("card");
+                        // Clipped to the card's rounded corners, which the header's tint
+                        // would otherwise square off.
+                        scroll.set_overflow(gtk::Overflow::Hidden);
                         bind_width_to_page(&scroll, hadj, indent);
 
                         let num_cols = table_rows.first().map_or(1, |r| r.len());
