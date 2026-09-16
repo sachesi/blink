@@ -271,6 +271,14 @@ impl BlinkWindow {
         imp.preview.links.replace(result.links);
         imp.preview.surfaces.replace(result.surfaces);
         self.watch_surface_selections(&result.added);
+        for surface in &result.added {
+            if let markdown::Surface::Code { view, .. } = surface {
+                self.settings()
+                    .bind("tab-width", view, "tab-width")
+                    .get_only()
+                    .build();
+            }
+        }
         // Match positions do not survive the rebuilt content.
         self.reset_preview_match();
         imp.preview.dirty.set(false);

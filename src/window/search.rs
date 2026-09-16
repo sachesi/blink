@@ -286,6 +286,7 @@ impl BlinkWindow {
                 markdown::Surface::Code {
                     anchor_offset,
                     buffer,
+                    ..
                 } => (*anchor_offset, super::buffer_text(buffer)),
                 markdown::Surface::Cell {
                     anchor_offset,
@@ -334,6 +335,7 @@ impl BlinkWindow {
                 let Some(markdown::Surface::Code {
                     anchor_offset,
                     buffer,
+                    ..
                 }) = surfaces.get(surface)
                 else {
                     return;

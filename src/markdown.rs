@@ -235,6 +235,7 @@ pub enum Surface {
     Code {
         anchor_offset: i32,
         buffer: sourceview5::Buffer,
+        view: sourceview5::View,
     },
     Cell {
         anchor_offset: i32,
@@ -249,9 +250,11 @@ impl Surface {
             Self::Code {
                 anchor_offset,
                 buffer,
+                view,
             } => Self::Code {
                 anchor_offset: anchor_offset + by,
                 buffer: buffer.clone(),
+                view: view.clone(),
             },
             Self::Cell {
                 anchor_offset,
@@ -508,7 +511,7 @@ fn code_block_widget(
     info: &str,
     indent: i32,
     hadj: &gtk::Adjustment,
-) -> (gtk::Overlay, sourceview5::Buffer) {
+) -> (gtk::Overlay, sourceview5::View, sourceview5::Buffer) {
     let src_buffer = sourceview5::Buffer::new(None);
     src_buffer.set_highlight_syntax(true);
     src_buffer.set_highlight_matching_brackets(false);
@@ -576,7 +579,7 @@ fn code_block_widget(
     overlay.add_css_class("code-block");
     overlay.add_overlay(&copy_box);
     bind_width_to_page(&overlay, hadj, indent);
-    (overlay, src_buffer)
+    (overlay, src_view, src_buffer)
 }
 
 /// A muted foreground that stays readable in either appearance. Text tags
@@ -875,7 +878,7 @@ pub fn render_markdown(
                         in_code_block = false;
                         let indent = block_indent(&list_stack, blockquote_depth);
                         let clean_code = current_code.trim_end_matches('\n');
-                        let (scroll, code_buffer) =
+                        let (scroll, code_view, code_buffer) =
                             code_block_widget(clean_code, &current_code_lang, indent, hadj);
 
                         start_line(&buffer, &mut iter);
@@ -886,6 +889,7 @@ pub fn render_markdown(
                         surfaces.push(Surface::Code {
                             anchor_offset,
                             buffer: code_buffer,
+                            view: code_view,
                         });
                         end_widget_block(&buffer, &mut iter, !list_stack.is_empty());
                     }
