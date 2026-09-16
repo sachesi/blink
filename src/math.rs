@@ -298,24 +298,32 @@ fn kern_missing_characters(latex: &str) -> String {
     let kern = |character: char| {
         KERNS.with_borrow_mut(|kerns| {
             *kerns.entry(character).or_insert_with(|| {
-                if glyph(
-                    0.0,
-                    0.0,
-                    1.0,
-                    FontId::MainRegular.as_str(),
-                    u32::from(character),
-                )
-                .is_some()
-                {
+                // Laid out alone in math, or in text if math does not take it, as a symbol
+                // one of KaTeX's other fonts draws is laid out in math.
+                let options = ratex_layout::LayoutOptions::default();
+                let text = format!("\\text{{{character}}}");
+                let nodes = ratex_parser::parse(character.encode_utf8(&mut [0; 4]))
+                    .or_else(|_| ratex_parser::parse(&text))
+                    .ok()?;
+                let alone = ratex_layout::layout(&nodes, &options);
+                let drawn =
+                    ratex_layout::to_display_list(&alone)
+                        .items
+                        .iter()
+                        .all(|item| match item {
+                            DisplayItem::GlyphPath {
+                                font, char_code, ..
+                            } => glyph(0.0, 0.0, 1.0, font, *char_code).is_some(),
+                            _ => true,
+                        });
+                if drawn {
                     return None;
                 }
                 let (layout, _) = system_layout(character, "Serif", false, false)?;
                 let natural = f64::from(layout.extents().1.width())
                     / f64::from(pango::SCALE)
                     / SYSTEM_GLYPH_SIZE;
-                let text = format!("\\text{{{character}}}");
                 let nodes = ratex_parser::parse(&text).ok()?;
-                let options = ratex_layout::LayoutOptions::default();
                 let guessed = ratex_layout::layout(&nodes, &options).width;
                 Some(natural - guessed).filter(|kern| kern.abs() > 0.005)
             })
@@ -556,7 +564,7 @@ fn escape_attribute(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{number, typeset};
+    use super::{kern_missing_characters, number, typeset};
 
     #[test]
     fn formulas_are_typeset_or_left_as_their_source() {
@@ -573,6 +581,9 @@ mod tests {
         assert!(cyrillic.shapes.iter().all(|shape| !shape.path.is_empty()));
         // A capital letter reaches above the height KaTeX gives a letter it does not know.
         assert!(cyrillic.ascent > latin.ascent - 0.05);
+        // A symbol one of KaTeX's fonts has is laid out without a kern.
+        assert_eq!(kern_missing_characters("x ∈ ℕ, é"), "x ∈ ℕ, é");
+        assert!(kern_missing_characters("П").starts_with("П\\kern{"));
     }
 
     #[test]
