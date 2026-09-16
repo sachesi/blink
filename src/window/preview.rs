@@ -207,10 +207,18 @@ impl BlinkWindow {
         imp.status_label.set_label(&status);
 
         if self.preview_visible() {
-            // Rendering replaces the whole buffer; keep the reader where they were.
+            // Rendering replaces the whole buffer, so the preview is briefly much shorter
+            // and its position is clamped. The editor must not follow that, and the preview
+            // goes back to where the reader was, or in the split view to the editor's place.
             let vadj = imp.preview_scroll.vadjustment();
-            let ratio = adjustment_ratio(&vadj);
+            let ratio = if imp.view_mode.get() == ViewMode::Split {
+                adjustment_ratio(&imp.edit_scroll.vadjustment())
+            } else {
+                adjustment_ratio(&vadj)
+            };
+            imp.preview.syncing.set(true);
             self.render_preview();
+            // The rebuilt preview is laid out before idle callbacks run.
             glib::idle_add_local_once(glib::clone!(
                 #[weak(rename_to = win)]
                 self,
@@ -224,6 +232,10 @@ impl BlinkWindow {
     pub(super) fn apply_view_mode(&self) {
         let imp = self.imp();
         let mode = imp.view_mode.get();
+        if mode == ViewMode::Split {
+            // Cleared by the scroll below, once a render here has been laid out.
+            imp.preview.syncing.set(true);
+        }
         if mode != ViewMode::Edit {
             self.flush_preview();
         }
