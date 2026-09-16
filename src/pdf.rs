@@ -38,6 +38,8 @@ const CODE_PADDING: f64 = 10.0;
 const CELL_PADDING_X: f64 = 9.0;
 const CELL_PADDING_Y: f64 = 7.5;
 const CORNER_RADIUS: f64 = 6.0;
+/// Characters after which the text of a table cell wraps, as in the preview.
+const CELL_WRAP_CHARS: f64 = 40.0;
 /// Pixels are shown at 96 per inch, as on screen.
 const POINTS_PER_PIXEL: f64 = 0.75;
 /// Images are decoded at up to 192 pixels per inch, for print.
@@ -951,20 +953,46 @@ impl<'a> Typesetter<'a> {
             layout
         };
 
-        // Columns as wide as their widest cell, the table as wide as the column. When that
-        // does not fit, narrow columns keep their width and wide ones share the rest.
-        let natural: Vec<f64> = (0..columns)
+        // Each column is at least as wide as its longest word, and would like to be as wide
+        // as its widest cell, a cell wrapping, as in the preview, after about forty
+        // characters.
+        let scale = f64::from(pango::SCALE);
+        let wrap_width = {
+            let layout = cell_layout(0, 0);
+            let metrics = layout
+                .context()
+                .metrics(layout.font_description().as_ref(), None);
+            f64::from(metrics.approximate_char_width()) / scale * CELL_WRAP_CHARS
+        };
+        let (minimum, natural): (Vec<f64>, Vec<f64>) = (0..columns)
             .map(|column| {
                 (0..rows.len())
                     .map(|row| {
-                        let (_, logical) = cell_layout(row, column).extents();
-                        f64::from(logical.width()) / f64::from(pango::SCALE)
+                        let layout = cell_layout(row, column);
+                        let natural = f64::from(layout.extents().1.width()) / scale;
+                        layout.set_wrap(pango::WrapMode::Word);
+                        layout.set_width(1);
+                        let minimum = f64::from(layout.extents().1.width()) / scale;
+                        (minimum, natural.min(wrap_width).max(minimum))
                     })
-                    .fold(0.0, f64::max)
-                    + 2.0 * CELL_PADDING_X
+                    .fold(
+                        (0.0, 0.0),
+                        |(minimum, natural), (cell_minimum, cell_natural)| {
+                            (
+                                f64::max(minimum, cell_minimum),
+                                f64::max(natural, cell_natural),
+                            )
+                        },
+                    )
             })
-            .collect();
-        let widths = column_widths(&natural, available);
+            .map(|(minimum, natural)| {
+                (
+                    minimum + 2.0 * CELL_PADDING_X,
+                    natural + 2.0 * CELL_PADDING_X,
+                )
+            })
+            .unzip();
+        let widths = column_widths(&minimum, &natural, available);
 
         let x = MARGIN + indent;
         let layouts: Vec<Vec<pango::Layout>> = (0..rows.len())
@@ -1182,28 +1210,31 @@ fn no_hyphens() -> pango::AttrList {
     list
 }
 
-/// Widths of columns whose widest cells are `natural` points wide, to fill `available`.
-fn column_widths(natural: &[f64], available: f64) -> Vec<f64> {
-    let total: f64 = natural.iter().sum();
-    if total <= available {
+/// Widths of columns that need at least `minimum` points and would like `natural`, to fill
+/// `available`. Past their minimums, columns share the width in proportion to how much
+/// more they would like, and fill what is left over the same way.
+fn column_widths(minimum: &[f64], natural: &[f64], available: f64) -> Vec<f64> {
+    let total_natural: f64 = natural.iter().sum();
+    if total_natural <= available {
         return natural
             .iter()
-            .map(|width| width + (available - total) * width / total.max(1.0))
+            .map(|width| width + (available - total_natural) * width / total_natural.max(1.0))
             .collect();
     }
-    // Columns narrower than an even share keep their width; the others share what is left
-    // in proportion to their widths.
-    let share = available / natural.len() as f64;
-    let narrow: f64 = natural.iter().filter(|width| **width <= share).sum();
-    let wide: f64 = natural.iter().filter(|width| **width > share).sum();
-    natural
+    let total_minimum: f64 = minimum.iter().sum();
+    if total_minimum >= available {
+        // Not even the longest words fit: words break, in proportion.
+        return minimum
+            .iter()
+            .map(|width| available * width / total_minimum.max(1.0))
+            .collect();
+    }
+    let wanted = total_natural - total_minimum;
+    minimum
         .iter()
-        .map(|width| {
-            if *width <= share {
-                *width
-            } else {
-                (available - narrow) * width / wide
-            }
+        .zip(natural)
+        .map(|(minimum, natural)| {
+            minimum + (available - total_minimum) * (natural - minimum) / wanted.max(1.0)
         })
         .collect()
 }
@@ -1308,10 +1339,19 @@ mod tests {
 
     #[test]
     fn columns_fill_the_width_or_share_it() {
-        assert_eq!(column_widths(&[10.0, 30.0], 80.0), [20.0, 60.0]);
-        let widths = column_widths(&[20.0, 300.0, 100.0], 200.0);
+        assert_eq!(
+            column_widths(&[5.0, 5.0], &[10.0, 30.0], 80.0),
+            [20.0, 60.0]
+        );
+        // A column that wants little keeps its longest word whole while a long one wraps.
+        let widths = column_widths(&[20.0, 60.0, 40.0], &[20.0, 300.0, 100.0], 200.0);
         assert_eq!(widths[0], 20.0);
+        assert!(widths[1] > 60.0 && widths[2] > 40.0);
         assert!((widths.iter().sum::<f64>() - 200.0).abs() < 1e-9);
+        assert_eq!(
+            column_widths(&[100.0, 300.0], &[200.0, 400.0], 200.0),
+            [50.0, 150.0]
+        );
     }
 
     #[test]
