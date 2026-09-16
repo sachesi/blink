@@ -7,7 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 /// The width images are decoded at, at most: the widest reading column at a display scale
 /// of 2. A photo decoded at its full size holds tens of megabytes to show a few hundred
@@ -558,15 +558,22 @@ pub fn shown_code(code: &str) -> &str {
     code.trim_end_matches('\n')
 }
 
+/// How long colouring code for an export holds the main loop before it lets the window
+/// handle input and redraw.
+const HIGHLIGHT_SLICE: Duration = Duration::from_millis(8);
+
 /// The syntax colours of every code block of `text`, in order, as the preview gives them in
 /// the light or the dark style. The runs are ranges of the code as [`shown_code`] gives it.
-pub fn code_highlights(text: &str, dark: bool) -> Vec<Vec<CodeRun>> {
+///
+/// GtkSourceView objects belong to the main thread, so the colouring runs there, a slice
+/// at a time: a document with hundreds of code blocks takes a good part of a second.
+pub async fn code_highlights(text: &str, dark: bool) -> Vec<Vec<CodeRun>> {
     let scheme = sourceview5::StyleSchemeManager::default().scheme(if dark {
         "Adwaita-dark"
     } else {
         "Adwaita"
     });
-    let mut highlights = Vec::new();
+    let mut blocks = Vec::new();
     let mut block: Option<(String, String)> = None;
     for event in Parser::new_ext(text, parser_options()) {
         match event {
@@ -582,25 +589,33 @@ pub fn code_highlights(text: &str, dark: bool) -> Vec<Vec<CodeRun>> {
                     code.push_str(&text);
                 }
             }
-            Event::End(TagEnd::CodeBlock) => {
-                if let Some((info, code)) = block.take() {
-                    highlights.push(highlight(shown_code(&code), &info, scheme.as_ref()));
-                }
-            }
+            Event::End(TagEnd::CodeBlock) => blocks.extend(block.take()),
             _ => {}
+        }
+    }
+
+    let buffer = sourceview5::Buffer::new(None);
+    buffer.set_style_scheme(scheme.as_ref());
+    let mut highlights = Vec::with_capacity(blocks.len());
+    let mut slice = Instant::now();
+    for (info, code) in blocks {
+        highlights.push(highlight(&buffer, shown_code(&code), &info));
+        if slice.elapsed() >= HIGHLIGHT_SLICE {
+            // Below the priority of redrawing, so the window is drawn before this goes on.
+            glib::timeout_future_with_priority(glib::Priority::DEFAULT_IDLE, Duration::ZERO).await;
+            slice = Instant::now();
         }
     }
     highlights
 }
 
-/// The runs of `code` that GtkSourceView colours for the language `info` names.
-fn highlight(code: &str, info: &str, scheme: Option<&sourceview5::StyleScheme>) -> Vec<CodeRun> {
+/// The runs of `code` that GtkSourceView colours for the language `info` names, coloured
+/// in `buffer`.
+fn highlight(buffer: &sourceview5::Buffer, code: &str, info: &str) -> Vec<CodeRun> {
     let Some(language) = resolve_language(info) else {
         return Vec::new();
     };
-    let buffer = sourceview5::Buffer::new(None);
     buffer.set_language(Some(&language));
-    buffer.set_style_scheme(scheme);
     buffer.set_text(code);
     let (start, end) = buffer.bounds();
     buffer.ensure_highlight(&start, &end);

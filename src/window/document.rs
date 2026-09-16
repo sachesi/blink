@@ -142,7 +142,7 @@ impl BlinkWindow {
             return;
         }
         let imp = self.imp();
-        self.clear_backup();
+        self.clear_backup().await;
         {
             let mut document = imp.document.borrow_mut();
             if let Some(monitor) = document.monitor.take() {
@@ -168,18 +168,25 @@ impl BlinkWindow {
             return;
         };
         let read_path = path.clone();
-        match blocking(move || std::fs::read_to_string(read_path)).await {
-            Ok(text) => {
+        // The fingerprint is taken right after the read, so a change made in between is
+        // not taken for the text that was read.
+        let read = blocking(move || {
+            std::fs::read_to_string(&read_path)
+                .map(|text| (text, FileFingerprint::read_from_path(&read_path).ok()))
+        })
+        .await;
+        match read {
+            Ok((text, fingerprint)) => {
                 let imp = self.imp();
                 imp.edit_buffer.set_text(&text);
                 imp.edit_buffer.set_modified(false);
                 {
                     let mut document = imp.document.borrow_mut();
-                    document.fingerprint = FileFingerprint::read_from_path(&path).ok();
+                    document.fingerprint = fingerprint;
                     document.file = Some(file);
                 }
                 self.update_title();
-                self.adopt_file(&path);
+                self.adopt_file(&path).await;
                 self.add_recent(&path);
                 imp.preview.dirty.set(true);
                 self.set_view_mode(ViewMode::Preview);
@@ -198,7 +205,7 @@ impl BlinkWindow {
     async fn save(&self) {
         if self.current_file().is_none() {
             self.save_as().await;
-        } else if self.current_file_changed_on_disk() {
+        } else if self.current_file_changed_on_disk().await {
             // A manual save must not silently overwrite another program's change either.
             self.resolve_disk_conflict().await;
         } else {
@@ -217,8 +224,13 @@ impl BlinkWindow {
         let imp = self.imp();
         let text = buffer_text(&*imp.edit_buffer);
         let (write_path, write_text) = (path.clone(), text.clone());
-        match blocking(move || conflict::write_text_atomically(&write_path, &write_text)).await {
-            Ok(()) => {
+        let written = blocking(move || {
+            conflict::write_text_atomically(&write_path, &write_text)
+                .map(|()| FileFingerprint::read_from_path(&write_path).ok())
+        })
+        .await;
+        match written {
+            Ok(fingerprint) => {
                 // Typing goes on while the write runs; the document is only saved if what
                 // reached the disk is still what it holds.
                 if buffer_text(&*imp.edit_buffer) == text {
@@ -226,11 +238,11 @@ impl BlinkWindow {
                 }
                 {
                     let mut document = imp.document.borrow_mut();
-                    document.fingerprint = FileFingerprint::read_from_path(&path).ok();
+                    document.fingerprint = fingerprint;
                     document.file = Some(file);
                 }
                 self.update_title();
-                self.adopt_file(&path);
+                self.adopt_file(&path).await;
                 self.add_recent(&path);
                 true
             }
@@ -335,8 +347,8 @@ impl BlinkWindow {
         };
         let text = buffer_text(&*self.imp().edit_buffer);
         let options = export::Options {
-            dark: markdown::code_highlights(&text, true),
-            ..self.export_options(&text)
+            dark: markdown::code_highlights(&text, true).await,
+            ..self.export_options(&text).await
         };
         let written = blocking(move || {
             conflict::write_text_atomically(&path, export::render_html(&text, &options))
@@ -362,7 +374,7 @@ impl BlinkWindow {
             return;
         };
         let text = buffer_text(&*self.imp().edit_buffer);
-        let options = self.export_options(&text);
+        let options = self.export_options(&text).await;
         let written = blocking(move || {
             let pdf = pdf::render_pdf(&text, &options).map_err(std::io::Error::other)?;
             conflict::write_text_atomically(&path, pdf)
@@ -382,7 +394,7 @@ impl BlinkWindow {
 
     /// What an export of `text` takes from the window: the title, the folder of images, the
     /// fonts, the width and the colours of the code in the light style.
-    fn export_options(&self, text: &str) -> export::Options {
+    async fn export_options(&self, text: &str) -> export::Options {
         let (text_font, monospace_font) = self.font_families();
         export::Options {
             title: self
@@ -396,7 +408,7 @@ impl BlinkWindow {
             text_font,
             monospace_font,
             width: self.content_width(),
-            light: markdown::code_highlights(text, false),
+            light: markdown::code_highlights(text, false).await,
             dark: Vec::new(),
         }
     }
@@ -417,14 +429,14 @@ impl BlinkWindow {
                 return;
             }
         }
-        self.cleanup_on_exit();
+        self.cleanup_on_exit().await;
         self.imp().closing.set(true);
         self.close();
     }
 
-    fn cleanup_on_exit(&self) {
-        self.clear_backup();
-        self.release_lock();
+    async fn cleanup_on_exit(&self) {
+        self.clear_backup().await;
+        self.release_lock().await;
         // The default size is the size the window has when it is not maximized, which is
         // the one to open with next time.
         let (width, height) = self.default_size();
@@ -447,14 +459,20 @@ impl BlinkWindow {
         let text = buffer_text(&*imp.edit_buffer);
         let fingerprint = imp.document.borrow().fingerprint;
         let (write_path, write_text) = (path.clone(), text.clone());
-        let outcome = blocking(move || match fingerprint {
-            Some(fingerprint) => {
-                conflict::autosave_with_conflict_check(&write_path, &write_text, &fingerprint)
-            }
-            None => match conflict::write_text_atomically(&write_path, &write_text) {
-                Ok(()) => AutosaveOutcome::Saved,
-                Err(err) => AutosaveOutcome::Failed(err),
-            },
+        let (outcome, written_fingerprint) = blocking(move || {
+            let outcome = match fingerprint {
+                Some(fingerprint) => {
+                    conflict::autosave_with_conflict_check(&write_path, &write_text, &fingerprint)
+                }
+                None => match conflict::write_text_atomically(&write_path, &write_text) {
+                    Ok(()) => AutosaveOutcome::Saved,
+                    Err(err) => AutosaveOutcome::Failed(err),
+                },
+            };
+            let written_fingerprint = matches!(outcome, AutosaveOutcome::Saved)
+                .then(|| FileFingerprint::read_from_path(&write_path).ok())
+                .flatten();
+            (outcome, written_fingerprint)
         })
         .await;
         match outcome {
@@ -462,8 +480,8 @@ impl BlinkWindow {
                 if buffer_text(&*imp.edit_buffer) == text {
                     imp.edit_buffer.set_modified(false);
                 }
-                imp.document.borrow_mut().fingerprint = FileFingerprint::read_from_path(&path).ok();
-                self.clear_backup();
+                imp.document.borrow_mut().fingerprint = written_fingerprint;
+                self.clear_backup().await;
             }
             AutosaveOutcome::ConflictDetected => {
                 self.toast(&gettext("File changed on disk — autosave paused"));
@@ -488,8 +506,8 @@ impl BlinkWindow {
     }
 
     /// Make a freshly opened or saved file the document's own: its backup, its monitor.
-    fn adopt_file(&self, path: &Path) {
-        self.use_backup_for(path);
+    async fn adopt_file(&self, path: &Path) {
+        self.use_backup_for(path).await;
         self.imp().document.borrow_mut().in_conflict = false;
         self.watch_file(path);
     }
@@ -530,11 +548,11 @@ impl BlinkWindow {
     }
 
     /// Whether another program changed the file since it was last read or written.
-    fn current_file_changed_on_disk(&self) -> bool {
+    async fn current_file_changed_on_disk(&self) -> bool {
         let Some(path) = self.current_path() else {
             return false;
         };
-        let Ok(current) = FileFingerprint::read_from_path(&path) else {
+        let Ok(current) = blocking(move || FileFingerprint::read_from_path(&path)).await else {
             return false;
         };
         self.imp()
@@ -545,7 +563,7 @@ impl BlinkWindow {
     }
 
     async fn handle_disk_changed(&self) {
-        if self.imp().document.borrow().in_conflict || !self.current_file_changed_on_disk() {
+        if self.imp().document.borrow().in_conflict || !self.current_file_changed_on_disk().await {
             return;
         }
         self.resolve_disk_conflict().await;
@@ -555,7 +573,8 @@ impl BlinkWindow {
     /// renaming a new file over it), that is a change. Otherwise the document becomes
     /// untitled, so nothing is lost and the next save asks where to.
     async fn handle_disk_deleted(&self) {
-        if self.current_path().is_some_and(|path| path.exists()) {
+        let path = self.current_path();
+        if blocking(move || path.is_some_and(|path| path.exists())).await {
             self.handle_disk_changed().await;
             return;
         }

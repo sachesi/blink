@@ -132,11 +132,14 @@ impl BlinkWindow {
     }
 
     /// Remove the current document's backup; its changes were saved or discarded.
-    pub(super) fn clear_backup(&self) {
+    pub(super) async fn clear_backup(&self) {
         self.cancel_backup_timer();
-        let mut state = self.imp().recovery.borrow_mut();
-        backup::delete_backup(&state.backups_dir, &state.backup_id);
-        state.last_hash = None;
+        let (backups_dir, backup_id) = {
+            let mut state = self.imp().recovery.borrow_mut();
+            state.last_hash = None;
+            (state.backups_dir.clone(), state.backup_id.clone())
+        };
+        blocking(move || backup::delete_backup(&backups_dir, &backup_id)).await;
     }
 
     pub(super) fn use_untitled_backup(&self) {
@@ -148,17 +151,27 @@ impl BlinkWindow {
     /// Switch to the backup of a file that was just opened or saved. A backup already there
     /// for that file is left over from a crash, and the user has just chosen the file's
     /// contents over it.
-    pub(super) fn use_backup_for(&self, path: &Path) {
-        self.clear_backup();
+    pub(super) async fn use_backup_for(&self, path: &Path) {
+        self.clear_backup().await;
+        let backups_dir = self.imp().recovery.borrow().backups_dir.clone();
+        let path = path.to_path_buf();
+        let backup_id = blocking(move || {
+            let backup_id = backup::backup_id_for_path(&path);
+            backup::delete_backup(&backups_dir, &backup_id);
+            backup_id
+        })
+        .await;
         let mut state = self.imp().recovery.borrow_mut();
-        state.backup_id = backup::backup_id_for_path(path);
-        backup::delete_backup(&state.backups_dir, &state.backup_id);
+        state.backup_id = backup_id;
         state.last_hash = None;
     }
 
-    pub(super) fn release_lock(&self) {
-        let state = self.imp().recovery.borrow();
-        backup::remove_lock(&state.locks_dir, state.pid);
+    pub(super) async fn release_lock(&self) {
+        let (locks_dir, pid) = {
+            let state = self.imp().recovery.borrow();
+            (state.locks_dir.clone(), state.pid)
+        };
+        blocking(move || backup::remove_lock(&locks_dir, pid)).await;
     }
 
     pub(super) async fn check_recovery(&self) {
@@ -170,17 +183,22 @@ impl BlinkWindow {
                 state.pid,
             )
         };
-        let Ok(records) = blocking(move || backup::list_records(&backups_dir)).await else {
-            return;
-        };
-        for record in records {
-            let lock_present = backup::lock_present(&locks_dir, record.owner_pid);
-            let alive = backup::is_pid_alive(record.owner_pid);
-            if backup::classify(record.owner_pid, pid, lock_present, alive)
-                == backup::OrphanClass::Orphan
-            {
-                self.offer_recovery(record).await;
-            }
+        let orphans = blocking(move || {
+            backup::list_records(&backups_dir).map(|records| {
+                records
+                    .into_iter()
+                    .filter(|record| {
+                        let lock_present = backup::lock_present(&locks_dir, record.owner_pid);
+                        let alive = backup::is_pid_alive(record.owner_pid);
+                        backup::classify(record.owner_pid, pid, lock_present, alive)
+                            == backup::OrphanClass::Orphan
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .await;
+        for record in orphans.unwrap_or_default() {
+            self.offer_recovery(record).await;
         }
     }
 
@@ -200,17 +218,36 @@ impl BlinkWindow {
         alert.set_close_response("keep");
         let backups_dir = self.imp().recovery.borrow().backups_dir.clone();
         match alert.choose_future(Some(self)).await.as_str() {
-            "restore" => self.restore_backup(record),
-            "discard" => backup::delete_backup(&backups_dir, &record.backup_id),
+            "restore" => self.restore_backup(record).await,
+            "discard" => {
+                blocking(move || backup::delete_backup(&backups_dir, &record.backup_id)).await;
+            }
             _ => {}
         }
     }
 
-    fn restore_backup(&self, record: BackupRecord) {
+    async fn restore_backup(&self, record: BackupRecord) {
         let imp = self.imp();
         let backups_dir = imp.recovery.borrow().backups_dir.clone();
-        let content = match backup::read_content(&backups_dir, &record.backup_id) {
-            Ok(content) => content,
+        // The backup, and the file it was of as it is now, if it is still there.
+        let (read_dir, backup_id, original_path) = (
+            backups_dir.clone(),
+            record.backup_id.clone(),
+            record.original_path.clone(),
+        );
+        let read = blocking(move || {
+            backup::read_content(&read_dir, &backup_id).map(|content| {
+                let original = original_path.filter(|path| path.exists()).map(|path| {
+                    let fingerprint = FileFingerprint::read_from_path(&path).ok();
+                    let backup_id = backup::backup_id_for_path(&path);
+                    (path, fingerprint, backup_id)
+                });
+                (content, original)
+            })
+        })
+        .await;
+        let (content, original) = match read {
+            Ok(read) => read,
             Err(err) => {
                 self.present_error(
                     gettext("Recovery Failed"),
@@ -226,15 +263,15 @@ impl BlinkWindow {
         imp.edit_buffer.set_text(&content);
         imp.edit_buffer.set_modified(true);
 
-        match record.original_path.as_ref().filter(|path| path.exists()) {
-            Some(path) => {
+        match original {
+            Some((path, fingerprint, backup_id)) => {
                 {
                     let mut document = imp.document.borrow_mut();
-                    document.fingerprint = FileFingerprint::read_from_path(path).ok();
-                    document.file = Some(gio::File::for_path(path));
+                    document.fingerprint = fingerprint;
+                    document.file = Some(gio::File::for_path(&path));
                 }
-                imp.recovery.borrow_mut().backup_id = backup::backup_id_for_path(path);
-                self.watch_file(path);
+                imp.recovery.borrow_mut().backup_id = backup_id;
+                self.watch_file(&path);
             }
             None => {
                 {
@@ -247,7 +284,7 @@ impl BlinkWindow {
         }
         self.update_title();
         // The recovered text belongs to this session's backup now.
-        backup::delete_backup(&backups_dir, &record.backup_id);
+        blocking(move || backup::delete_backup(&backups_dir, &record.backup_id)).await;
         imp.recovery.borrow_mut().last_hash = None;
 
         // Recovered work is unsaved: show it in the editor.
