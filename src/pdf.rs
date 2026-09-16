@@ -1720,8 +1720,12 @@ fn cell_padding(size: f64) -> f64 {
 }
 
 /// The width of the widest word of the text of `layout`, which is not wrapped, in points.
-/// Words are what lies between spaces, where lines of a table cell mostly break.
+/// Words are what lies between spaces, where lines of a table cell mostly break, and each
+/// ideograph or kana is a word of its own, as lines of Chinese and Japanese break between
+/// any two of them.
 fn longest_word(layout: &pango::Layout) -> f64 {
+    use gtk::glib::{Unichar, UnicodeBreakType};
+
     let text = layout.text();
     // The left and the right edge of the character at `index`.
     let edges = |index: usize| {
@@ -1730,20 +1734,28 @@ fn longest_word(layout: &pango::Layout) -> f64 {
         let (x, width) = (f64::from(position.x()), f64::from(position.width()));
         ((x + width.min(0.0)) / scale, (x + width.max(0.0)) / scale)
     };
+    let width = |(first, last): (usize, usize)| {
+        let ((first_left, first_right), (last_left, last_right)) = (edges(first), edges(last));
+        last_right.max(first_right) - first_left.min(last_left)
+    };
     let mut widest = 0.0_f64;
     // The first and the last character of the word read so far.
     let mut word: Option<(usize, usize)> = None;
     for (index, c) in text.char_indices().chain([(text.len(), ' ')]) {
-        match (c.is_whitespace(), word) {
-            (false, None) => word = Some((index, index)),
-            (false, Some((first, _))) => word = Some((first, index)),
-            (true, Some((first, last))) => {
-                let ((first_left, first_right), (last_left, last_right)) =
-                    (edges(first), edges(last));
-                widest = widest.max(last_right.max(first_right) - first_left.min(last_left));
-                word = None;
+        let break_type = c.break_type();
+        let alone = matches!(
+            break_type,
+            UnicodeBreakType::Ideographic | UnicodeBreakType::ConditionalJapaneseStarter
+        );
+        if c.is_whitespace() || break_type == UnicodeBreakType::ZeroWidthSpace || alone {
+            if let Some(read) = word.take() {
+                widest = widest.max(width(read));
             }
-            (true, None) => {}
+            if alone {
+                widest = widest.max(width((index, index)));
+            }
+        } else {
+            word = Some((word.map_or(index, |(first, _)| first), index));
         }
     }
     widest
@@ -2027,6 +2039,21 @@ mod tests {
             column_widths(&[100.0, 300.0], &[200.0, 400.0], 200.0),
             [50.0, 150.0]
         );
+    }
+
+    #[test]
+    fn ideographs_are_words_of_their_own() {
+        let options = options();
+        let setter = Typesetter::new(&options).expect("a typesetter");
+        let layout = setter.layout("Sans", BODY_SIZE);
+        layout.set_text("日本語のテキスト");
+        let sentence = f64::from(layout.extents().1.width()) / f64::from(pango::SCALE);
+        assert!(longest_word(&layout) < sentence / 4.0);
+        layout.set_text("a longword b");
+        let widest = longest_word(&layout);
+        layout.set_text("longword");
+        let word = f64::from(layout.extents().1.width()) / f64::from(pango::SCALE);
+        assert!((widest - word).abs() < 1.0);
     }
 
     #[test]
