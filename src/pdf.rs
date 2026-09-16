@@ -678,9 +678,9 @@ impl<'a> Typesetter<'a> {
             let bounds = line
                 .line
                 .x_ranges(saturating_i32(start), saturating_i32(end));
-            for pair in bounds.chunks_exact(2) {
-                let left = x + f64::from(pair[0]) / scale;
-                let width = f64::from(pair[1] - pair[0]) / scale;
+            for [from, to] in bounds.as_chunks::<2>().0 {
+                let left = x + f64::from(*from) / scale;
+                let width = f64::from(to - from) / scale;
                 let uri = url.replace('\\', "\\\\").replace('\'', "\\'");
                 self.cr.tag_begin(
                     LINK_TAG,
