@@ -326,12 +326,24 @@ mod imp {
         }
 
         #[template_callback]
+        /// The view belongs to the window: the document switched to takes the one the
+        /// window shows. A window's only document brings its own, as when a tab arrives
+        /// in a new window.
         fn on_selected_page(&self) {
             let obj = self.obj();
-            if self.narrow.get()
-                && let Some(document) = obj.selected_document()
-            {
-                document.leave_split();
+            if let Some(document) = obj.selected_document() {
+                if self.tab_view.n_pages() > 1
+                    && let Some(mode) = self
+                        .view_toggles
+                        .active_name()
+                        .and_then(|name| ViewMode::from_name(&name))
+                    && mode != document.view_mode()
+                {
+                    document.set_view_mode(mode);
+                }
+                if self.narrow.get() {
+                    document.leave_split();
+                }
             }
             obj.sync_header();
         }

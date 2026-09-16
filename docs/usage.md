@@ -21,9 +21,10 @@ a window of its own instead. Tabs can still be dragged between windows.
 ## Views
 
 The three toggles in the header bar show the source, the rendered preview, or both side by
-side, for the document in the selected tab; each document keeps its own. In the split view the two scroll together. A window narrower than 700 pixels at the
-normal text size has no room for two panes: the split view gives way to the view it was
-opened from, and comes back only once the window is wider and it is picked again.
+side. The view is the window's: switching tabs keeps it. In the split view the two scroll
+together. A window narrower than 700 pixels at the normal text size has no room for two
+panes: the split view gives way to the view it was opened from, and comes back only once
+the window is wider and it is picked again.
 
 A file opens in the preview, a new document in the source.
 
