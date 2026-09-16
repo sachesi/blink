@@ -91,6 +91,9 @@ fn layout(latex: &str, display: bool) -> Option<Formula> {
     // The display list's y is measured from its top, where the baseline is at its height.
     let top = list.height;
     let mut shapes = Vec::new();
+    // How far the characters drawn in fonts of the system reach above and below the baseline,
+    // which KaTeX, not knowing them, gives the height of a lower-case letter.
+    let (mut above, mut below) = (list.height, list.depth);
     for item in &list.items {
         let shape = match item {
             DisplayItem::GlyphPath {
@@ -101,8 +104,24 @@ fn layout(latex: &str, display: bool) -> Option<Formula> {
                 char_code,
                 color,
             } => Shape {
-                path: glyph(*x, y - top, *scale, font, *char_code)
-                    .or_else(|| system_glyph(*x, y - top, *scale, font, *char_code))?,
+                path: match glyph(*x, y - top, *scale, font, *char_code) {
+                    Some(path) => path,
+                    None => {
+                        let path = system_glyph(*x, y - top, *scale, font, *char_code)?;
+                        for segment in &path {
+                            let (Segment::Move(_, py)
+                            | Segment::Line(_, py)
+                            | Segment::Quad(_, _, _, py)
+                            | Segment::Cubic(_, _, _, _, _, py)) = *segment
+                            else {
+                                continue;
+                            };
+                            above = above.max(-py);
+                            below = below.max(py);
+                        }
+                        path
+                    }
+                },
                 stroke: None,
                 color: own_color(color),
             },
@@ -154,8 +173,8 @@ fn layout(latex: &str, display: bool) -> Option<Formula> {
     }
     Some(Formula {
         width: list.width * MATH_SCALE,
-        ascent: list.height * MATH_SCALE,
-        descent: list.depth * MATH_SCALE,
+        ascent: above * MATH_SCALE,
+        descent: below * MATH_SCALE,
         shapes,
     })
 }
@@ -552,6 +571,8 @@ mod tests {
         let latin = typeset(r"\text{Pryvit}", true).expect("Latin text");
         assert!((cyrillic.width - latin.width).abs() < 0.3);
         assert!(cyrillic.shapes.iter().all(|shape| !shape.path.is_empty()));
+        // A capital letter reaches above the height KaTeX gives a letter it does not know.
+        assert!(cyrillic.ascent > latin.ascent - 0.05);
     }
 
     #[test]
