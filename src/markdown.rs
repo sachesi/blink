@@ -158,6 +158,9 @@ pub const TEXT_MARGIN: i32 = 32;
 
 /// How far each level of list nesting indents its items.
 const LIST_INDENT: i32 = 20;
+/// The space above and below a code block, a table or an image, on top of the blank line
+/// that parts every block from the next, which is room enough for a paragraph.
+const BLOCK_MARGIN: i32 = 4;
 /// How far each level of blockquote nesting indents its text, from the left edge of its box.
 const QUOTE_INDENT: i32 = 24;
 /// The space between the text of a blockquote and the right edge of its box.
@@ -243,7 +246,9 @@ pub fn current_scheme() -> Option<sourceview5::StyleScheme> {
 pub fn apply_theme_colors(buffer: &TextBuffer) {
     let table = buffer.tag_table();
     if let Some(link) = table.lookup("link") {
-        let accent = adw::StyleManager::default().accent_color_rgba();
+        // The accent colour for text, as links in labels have it, such as those of tables.
+        let style = adw::StyleManager::default();
+        let accent = style.accent_color().to_standalone_rgba(style.is_dark());
         link.set_foreground_rgba(Some(&accent));
     }
     // Blockquote tags are created per nesting depth during a render, so the
@@ -1516,8 +1521,8 @@ fn code_block_widget(
     copy_box.append(&copy);
 
     let overlay = gtk::Overlay::builder()
-        .margin_top(12)
-        .margin_bottom(12)
+        .margin_top(BLOCK_MARGIN)
+        .margin_bottom(BLOCK_MARGIN)
         .margin_start(indent)
         .hexpand(true)
         .child(&scroll)
@@ -1836,7 +1841,9 @@ fn end_summary(buffer: &TextBuffer, iter: &mut gtk::TextIter, open_details: &mut
     };
     element.summary.end = iter.offset();
     element.content.start = iter.offset();
-    buffer.insert(iter, "\n");
+    // A blank line parts the summary from the content, as it parts other blocks, and is
+    // hidden with the content.
+    buffer.insert(iter, "\n\n");
 }
 
 /// End the innermost of `open_details` at `iter`, open or closed as it was left. `released`
@@ -2217,8 +2224,8 @@ pub fn render_markdown(
                         // A table wider than the column scrolls sideways, like a code block,
                         // rather than squeezing its columns until the words break apart.
                         let scroll = gtk::ScrolledWindow::builder()
-                            .margin_top(12)
-                            .margin_bottom(12)
+                            .margin_top(BLOCK_MARGIN)
+                            .margin_bottom(BLOCK_MARGIN)
                             .margin_start(indent)
                             .hexpand(true)
                             .propagate_natural_height(true)
@@ -2364,8 +2371,8 @@ pub fn render_markdown(
                         if let Some(picture) = path.and_then(|path| image_picture(&path, hadj)) {
                             current_image = Some((Some(picture.clone()), String::new()));
                             picture.set_focusable(false);
-                            picture.set_margin_top(12);
-                            picture.set_margin_bottom(12);
+                            picture.set_margin_top(BLOCK_MARGIN);
+                            picture.set_margin_bottom(BLOCK_MARGIN);
                             picture.set_hexpand(false);
                             picture.set_halign(gtk::Align::Center);
 
@@ -2604,7 +2611,12 @@ pub fn render_markdown(
                     }
                     let start_offset = iter.offset();
                     let anchor = buffer.create_child_anchor(&mut iter);
-                    view.add_child_at_anchor(&BlinkMathView::new(formula, display, latex), &anchor);
+                    let math_view = BlinkMathView::new(formula, display, latex);
+                    // As dim as the text of the quote it is in.
+                    if blockquote_depth > 0 {
+                        math_view.add_css_class("dim-label");
+                    }
+                    view.add_child_at_anchor(&math_view, &anchor);
                     let start_iter = buffer.iter_at_offset(start_offset);
                     if display {
                         buffer.apply_tag_by_name("math-display", &start_iter, &iter);
