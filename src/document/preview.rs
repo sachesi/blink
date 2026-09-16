@@ -338,8 +338,8 @@ impl BlinkDocument {
         self.imp().status_label.set_label(&status);
     }
 
-    /// The document became the selected tab: render what its preview missed meanwhile.
-    pub fn selected(&self) {
+    /// Render what the preview missed while the tab was not selected.
+    pub(super) fn render_missed(&self) {
         if self.imp().preview.dirty.get() && self.preview_visible() {
             self.render_tick();
         }

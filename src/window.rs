@@ -419,6 +419,14 @@ impl BlinkWindow {
         tab_view.set_selected_page(&tab_view.page(document));
     }
 
+    /// Mark the tab of `document` as needing attention, or clear the mark.
+    pub fn set_needs_attention(&self, document: &BlinkDocument, needs_attention: bool) {
+        self.imp()
+            .tab_view
+            .page(document)
+            .set_needs_attention(needs_attention);
+    }
+
     pub fn selected_document(&self) -> Option<BlinkDocument> {
         self.imp()
             .tab_view

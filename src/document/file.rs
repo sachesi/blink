@@ -39,6 +39,8 @@ pub enum Command {
     Autosave,
     Backup,
     DiskChanged,
+    /// Ask about a change on disk that was found while the tab was not selected.
+    AskWaitingConflict,
     DiskDeleted,
     /// Put the text of a backup from a previous session into the document, which is blank.
     Restore(BackupRecord),
@@ -56,6 +58,9 @@ pub struct State {
     pub monitor: Option<gio::FileMonitor>,
     /// A change on disk is waiting for the user's decision; autosave holds off until then.
     pub in_conflict: bool,
+    /// The change on disk was found while the document's tab was not selected, and the
+    /// question about it waits until the tab is.
+    pub conflict_waiting: bool,
 }
 
 impl BlinkDocument {
@@ -122,6 +127,11 @@ impl BlinkDocument {
             Command::Autosave => self.autosave().await,
             Command::Backup => self.write_backup_now().await,
             Command::DiskChanged => self.handle_disk_changed().await,
+            Command::AskWaitingConflict => {
+                // Asked afresh: the file may have been put back meanwhile.
+                self.imp().document.borrow_mut().in_conflict = false;
+                self.handle_disk_changed().await;
+            }
             Command::DiskDeleted => self.handle_disk_deleted().await,
             Command::Restore(record) => {
                 self.restore_backup(record).await;
@@ -197,7 +207,7 @@ impl BlinkDocument {
                     gettext("Error Opening File"),
                     format!(
                         "{}\n\n{}",
-                        gettext("Could not open the file"),
+                        gettext("Could not open \"{}\"").replacen("{}", &file_title(&file), 1),
                         describe_io_error(&err)
                     ),
                 );
@@ -260,7 +270,7 @@ impl BlinkDocument {
                     gettext("Error Saving File"),
                     format!(
                         "{}\n\n{}",
-                        gettext("Could not save the file"),
+                        gettext("Could not save \"{}\"").replacen("{}", &file_title(&file), 1),
                         describe_io_error(&err)
                     ),
                 );
@@ -432,9 +442,10 @@ impl BlinkDocument {
             self.present();
             let alert = adw::AlertDialog::builder()
                 .heading(gettext("Unsaved Changes"))
-                .body(gettext(
-                    "You have unsaved changes. Do you want to close without saving?",
-                ))
+                .body(
+                    gettext("\"{}\" has unsaved changes. Do you want to close without saving?")
+                        .replacen("{}", &self.display_name(), 1),
+                )
                 .build();
             alert.add_response("cancel", &gettext("Cancel"));
             alert.add_response("close", &gettext("Close Without Saving"));
@@ -487,15 +498,25 @@ impl BlinkDocument {
                 self.clear_backup().await;
             }
             AutosaveOutcome::ConflictDetected => {
-                self.toast(&gettext("File changed on disk — autosave paused"));
+                self.toast(
+                    &gettext("\"{}\" changed on disk — autosave paused").replacen(
+                        "{}",
+                        &file_title(&file),
+                        1,
+                    ),
+                );
             }
             AutosaveOutcome::FileDeleted => {
-                self.toast(&gettext("File no longer exists"));
+                self.toast(&gettext("\"{}\" no longer exists").replacen(
+                    "{}",
+                    &file_title(&file),
+                    1,
+                ));
             }
             AutosaveOutcome::Failed(err) => {
                 self.toast(&format!(
                     "{}: {}",
-                    gettext("Autosave failed"),
+                    gettext("Autosave of \"{}\" failed").replacen("{}", &file_title(&file), 1),
                     describe_io_error(&err)
                 ));
             }
@@ -511,7 +532,12 @@ impl BlinkDocument {
     /// Make a freshly opened or saved file the document's own: its backup, its monitor.
     async fn adopt_file(&self, path: &Path) {
         self.use_backup_for(path).await;
-        self.imp().document.borrow_mut().in_conflict = false;
+        {
+            let mut document = self.imp().document.borrow_mut();
+            document.in_conflict = false;
+            document.conflict_waiting = false;
+        }
+        self.set_needs_attention(false);
         self.watch_file(path);
     }
 
@@ -569,7 +595,33 @@ impl BlinkDocument {
         if self.imp().document.borrow().in_conflict || !self.current_file_changed_on_disk().await {
             return;
         }
+        // Asking now would switch tabs while the user works in another, and with several
+        // questions at once, one could be taken for a question about the tab in sight.
+        if !self.is_selected() {
+            {
+                let mut document = self.imp().document.borrow_mut();
+                document.in_conflict = true;
+                document.conflict_waiting = true;
+            }
+            self.set_needs_attention(true);
+            return;
+        }
         self.resolve_disk_conflict().await;
+    }
+
+    /// Ask about a change on disk that waited for the tab to be selected.
+    pub(super) fn ask_waiting_conflict(&self) {
+        if std::mem::take(&mut self.imp().document.borrow_mut().conflict_waiting) {
+            self.set_needs_attention(false);
+            self.enqueue(Command::AskWaitingConflict);
+        }
+    }
+
+    /// Mark the document's tab, or clear the mark.
+    fn set_needs_attention(&self, needs_attention: bool) {
+        if let Some(window) = self.window() {
+            window.set_needs_attention(self, needs_attention);
+        }
     }
 
     /// The file was reported deleted. If it is back (another program replaced it by
@@ -582,6 +634,7 @@ impl BlinkDocument {
             return;
         }
         let imp = self.imp();
+        let name = self.display_name();
         {
             let mut document = imp.document.borrow_mut();
             if let Some(monitor) = document.monitor.take() {
@@ -589,12 +642,14 @@ impl BlinkDocument {
             }
             *document = State::default();
         }
+        self.set_needs_attention(false);
         self.use_untitled_backup();
         imp.edit_buffer.set_modified(true);
         self.update_title();
-        self.toast(&gettext(
-            "File was deleted on disk — save to keep your changes",
-        ));
+        self.toast(
+            &gettext("\"{}\" was deleted on disk — save to keep your changes")
+                .replacen("{}", &name, 1),
+        );
         self.write_backup_now().await;
     }
 
@@ -608,8 +663,8 @@ impl BlinkDocument {
         let alert = adw::AlertDialog::builder()
             .heading(gettext("File Changed on Disk"))
             .body(gettext(
-                "This file was modified by another program. Reload to discard your changes, or overwrite to keep them.",
-            ))
+                "\"{}\" was modified by another program. Reload to discard your changes, or overwrite to keep them.",
+            ).replacen("{}", &self.display_name(), 1))
             .build();
         alert.add_response("save-as", &gettext("Save As…"));
         alert.add_response("overwrite", &gettext("Overwrite"));

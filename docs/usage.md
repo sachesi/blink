@@ -67,8 +67,9 @@ restore it. Discard deletes the backup; closing the question keeps it for the ne
 
 When another program changes the open file, Blink asks whether to reload it, overwrite it
 with the text in the window, or save the text somewhere else, and does not save
-automatically until you have chosen. If the file is deleted, the document stays open
-without a file, and the next save asks where to.
+automatically until you have chosen. For a tab that is not selected, the question waits
+until you select it, and the tab is marked meanwhile. If the file is deleted, the document
+stays open without a file, and the next save asks where to.
 
 Saving writes a new file and renames it over the old one, so a crash never leaves half a
 document. A file reached through a symbolic link is written where the link points, and

@@ -108,7 +108,7 @@ impl BlinkDocument {
             Ok(()) => imp.recovery.borrow_mut().last_hash = Some(hash),
             Err(err) => self.toast(&format!(
                 "{}: {}",
-                gettext("Backup failed"),
+                gettext("Backup of \"{}\" failed").replacen("{}", &self.display_name(), 1),
                 describe_io_error(&err)
             )),
         }

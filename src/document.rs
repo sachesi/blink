@@ -279,6 +279,24 @@ impl BlinkDocument {
             == Some(self)
     }
 
+    /// The document became the selected tab: catch up on what waited for that.
+    pub fn selected(&self) {
+        self.render_missed();
+        self.ask_waiting_conflict();
+    }
+
+    /// The name of the document's file, as its tab shows it without the marker of unsaved
+    /// changes.
+    fn display_name(&self) -> String {
+        self.imp()
+            .document
+            .borrow()
+            .file
+            .as_ref()
+            .map(file::file_title)
+            .unwrap_or_else(|| gettext("Untitled Document"))
+    }
+
     /// Bring the document to the front, before it asks the user something.
     pub fn present(&self) {
         if let Some(window) = self.window() {
