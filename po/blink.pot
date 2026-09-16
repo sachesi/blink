@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 17:53+0300\n"
+"POT-Creation-Date: 2026-09-16 18:03+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -430,19 +430,19 @@ msgstr ""
 msgid "The location is read-only."
 msgstr ""
 
-#: src/document/preview.rs:301
+#: src/document/preview.rs:331
 #, no-c-format
 msgid "The linked file does not exist"
 msgstr ""
 
-#: src/document/preview.rs:451
+#: src/document/preview.rs:483
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/document/preview.rs:456
+#: src/document/preview.rs:488
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -495,39 +495,39 @@ msgstr ""
 
 #. Translators: the titles of the five kinds of alert a document can hold, as GitHub
 #. shows them over a note, a tip, an important note, a warning and a caution.
-#: src/markdown.rs:526
+#: src/markdown.rs:528
 #, no-c-format
 msgid "Note"
 msgstr ""
 
-#: src/markdown.rs:527
+#: src/markdown.rs:529
 #, no-c-format
 msgid "Tip"
 msgstr ""
 
-#: src/markdown.rs:528
+#: src/markdown.rs:530
 #, no-c-format
 msgid "Important"
 msgstr ""
 
-#: src/markdown.rs:529
+#: src/markdown.rs:531
 #, no-c-format
 msgid "Warning"
 msgstr ""
 
-#: src/markdown.rs:530
+#: src/markdown.rs:532
 #, no-c-format
 msgid "Caution"
 msgstr ""
 
-#: src/markdown.rs:1366
+#: src/markdown.rs:1368
 #, no-c-format
 msgid "Copy Code"
 msgstr ""
 
 #. Translators: the summary of a part of a document that is shown and hidden
 #. by clicking it, when the document gives it none.
-#: src/markdown.rs:1909 src/markdown.rs:2329
+#: src/markdown.rs:1937 src/markdown.rs:2357
 #, no-c-format
 msgid "Details"
 msgstr ""
@@ -560,7 +560,7 @@ msgstr ""
 msgid "Close Search"
 msgstr ""
 
-#: ui/document.ui:76 ui/document.ui:82 ui/shortcuts_dialog.ui:126
+#: ui/document.ui:76 ui/document.ui:82 ui/shortcuts_dialog.ui:138
 msgid "Replace"
 msgstr ""
 
@@ -568,7 +568,7 @@ msgstr ""
 msgid "Replace Match"
 msgstr ""
 
-#: ui/document.ui:89 ui/shortcuts_dialog.ui:132
+#: ui/document.ui:89 ui/shortcuts_dialog.ui:144
 msgid "Replace All"
 msgstr ""
 
@@ -719,66 +719,74 @@ msgid "Editing"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:85
-msgid "Bold"
+msgid "Undo"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:91
-msgid "Italic"
+msgid "Redo"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:97
+msgid "Bold"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:103
+msgid "Italic"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:109
 msgid "Link"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:105
+#: ui/shortcuts_dialog.ui:117
 msgid "Find and Replace"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:108
+#: ui/shortcuts_dialog.ui:120
 msgid "Find"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:114
+#: ui/shortcuts_dialog.ui:126
 msgid "Find Next"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:120
+#: ui/shortcuts_dialog.ui:132
 msgid "Find Previous"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:140
+#: ui/shortcuts_dialog.ui:152
 msgid "View"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:143
+#: ui/shortcuts_dialog.ui:155
 msgid "Zoom In"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:149
+#: ui/shortcuts_dialog.ui:161
 msgid "Zoom Out"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:155
+#: ui/shortcuts_dialog.ui:167
 msgid "Reset Zoom"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:161
+#: ui/shortcuts_dialog.ui:173
 msgid "Focus Mode"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:169
+#: ui/shortcuts_dialog.ui:181
 msgid "General"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:172
+#: ui/shortcuts_dialog.ui:184
 msgid "Preferences"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:178
+#: ui/shortcuts_dialog.ui:190
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:184
+#: ui/shortcuts_dialog.ui:196
 msgid "Quit"
 msgstr ""
 

@@ -76,6 +76,36 @@ impl BlinkDocument {
         ));
         imp.preview_view.add_controller(click);
 
+        // The preview shows the source, so undoing in it undoes in the source: the boxes of
+        // task list items are ticked there.
+        let shortcuts = gtk::ShortcutController::new();
+        for (trigger, redo) in [
+            ("<Control>z", false),
+            ("<Control><Shift>z", true),
+            ("<Control>y", true),
+        ] {
+            let action = gtk::CallbackAction::new(glib::clone!(
+                #[weak(rename_to = document)]
+                self,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, _| {
+                    let buffer = &document.imp().edit_buffer;
+                    if redo && buffer.can_redo() {
+                        buffer.redo();
+                    } else if !redo && buffer.can_undo() {
+                        buffer.undo();
+                    }
+                    glib::Propagation::Stop
+                }
+            ));
+            shortcuts.add_shortcut(gtk::Shortcut::new(
+                gtk::ShortcutTrigger::parse_string(trigger),
+                Some(action),
+            ));
+        }
+        imp.preview_view.add_controller(shortcuts);
+
         let motion = gtk::EventControllerMotion::new();
         motion.connect_motion(glib::clone!(
             #[weak(rename_to = document)]
@@ -316,6 +346,8 @@ impl BlinkDocument {
     /// Flip the task whose box `anchor` holds, in the source, which the preview follows.
     fn toggle_task(&self, anchor: &gtk::TextChildAnchor) {
         let imp = self.imp();
+        // So that undoing reaches the preview.
+        imp.preview_view.grab_focus();
         // Offsets from before a change that is not rendered yet no longer hold.
         if imp.preview.render_timer.borrow().is_some() {
             self.render_tick();

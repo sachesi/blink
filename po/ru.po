@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 17:53+0300\n"
+"POT-Creation-Date: 2026-09-16 18:03+0300\n"
 "PO-Revision-Date: 2026-09-16 16:27+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Russian <ru@li.org>\n"
@@ -483,12 +483,12 @@ msgstr "На диске недостаточно места."
 msgid "The location is read-only."
 msgstr "Это расположение доступно только для чтения."
 
-#: src/document/preview.rs:301
+#: src/document/preview.rs:331
 #, no-c-format
 msgid "The linked file does not exist"
 msgstr "Файл, на который указывает ссылка, не существует"
 
-#: src/document/preview.rs:451
+#: src/document/preview.rs:483
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
@@ -496,7 +496,7 @@ msgstr[0] "{} слово"
 msgstr[1] "{} слова"
 msgstr[2] "{} слов"
 
-#: src/document/preview.rs:456
+#: src/document/preview.rs:488
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -552,39 +552,39 @@ msgstr "Совпадений: {}"
 
 #. Translators: the titles of the five kinds of alert a document can hold, as GitHub
 #. shows them over a note, a tip, an important note, a warning and a caution.
-#: src/markdown.rs:526
+#: src/markdown.rs:528
 #, no-c-format
 msgid "Note"
 msgstr "Примечание"
 
-#: src/markdown.rs:527
+#: src/markdown.rs:529
 #, no-c-format
 msgid "Tip"
 msgstr "Совет"
 
-#: src/markdown.rs:528
+#: src/markdown.rs:530
 #, no-c-format
 msgid "Important"
 msgstr "Важно"
 
-#: src/markdown.rs:529
+#: src/markdown.rs:531
 #, no-c-format
 msgid "Warning"
 msgstr "Предупреждение"
 
-#: src/markdown.rs:530
+#: src/markdown.rs:532
 #, no-c-format
 msgid "Caution"
 msgstr "Осторожно"
 
-#: src/markdown.rs:1366
+#: src/markdown.rs:1368
 #, no-c-format
 msgid "Copy Code"
 msgstr "Копировать код"
 
 #. Translators: the summary of a part of a document that is shown and hidden
 #. by clicking it, when the document gives it none.
-#: src/markdown.rs:1909 src/markdown.rs:2329
+#: src/markdown.rs:1937 src/markdown.rs:2357
 #, no-c-format
 msgid "Details"
 msgstr "Подробности"
@@ -617,7 +617,7 @@ msgstr "Следующее совпадение"
 msgid "Close Search"
 msgstr "Закрыть поиск"
 
-#: ui/document.ui:76 ui/document.ui:82 ui/shortcuts_dialog.ui:126
+#: ui/document.ui:76 ui/document.ui:82 ui/shortcuts_dialog.ui:138
 msgid "Replace"
 msgstr "Заменить"
 
@@ -625,7 +625,7 @@ msgstr "Заменить"
 msgid "Replace Match"
 msgstr "Заменить совпадение"
 
-#: ui/document.ui:89 ui/shortcuts_dialog.ui:132
+#: ui/document.ui:89 ui/shortcuts_dialog.ui:144
 msgid "Replace All"
 msgstr "Заменить все"
 
@@ -778,66 +778,74 @@ msgid "Editing"
 msgstr "Редактирование"
 
 #: ui/shortcuts_dialog.ui:85
+msgid "Undo"
+msgstr "Отменить"
+
+#: ui/shortcuts_dialog.ui:91
+msgid "Redo"
+msgstr "Повторить"
+
+#: ui/shortcuts_dialog.ui:97
 msgid "Bold"
 msgstr "Полужирный"
 
-#: ui/shortcuts_dialog.ui:91
+#: ui/shortcuts_dialog.ui:103
 msgid "Italic"
 msgstr "Курсив"
 
-#: ui/shortcuts_dialog.ui:97
+#: ui/shortcuts_dialog.ui:109
 msgid "Link"
 msgstr "Ссылка"
 
-#: ui/shortcuts_dialog.ui:105
+#: ui/shortcuts_dialog.ui:117
 msgid "Find and Replace"
 msgstr "Поиск и замена"
 
-#: ui/shortcuts_dialog.ui:108
+#: ui/shortcuts_dialog.ui:120
 msgid "Find"
 msgstr "Найти"
 
-#: ui/shortcuts_dialog.ui:114
+#: ui/shortcuts_dialog.ui:126
 msgid "Find Next"
 msgstr "Найти следующее"
 
-#: ui/shortcuts_dialog.ui:120
+#: ui/shortcuts_dialog.ui:132
 msgid "Find Previous"
 msgstr "Найти предыдущее"
 
-#: ui/shortcuts_dialog.ui:140
+#: ui/shortcuts_dialog.ui:152
 msgid "View"
 msgstr "Вид"
 
-#: ui/shortcuts_dialog.ui:143
+#: ui/shortcuts_dialog.ui:155
 msgid "Zoom In"
 msgstr "Увеличить"
 
-#: ui/shortcuts_dialog.ui:149
+#: ui/shortcuts_dialog.ui:161
 msgid "Zoom Out"
 msgstr "Уменьшить"
 
-#: ui/shortcuts_dialog.ui:155
+#: ui/shortcuts_dialog.ui:167
 msgid "Reset Zoom"
 msgstr "Сбросить масштаб"
 
-#: ui/shortcuts_dialog.ui:161
+#: ui/shortcuts_dialog.ui:173
 msgid "Focus Mode"
 msgstr "Режим фокусировки"
 
-#: ui/shortcuts_dialog.ui:169
+#: ui/shortcuts_dialog.ui:181
 msgid "General"
 msgstr "Общие"
 
-#: ui/shortcuts_dialog.ui:172
+#: ui/shortcuts_dialog.ui:184
 msgid "Preferences"
 msgstr "Параметры"
 
-#: ui/shortcuts_dialog.ui:178
+#: ui/shortcuts_dialog.ui:190
 msgid "Keyboard Shortcuts"
 msgstr "Сочетания клавиш"
 
-#: ui/shortcuts_dialog.ui:184
+#: ui/shortcuts_dialog.ui:196
 msgid "Quit"
 msgstr "Выйти"
 

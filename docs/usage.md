@@ -67,7 +67,8 @@ clicked. It starts closed unless it has the `open` attribute, and stays as it wa
 the document is edited.
 
 The box of a task list item can be ticked in the preview. It changes the `[ ]` or `[x]` in
-the source, as typing it would, so Ctrl+Z in the source takes it back.
+the source, as typing it would. Ctrl+Z takes it back and Shift+Ctrl+Z does it again, in the
+preview as in the source; in the preview they undo and redo any change to the source.
 
 Text in code blocks and table cells is selected and copied like the rest of the preview. A
 code block also has a button that copies all of it, shown while the pointer is over the
@@ -135,6 +136,7 @@ Ctrl+? lists them all.
 | Ctrl+Page Down, Ctrl+Page Up | Next and previous tab; Ctrl+Tab and Shift+Ctrl+Tab too |
 | Shift+Ctrl+Page Down, Shift+Ctrl+Page Up | Move the tab right or left |
 | Alt+1 to Alt+9 | Go to a tab |
+| Ctrl+Z, Shift+Ctrl+Z | Undo and redo, in the source and in the preview |
 | Ctrl+B, Ctrl+I, Ctrl+K | Bold, italic, link around the selection, in the source |
 | Ctrl+F | Find, or close the search |
 | Ctrl+G, Shift+Ctrl+G | Next and previous match |
