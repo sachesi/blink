@@ -71,6 +71,102 @@ impl BlinkWindow {
             }
         ));
         imp.preview_view.add_controller(motion);
+
+        // Code blocks and table cells keep selections of their own, which the preview's
+        // copy (Ctrl+C or its menu) does not see: only one selection is kept at a time, and
+        // copying takes it from wherever it is.
+        buffer.connect_has_selection_notify(glib::clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |buffer| {
+                if buffer.has_selection() {
+                    win.clear_surface_selections(None);
+                }
+            }
+        ));
+        imp.preview_view.connect_copy_clipboard(glib::clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |view| {
+                if let Some(text) = win.surface_selection() {
+                    view.clipboard().set_text(&text);
+                    view.stop_signal_emission_by_name("copy-clipboard");
+                }
+            }
+        ));
+    }
+
+    /// Clear the selections of the preview's code blocks and table cells, except the
+    /// one at `keep`.
+    pub(super) fn clear_surface_selections(&self, keep: Option<usize>) {
+        for (index, surface) in self.imp().preview.surfaces.borrow().iter().enumerate() {
+            if keep == Some(index) {
+                continue;
+            }
+            match surface {
+                markdown::Surface::Code { buffer, .. } => {
+                    let insert = buffer.iter_at_offset(buffer.cursor_position());
+                    buffer.select_range(&insert, &insert);
+                }
+                markdown::Surface::Cell { label, .. } => label.select_region(-1, -1),
+            }
+        }
+    }
+
+    /// A selection starting in a code block or table cell replaces every other one.
+    fn watch_surface_selections(&self) {
+        for (index, surface) in self.imp().preview.surfaces.borrow().iter().enumerate() {
+            let select = glib::clone!(
+                #[weak(rename_to = win)]
+                self,
+                move || {
+                    let buffer = win.imp().preview_view.buffer();
+                    let insert = buffer.iter_at_offset(buffer.cursor_position());
+                    buffer.select_range(&insert, &insert);
+                    win.clear_surface_selections(Some(index));
+                }
+            );
+            match surface {
+                markdown::Surface::Code { buffer, .. } => {
+                    buffer.connect_has_selection_notify(move |buffer| {
+                        if buffer.has_selection() {
+                            select();
+                        }
+                    });
+                }
+                markdown::Surface::Cell { label, .. } => {
+                    label.connect_notify_local(Some("selection-bound"), move |label, _| {
+                        if label.selection_bounds().is_some() {
+                            select();
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    /// The text selected in a code block or table cell, if any.
+    fn surface_selection(&self) -> Option<String> {
+        self.imp()
+            .preview
+            .surfaces
+            .borrow()
+            .iter()
+            .find_map(|surface| match surface {
+                markdown::Surface::Code { buffer, .. } => buffer
+                    .selection_bounds()
+                    .map(|(start, end)| buffer.text(&start, &end, false).to_string()),
+                markdown::Surface::Cell { label, .. } => {
+                    label.selection_bounds().map(|(start, end)| {
+                        label
+                            .text()
+                            .chars()
+                            .skip(start as usize)
+                            .take((end - start) as usize)
+                            .collect()
+                    })
+                }
+            })
     }
 
     /// In the split view, scrolling `source` scrolls `target` to the same proportion.
@@ -152,6 +248,7 @@ impl BlinkWindow {
         let result = markdown::render_markdown(&imp.preview_view, &text, &hadj, base.as_deref());
         imp.preview.links.replace(result.links);
         imp.preview.surfaces.replace(result.surfaces);
+        self.watch_surface_selections();
         // Match positions do not survive the rebuilt content.
         self.reset_preview_match();
         imp.preview.dirty.set(false);

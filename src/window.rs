@@ -151,6 +151,17 @@ mod imp {
                 },
             );
 
+            klass.install_action(
+                "win.copy-code",
+                Some(glib::VariantTy::STRING),
+                |win, _, param| {
+                    if let Some(code) = param.and_then(glib::Variant::str) {
+                        win.clipboard().set_text(code);
+                        win.toast(&gettext("Code copied"));
+                    }
+                },
+            );
+
             klass.install_action("win.find", None, |win, _, _| win.toggle_find());
             klass.install_action("win.find-next", None, |win, _, _| win.find_next(true));
             klass.install_action("win.find-previous", None, |win, _, _| win.find_next(false));

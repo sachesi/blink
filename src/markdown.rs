@@ -1,4 +1,5 @@
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::{Grid, Label, TextBuffer, TextView, gio, glib};
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Parser, Tag, TagEnd};
 use sourceview5::prelude::*;
@@ -302,15 +303,15 @@ fn resolve_language(info: &str) -> Option<sourceview5::Language> {
         .find_map(|id| manager.language(&id))
 }
 
-/// Builds a read-only, syntax-highlighted code block widget for the preview.
-/// Kept out of the focus chain so clicks never scroll the preview, and width
-/// is bound to the viewport so it stays inside the reading column.
+/// Builds a read-only, syntax-highlighted code block widget for the preview, with a
+/// button that copies the code. Kept out of the focus chain so clicks never scroll the
+/// preview, and width is bound to the viewport so it stays inside the reading column.
 fn code_block_widget(
     code: &str,
     info: &str,
     indent: i32,
     hadj: &gtk::Adjustment,
-) -> (gtk::ScrolledWindow, sourceview5::Buffer) {
+) -> (gtk::Overlay, sourceview5::Buffer) {
     let src_buffer = sourceview5::Buffer::new(None);
     src_buffer.set_highlight_syntax(true);
     src_buffer.set_highlight_matching_brackets(false);
@@ -340,9 +341,6 @@ fn code_block_widget(
     src_view.add_css_class("transparent-bg");
 
     let scroll = gtk::ScrolledWindow::builder()
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(indent)
         .hexpand(true)
         .propagate_natural_height(true)
         .hscrollbar_policy(gtk::PolicyType::Automatic)
@@ -352,9 +350,36 @@ fn code_block_widget(
         .focusable(false)
         .build();
     scroll.add_css_class("card");
-    bind_width_to_page(&scroll, hadj, indent);
     scroll.set_child(Some(&src_view));
-    (scroll, src_buffer)
+
+    let copy = gtk::Button::builder()
+        .icon_name("edit-copy-symbolic")
+        .tooltip_text(gettext("Copy Code"))
+        .action_name("win.copy-code")
+        .action_target(&code.to_variant())
+        .build();
+    copy.add_css_class("flat");
+    // On the block's own surface, so the code scrolled under it does not show through.
+    let copy_box = gtk::Box::builder()
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Start)
+        .margin_top(6)
+        .margin_end(6)
+        .build();
+    copy_box.add_css_class("code-copy");
+    copy_box.append(&copy);
+
+    let overlay = gtk::Overlay::builder()
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(indent)
+        .hexpand(true)
+        .child(&scroll)
+        .build();
+    overlay.add_css_class("code-block");
+    overlay.add_overlay(&copy_box);
+    bind_width_to_page(&overlay, hadj, indent);
+    (overlay, src_buffer)
 }
 
 /// A muted foreground that stays readable in either appearance. Text tags

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.5.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-13 23:52+0300\n"
+"POT-Creation-Date: 2026-09-16 12:04+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -148,7 +148,17 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
-#: src/window.rs:598 src/window/document.rs:326 src/window/document.rs:574
+#: src/markdown.rs:357
+#, no-c-format
+msgid "Copy Code"
+msgstr ""
+
+#: src/window.rs:160
+#, no-c-format
+msgid "Code copied"
+msgstr ""
+
+#: src/window.rs:609 src/window/document.rs:326 src/window/document.rs:574
 #: src/window/recovery.rs:120 ui/window.ui:49 ui/window.ui:85
 #, no-c-format
 msgid "Untitled Document"
@@ -321,14 +331,14 @@ msgstr ""
 msgid "The location is read-only."
 msgstr ""
 
-#: src/window/preview.rs:196
+#: src/window/preview.rs:297
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window/preview.rs:201
+#: src/window/preview.rs:302
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -377,24 +387,24 @@ msgid_plural "{} matches replaced"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window/search.rs:234 src/window/search.rs:415
+#: src/window/search.rs:234 src/window/search.rs:407
 #, no-c-format
 msgid "No matches"
 msgstr ""
 
-#: src/window/search.rs:254 src/window/search.rs:420
+#: src/window/search.rs:254 src/window/search.rs:412
 #, no-c-format
 msgid "{} of {} match"
 msgid_plural "{} of {} matches"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window/search.rs:412
+#: src/window/search.rs:404
 #, no-c-format
 msgid "Searching…"
 msgstr ""
 
-#: src/window/search.rs:425
+#: src/window/search.rs:417
 #, no-c-format
 msgid "{} matches"
 msgstr ""
@@ -613,6 +623,6 @@ msgid ""
 "save"
 msgstr ""
 
-#: ui/window.ui:314
+#: ui/window.ui:315
 msgid "Drop Markdown file to open"
 msgstr ""

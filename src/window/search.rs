@@ -369,15 +369,7 @@ impl BlinkWindow {
         let buffer = imp.preview_view.buffer();
         let insert = buffer.iter_at_offset(buffer.cursor_position());
         buffer.select_range(&insert, &insert);
-        for surface in imp.preview.surfaces.borrow().iter() {
-            match surface {
-                markdown::Surface::Code { buffer, .. } => {
-                    let insert = buffer.iter_at_offset(buffer.cursor_position());
-                    buffer.select_range(&insert, &insert);
-                }
-                markdown::Surface::Cell { label, .. } => label.select_region(-1, -1),
-            }
-        }
+        self.clear_surface_selections(None);
     }
 
     /// Scroll the editor to the selected match when it is off screen: the editor does not

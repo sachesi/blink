@@ -35,3 +35,16 @@ textview.editor-view gutter {
 .drop-overlay {
   background: color-mix(in srgb, var(--window-bg-color) 90%, transparent);
 }
+
+/* A code block's copy button shows while the pointer is over the block or the button has
+   the keyboard focus. */
+.code-block .code-copy {
+  background-color: var(--card-bg-color);
+  border-radius: 9px;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.code-block:hover .code-copy,
+.code-block .code-copy:focus-within {
+  opacity: 1;
+}
