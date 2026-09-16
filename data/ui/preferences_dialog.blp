@@ -83,6 +83,15 @@ template $BlinkPreferencesDialog: Adw.PreferencesDialog {
     }
 
     Adw.PreferencesGroup {
+      title: _("Windows");
+
+      Adw.SwitchRow tabs_row {
+        title: _("Open Documents in Tabs");
+        subtitle: _("Otherwise each document gets a window of its own");
+      }
+    }
+
+    Adw.PreferencesGroup {
       title: _("Editor");
 
       Adw.SwitchRow wrap_row {

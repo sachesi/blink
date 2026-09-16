@@ -1,6 +1,7 @@
 //! Crash recovery: unsaved changes are copied to a backup a few seconds after typing stops
-//! and when the window loses focus, and backups left by a session that is gone are offered
-//! back at startup.
+//! and when the window loses focus, and a backup left by a session that is gone is put
+//! back into a document when the user asks for it. The application finds those backups
+//! and holds the lock that tells this session's apart.
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
@@ -8,8 +9,8 @@ use gettextrs::gettext;
 use gtk::{gio, glib};
 use std::path::{Path, PathBuf};
 
-use super::document::{Command, blocking, describe_io_error, file_title};
-use super::{BlinkWindow, ViewMode, buffer_text};
+use super::file::{Command, blocking, describe_io_error, file_title};
+use super::{BlinkDocument, ViewMode, buffer_text};
 use crate::backup::{self, BackupRecord};
 use crate::conflict::FileFingerprint;
 
@@ -21,7 +22,6 @@ pub struct State {
     /// Names the backup of an untitled document, unique to this run.
     instance_id: u64,
     backups_dir: PathBuf,
-    locks_dir: PathBuf,
     /// The current document's backup.
     backup_id: String,
     /// Hash of what the backup holds, so an unchanged text is not written again.
@@ -36,7 +36,6 @@ impl Default for State {
             pid: std::process::id(),
             instance_id,
             backups_dir: backup::backups_dir(),
-            locks_dir: backup::locks_dir(),
             backup_id: backup::untitled_backup_id(instance_id),
             last_hash: None,
             timer: None,
@@ -44,23 +43,7 @@ impl Default for State {
     }
 }
 
-impl BlinkWindow {
-    pub(super) fn setup_recovery(&self) {
-        {
-            let state = self.imp().recovery.borrow();
-            // The lock marks this run as alive, so its backups are not offered to another.
-            let _ = backup::create_lock(&state.locks_dir, state.pid);
-        }
-        // Losing focus is when a crash elsewhere, a logout or a power cut is likeliest to
-        // catch unsaved work.
-        self.connect_is_active_notify(|win| {
-            if !win.is_active() {
-                win.enqueue(Command::Backup);
-            }
-        });
-        self.enqueue(Command::CheckRecovery);
-    }
-
+impl BlinkDocument {
     pub(super) fn schedule_backup(&self) {
         let imp = self.imp();
         if !imp.edit_buffer.is_modified() {
@@ -73,11 +56,11 @@ impl BlinkWindow {
         state.timer = Some(glib::timeout_add_seconds_local_once(
             BACKUP_DELAY_SECS,
             glib::clone!(
-                #[weak(rename_to = win)]
+                #[weak(rename_to = document)]
                 self,
                 move || {
-                    win.imp().recovery.borrow_mut().timer.take();
-                    win.enqueue(Command::Backup);
+                    document.imp().recovery.borrow_mut().timer.take();
+                    document.enqueue(Command::Backup);
                 }
             ),
         ));
@@ -166,67 +149,7 @@ impl BlinkWindow {
         state.last_hash = None;
     }
 
-    pub(super) async fn release_lock(&self) {
-        let (locks_dir, pid) = {
-            let state = self.imp().recovery.borrow();
-            (state.locks_dir.clone(), state.pid)
-        };
-        blocking(move || backup::remove_lock(&locks_dir, pid)).await;
-    }
-
-    pub(super) async fn check_recovery(&self) {
-        let (backups_dir, locks_dir, pid) = {
-            let state = self.imp().recovery.borrow();
-            (
-                state.backups_dir.clone(),
-                state.locks_dir.clone(),
-                state.pid,
-            )
-        };
-        let orphans = blocking(move || {
-            backup::list_records(&backups_dir).map(|records| {
-                records
-                    .into_iter()
-                    .filter(|record| {
-                        let lock_present = backup::lock_present(&locks_dir, record.owner_pid);
-                        let alive = backup::is_pid_alive(record.owner_pid);
-                        backup::classify(record.owner_pid, pid, lock_present, alive)
-                            == backup::OrphanClass::Orphan
-                    })
-                    .collect::<Vec<_>>()
-            })
-        })
-        .await;
-        for record in orphans.unwrap_or_default() {
-            self.offer_recovery(record).await;
-        }
-    }
-
-    async fn offer_recovery(&self, record: BackupRecord) {
-        let body = gettext("Unsaved changes to \"{}\" were found from a previous session.")
-            .replacen("{}", &record.display_name, 1);
-        let alert = adw::AlertDialog::builder()
-            .heading(gettext("Recover Unsaved Document?"))
-            .body(body)
-            .build();
-        alert.add_response("discard", &gettext("Discard"));
-        alert.add_response("restore", &gettext("Restore"));
-        alert.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
-        alert.set_response_appearance("restore", adw::ResponseAppearance::Suggested);
-        alert.set_default_response(Some("restore"));
-        // Dismissing the dialog keeps the backup for next time rather than deleting it.
-        alert.set_close_response("keep");
-        let backups_dir = self.imp().recovery.borrow().backups_dir.clone();
-        match alert.choose_future(Some(self)).await.as_str() {
-            "restore" => self.restore_backup(record).await,
-            "discard" => {
-                blocking(move || backup::delete_backup(&backups_dir, &record.backup_id)).await;
-            }
-            _ => {}
-        }
-    }
-
-    async fn restore_backup(&self, record: BackupRecord) {
+    pub(super) async fn restore_backup(&self, record: BackupRecord) {
         let imp = self.imp();
         let backups_dir = imp.recovery.borrow().backups_dir.clone();
         // The backup, and the file it was of as it is now, if it is still there.

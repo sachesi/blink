@@ -11,6 +11,11 @@
       <summary>Light or dark style</summary>
       <description>“system” follows the desktop, “light” and “dark” override it.</description>
     </key>
+    <key name="open-in-tabs" type="b">
+      <default>true</default>
+      <summary>Open documents in tabs</summary>
+      <description>New and opened documents become tabs of the window they are opened from; otherwise each gets a window of its own.</description>
+    </key>
     <key name="content-width" type="i">
       <range min="700" max="1000"/>
       <default>900</default>

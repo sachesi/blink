@@ -9,7 +9,7 @@ use gtk::prelude::*;
 use sourceview5::prelude::*;
 use std::cell::{Cell, OnceCell};
 
-use super::{BlinkWindow, ViewMode, saturating_u32};
+use super::{BlinkDocument, ViewMode, saturating_u32};
 use crate::markdown;
 
 /// No preview match selected yet.
@@ -59,7 +59,7 @@ enum PreviewTarget {
     },
 }
 
-impl BlinkWindow {
+impl BlinkDocument {
     pub(super) fn setup_search(&self) {
         let imp = self.imp();
         let settings = sourceview5::SearchSettings::new();
@@ -67,11 +67,11 @@ impl BlinkWindow {
         let context = sourceview5::SearchContext::new(&*imp.edit_buffer, Some(&settings));
         context.set_highlight(false);
         context.connect_occurrences_count_notify(glib::clone!(
-            #[weak(rename_to = win)]
+            #[weak(rename_to = document)]
             self,
             move |_| {
-                if !win.imp().search.in_preview.get() {
-                    win.refresh_search();
+                if !document.imp().search.in_preview.get() {
+                    document.refresh_search();
                 }
             }
         ));
@@ -110,7 +110,7 @@ impl BlinkWindow {
         self.imp().search.match_key.set(NO_MATCH);
     }
 
-    pub(super) fn toggle_find(&self) {
+    pub fn toggle_find(&self) {
         let imp = self.imp();
         if imp.search_bar.is_visible() {
             self.close_search();
@@ -125,7 +125,7 @@ impl BlinkWindow {
         }
     }
 
-    pub(super) fn show_replace(&self) {
+    pub fn show_replace(&self) {
         let imp = self.imp();
         self.open_search();
         if imp.search.in_preview.get() {
@@ -156,7 +156,7 @@ impl BlinkWindow {
         self.scroll_editor_to_selection();
     }
 
-    pub(super) fn find_next(&self, forward: bool) {
+    pub fn find_next(&self, forward: bool) {
         self.open_search();
         if self.imp().search.in_preview.get() {
             self.preview_search(forward, false);
@@ -181,7 +181,7 @@ impl BlinkWindow {
         self.scroll_editor_to_selection();
     }
 
-    pub(super) fn replace_all(&self) {
+    pub fn replace_all(&self) {
         let imp = self.imp();
         self.open_search();
         if imp.search.in_preview.get() {

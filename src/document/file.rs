@@ -12,7 +12,9 @@ use gettextrs::gettext;
 use gtk::{gio, glib};
 use std::path::{Path, PathBuf};
 
-use super::{BlinkWindow, ViewMode, buffer_text};
+use super::{BlinkDocument, ViewMode, buffer_text};
+use crate::backup::BackupRecord;
+use crate::config;
 use crate::conflict::{self, AutosaveOutcome, FileFingerprint};
 use crate::export;
 use crate::markdown;
@@ -25,20 +27,20 @@ const MAX_RECENT: usize = 10;
 
 #[derive(Debug, Clone)]
 pub enum Command {
-    New,
-    Open,
-    /// Open a file, asking about unsaved changes first.
+    /// Open a file in the document, which is blank.
     OpenFile(gio::File),
     Save,
     SaveAs,
     ExportHtml,
     ExportPdf,
-    Close,
+    /// Ask about unsaved changes before the document closes, and answer whether it may.
+    Close(async_channel::Sender<bool>),
     Autosave,
     Backup,
     DiskChanged,
     DiskDeleted,
-    CheckRecovery,
+    /// Put the text of a backup from a previous session into the document, which is blank.
+    Restore(BackupRecord),
 }
 
 #[derive(Default)]
@@ -52,41 +54,39 @@ pub struct State {
     pub in_conflict: bool,
 }
 
-impl BlinkWindow {
+impl BlinkDocument {
     pub(super) fn setup_document(&self) {
         let (sender, receiver) = async_channel::unbounded::<Command>();
         self.imp().commands.set(sender).ok();
-        // The loop holds the window only while a command runs, so the window can go away
-        // between them; dropping it drops the sender and ends the loop.
-        let window = self.downgrade();
+        // The loop holds the document only while a command runs, so the document can go
+        // away between them; dropping it drops the sender and ends the loop.
+        let document = self.downgrade();
         glib::spawn_future_local(async move {
             while let Ok(command) = receiver.recv().await {
-                let Some(window) = window.upgrade() else {
+                let Some(document) = document.upgrade() else {
                     break;
                 };
-                window.run(command).await;
+                document.run(command).await;
             }
         });
 
         let id = glib::timeout_add_seconds_local(
             AUTOSAVE_INTERVAL_SECS,
             glib::clone!(
-                #[weak(rename_to = win)]
+                #[weak(rename_to = document)]
                 self,
                 #[upgrade_or]
                 glib::ControlFlow::Break,
                 move || {
-                    win.enqueue(Command::Autosave);
+                    document.enqueue(Command::Autosave);
                     glib::ControlFlow::Continue
                 }
             ),
         );
         self.imp().autosave_timer.replace(Some(id));
-
-        self.setup_recovery();
     }
 
-    pub(super) fn enqueue(&self, command: Command) {
+    pub fn enqueue(&self, command: Command) {
         if let Some(sender) = self.imp().commands.get() {
             sender.try_send(command).ok();
         }
@@ -94,11 +94,15 @@ impl BlinkWindow {
 
     async fn run(&self, command: Command) {
         match command {
-            Command::New => self.new_document().await,
-            Command::Open => self.open().await,
             Command::OpenFile(file) => {
-                if self.confirm_discard_if_modified().await {
-                    self.load_file(file).await;
+                let loaded = self.load_file(file).await;
+                self.release_claim();
+                // A tab opened for the file alone is of no use without it.
+                if !loaded
+                    && self.is_blank()
+                    && let Some(window) = self.window()
+                {
+                    window.discard_blank(self);
                 }
             }
             Command::Save => self.save().await,
@@ -107,13 +111,27 @@ impl BlinkWindow {
             }
             Command::ExportHtml => self.export_html().await,
             Command::ExportPdf => self.export_pdf().await,
-            Command::Close => self.close_guarded().await,
+            Command::Close(answer) => {
+                let close = self.confirm_close().await;
+                answer.send(close).await.ok();
+            }
             Command::Autosave => self.autosave().await,
             Command::Backup => self.write_backup_now().await,
             Command::DiskChanged => self.handle_disk_changed().await,
             Command::DiskDeleted => self.handle_disk_deleted().await,
-            Command::CheckRecovery => self.check_recovery().await,
+            Command::Restore(record) => {
+                self.restore_backup(record).await;
+                self.release_claim();
+            }
         }
+    }
+
+    /// Ask about unsaved changes, through the queue, and answer whether the document may
+    /// close. Its backup goes once it may.
+    pub async fn request_close(&self) -> bool {
+        let (sender, receiver) = async_channel::bounded(1);
+        self.enqueue(Command::Close(sender));
+        receiver.recv().await.unwrap_or(false)
     }
 
     pub(super) fn current_file(&self) -> Option<gio::File> {
@@ -124,48 +142,14 @@ impl BlinkWindow {
         self.current_file().and_then(|file| file.path())
     }
 
-    async fn open(&self) {
-        if !self.confirm_discard_if_modified().await {
-            return;
-        }
-        let dialog = gtk::FileDialog::new();
-        let (filters, markdown) = markdown_filters();
-        dialog.set_filters(Some(&filters));
-        dialog.set_default_filter(Some(&markdown));
-        if let Ok(file) = dialog.open_future(Some(self)).await {
-            self.load_file(file).await;
-        }
-    }
-
-    async fn new_document(&self) {
-        if !self.confirm_discard_if_modified().await {
-            return;
-        }
-        let imp = self.imp();
-        self.clear_backup().await;
-        {
-            let mut document = imp.document.borrow_mut();
-            if let Some(monitor) = document.monitor.take() {
-                monitor.cancel();
-            }
-            *document = State::default();
-        }
-        self.use_untitled_backup();
-        imp.edit_buffer.set_text("");
-        imp.edit_buffer.set_modified(false);
-        self.update_title();
-        imp.status_label.set_label("");
-        imp.last_single_mode.set(ViewMode::Edit);
-        self.set_view_mode(ViewMode::Edit);
-    }
-
-    async fn load_file(&self, file: gio::File) {
+    /// Read `file` into the document. False when it could not be read.
+    async fn load_file(&self, file: gio::File) -> bool {
         let Some(path) = file.path() else {
             self.present_error(
                 gettext("Error Opening File"),
                 gettext("Only local files are supported"),
             );
-            return;
+            return false;
         };
         let read_path = path.clone();
         // The fingerprint is taken right after the read, so a change made in between is
@@ -190,15 +174,19 @@ impl BlinkWindow {
                 self.add_recent(&path);
                 imp.preview.dirty.set(true);
                 self.set_view_mode(ViewMode::Preview);
+                true
             }
-            Err(err) => self.present_error(
-                gettext("Error Opening File"),
-                format!(
-                    "{}\n\n{}",
-                    gettext("Could not open the file"),
-                    describe_io_error(&err)
-                ),
-            ),
+            Err(err) => {
+                self.present_error(
+                    gettext("Error Opening File"),
+                    format!(
+                        "{}\n\n{}",
+                        gettext("Could not open the file"),
+                        describe_io_error(&err)
+                    ),
+                );
+                false
+            }
         }
     }
 
@@ -276,41 +264,9 @@ impl BlinkWindow {
             Some(file) => dialog.set_initial_file(Some(&file)),
             None => dialog.set_initial_name(Some(&gettext("Untitled.md"))),
         }
-        match dialog.save_future(Some(self)).await {
+        match dialog.save_future(self.dialog_parent().as_ref()).await {
             Ok(file) => self.save_to(file).await,
             Err(_) => false,
-        }
-    }
-
-    /// Ask what to do with unsaved changes before they would be replaced. False when the
-    /// user cancelled, or chose to save and the save did not happen.
-    async fn confirm_discard_if_modified(&self) -> bool {
-        if !self.imp().edit_buffer.is_modified() {
-            return true;
-        }
-        let alert = adw::AlertDialog::builder()
-            .heading(gettext("Unsaved Changes"))
-            .body(gettext(
-                "Opening another file will discard unsaved changes.",
-            ))
-            .build();
-        alert.add_response("cancel", &gettext("Cancel"));
-        alert.add_response("discard", &gettext("Discard Changes"));
-        alert.add_response("save", &gettext("Save"));
-        alert.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
-        alert.set_response_appearance("save", adw::ResponseAppearance::Suggested);
-        alert.set_default_response(Some("save"));
-        alert.set_close_response("cancel");
-        match alert.choose_future(Some(self)).await.as_str() {
-            "save" => {
-                if self.current_file().is_some() {
-                    self.save_current().await
-                } else {
-                    self.save_as().await
-                }
-            }
-            "discard" => true,
-            _ => false,
         }
     }
 
@@ -335,7 +291,11 @@ impl BlinkWindow {
             .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().into_owned()))
             .unwrap_or_else(|| gettext("Untitled"));
         dialog.set_initial_name(Some(&format!("{stem}.{suffix}")));
-        dialog.save_future(Some(self)).await.ok()?.path()
+        dialog
+            .save_future(self.dialog_parent().as_ref())
+            .await
+            .ok()?
+            .path()
     }
 
     async fn export_html(&self) {
@@ -392,10 +352,14 @@ impl BlinkWindow {
         }
     }
 
-    /// What an export of `text` takes from the window: the title, the folder of images, the
-    /// fonts, the width and the colours of the code in the light style.
+    /// What an export of `text` takes from the document: the title, the folder of images,
+    /// the fonts, the width and the colours of the code in the light style.
     async fn export_options(&self, text: &str) -> export::Options {
-        let (text_font, monospace_font) = self.font_families();
+        let settings = self.settings();
+        let (text_font, monospace_font) = (
+            config::font_family(settings, false),
+            config::font_family(settings, true),
+        );
         export::Options {
             title: self
                 .current_file()
@@ -413,8 +377,9 @@ impl BlinkWindow {
         }
     }
 
-    async fn close_guarded(&self) {
+    async fn confirm_close(&self) -> bool {
         if self.imp().edit_buffer.is_modified() {
+            self.present();
             let alert = adw::AlertDialog::builder()
                 .heading(gettext("Unsaved Changes"))
                 .body(gettext(
@@ -426,23 +391,11 @@ impl BlinkWindow {
             alert.set_response_appearance("close", adw::ResponseAppearance::Destructive);
             alert.set_close_response("cancel");
             if alert.choose_future(Some(self)).await != "close" {
-                return;
+                return false;
             }
         }
-        self.cleanup_on_exit().await;
-        self.imp().closing.set(true);
-        self.close();
-    }
-
-    async fn cleanup_on_exit(&self) {
         self.clear_backup().await;
-        self.release_lock().await;
-        // The default size is the size the window has when it is not maximized, which is
-        // the one to open with next time.
-        let (width, height) = self.default_size();
-        let settings = self.settings();
-        let _ = settings.set("window-size", (width, height));
-        let _ = settings.set_boolean("window-maximized", self.is_maximized());
+        true
     }
 
     async fn autosave(&self) {
@@ -523,17 +476,17 @@ impl BlinkWindow {
             Ok(monitor) => {
                 monitor.set_rate_limit(500);
                 monitor.connect_changed(glib::clone!(
-                    #[weak(rename_to = win)]
+                    #[weak(rename_to = document)]
                     self,
                     move |_, _, _, event| match event {
                         gio::FileMonitorEvent::Changed
                         | gio::FileMonitorEvent::ChangesDoneHint
                         | gio::FileMonitorEvent::Created
                         | gio::FileMonitorEvent::AttributeChanged => {
-                            win.enqueue(Command::DiskChanged)
+                            document.enqueue(Command::DiskChanged)
                         }
                         gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut => {
-                            win.enqueue(Command::DiskDeleted)
+                            document.enqueue(Command::DiskDeleted)
                         }
                         _ => {}
                     }
@@ -601,6 +554,7 @@ impl BlinkWindow {
     async fn resolve_disk_conflict(&self) {
         let imp = self.imp();
         imp.document.borrow_mut().in_conflict = true;
+        self.present();
         let alert = adw::AlertDialog::builder()
             .heading(gettext("File Changed on Disk"))
             .body(gettext(
@@ -639,6 +593,7 @@ impl BlinkWindow {
             .body(body)
             .build();
         alert.add_response("ok", &gettext("OK"));
+        self.present();
         alert.present(Some(self));
     }
 }
@@ -672,7 +627,7 @@ fn push_recent(recent: glib::StrV, path: &Path) -> Vec<String> {
 }
 
 /// Open and save dialogs offer Markdown first, then everything.
-fn markdown_filters() -> (gio::ListStore, gtk::FileFilter) {
+pub fn markdown_filters() -> (gio::ListStore, gtk::FileFilter) {
     let markdown = gtk::FileFilter::new();
     markdown.set_name(Some(&gettext("Markdown Files")));
     markdown.add_mime_type("text/markdown");

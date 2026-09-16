@@ -18,13 +18,18 @@ Before a change goes in:
 
     build.rs               runs blueprint-compiler, bundles the GResource, compiles the
                            settings schema for the tests
-    data/ui/*.blp          the window, the preferences and the shortcuts dialog
+    data/ui/*.blp          the window, a document, the preferences and the shortcuts
+                           dialog
     data/style.css         structural CSS, colours come from libadwaita
     src/main.rs            locale and resources, then the application
-    src/application.rs     AdwApplication subclass: app.* actions, accelerators, style
-    src/window.rs          the window: template, win.* actions, view modes, settings; in
-                           window/ the document's file and its command queue, crash
-                           recovery, the preview, and find and replace
+    src/application.rs     AdwApplication subclass: app.* actions, accelerators, style and
+                           fonts, where new and opened documents go, the crash lock and
+                           the offer of backups at startup
+    src/window.rs          the window: header bar, tabs, win.* actions acting on the
+                           selected document, closing its documents one by one
+    src/document.rs        a document, one tab: editor, preview, view mode, title; in
+                           document/ its file and command queue, crash recovery, the
+                           preview, and find and replace
     src/preferences.rs     the preferences dialog, bound to GSettings
     src/markdown.rs        renders Markdown into the preview's text buffer
     src/export.rs          renders Markdown to a standalone HTML file
@@ -36,8 +41,10 @@ User actions are `GAction`s (`app.`, `win.`), so the menus, the accelerators and
 buttons reach the same code.
 
 Anything that can wait on a dialog or the disk (opening, saving, autosave, backups, the
-questions about other programs' changes and about closing) is a `Command` sent through one
-queue in `window/document.rs`, and runs to its end before the next one starts. A timer or
+questions about other programs' changes and about closing) is a `Command` sent through the
+document's queue in `document/file.rs`, and runs to its end before the next one starts.
+Each document has a queue of its own. A document holds no reference to its window, since
+its tab can be dragged into another; it looks the window up when it needs one. A timer or
 a file monitor event therefore never lands in the middle of a save or of a question to the
 user. File IO in those commands goes to a worker through `gio::spawn_blocking`.
 

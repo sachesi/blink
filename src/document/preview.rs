@@ -10,7 +10,8 @@ use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::time::Duration;
 
-use super::{BlinkWindow, ViewMode, buffer_text, saturating_u32};
+use super::{BlinkDocument, ViewMode, buffer_text, saturating_u32};
+use crate::config;
 use crate::markdown;
 
 /// How long typing has to pause before the preview is rendered again.
@@ -31,12 +32,12 @@ pub struct State {
     pub rendered: RefCell<markdown::Rendered>,
 }
 
-impl BlinkWindow {
+impl BlinkDocument {
     pub(super) fn setup_preview(&self) {
         let imp = self.imp();
         let buffer = imp.preview_view.buffer();
         markdown::setup_tags(&buffer);
-        markdown::set_monospace_family(&buffer, &self.font_families().1);
+        markdown::set_monospace_family(&buffer, &config::font_family(self.settings(), true));
         // Indenting text tags carry absolute left margins, so the renderer owns this value.
         imp.preview_view.set_left_margin(markdown::TEXT_MARGIN);
         imp.preview_view.set_right_margin(markdown::TEXT_MARGIN);
@@ -51,11 +52,15 @@ impl BlinkWindow {
         // anyone.
         let click = gtk::GestureClick::new();
         click.connect_released(glib::clone!(
-            #[weak(rename_to = win)]
+            #[weak(rename_to = document)]
             self,
             move |_, _, x, y| {
-                if let Some(url) = win.link_at(x, y) {
-                    gtk::UriLauncher::new(&url).launch(Some(&win), gio::Cancellable::NONE, |_| {});
+                if let Some(url) = document.link_at(x, y) {
+                    gtk::UriLauncher::new(&url).launch(
+                        document.dialog_parent().as_ref(),
+                        gio::Cancellable::NONE,
+                        |_| {},
+                    );
                 }
             }
         ));
@@ -63,15 +68,18 @@ impl BlinkWindow {
 
         let motion = gtk::EventControllerMotion::new();
         motion.connect_motion(glib::clone!(
-            #[weak(rename_to = win)]
+            #[weak(rename_to = document)]
             self,
             move |_, x, y| {
-                let cursor = if win.link_at(x, y).is_some() {
+                let cursor = if document.link_at(x, y).is_some() {
                     "pointer"
                 } else {
                     "text"
                 };
-                win.imp().preview_view.set_cursor_from_name(Some(cursor));
+                document
+                    .imp()
+                    .preview_view
+                    .set_cursor_from_name(Some(cursor));
             }
         ));
         imp.preview_view.add_controller(motion);
@@ -80,19 +88,19 @@ impl BlinkWindow {
         // copy (Ctrl+C or its menu) does not see: only one selection is kept at a time, and
         // copying takes it from wherever it is.
         buffer.connect_has_selection_notify(glib::clone!(
-            #[weak(rename_to = win)]
+            #[weak(rename_to = document)]
             self,
             move |buffer| {
                 if buffer.has_selection() {
-                    win.clear_surface_selections(None);
+                    document.clear_surface_selections(None);
                 }
             }
         ));
         imp.preview_view.connect_copy_clipboard(glib::clone!(
-            #[weak(rename_to = win)]
+            #[weak(rename_to = document)]
             self,
             move |view| {
-                if let Some(text) = win.surface_selection() {
+                if let Some(text) = document.surface_selection() {
                     view.clipboard().set_text(&text);
                     view.stop_signal_emission_by_name("copy-clipboard");
                 }
@@ -124,13 +132,13 @@ impl BlinkWindow {
     fn watch_surface_selections(&self, surfaces: &[markdown::Surface]) {
         for surface in surfaces {
             let select = glib::clone!(
-                #[weak(rename_to = win)]
+                #[weak(rename_to = document)]
                 self,
                 move |source: &glib::Object| {
-                    let buffer = win.imp().preview_view.buffer();
+                    let buffer = document.imp().preview_view.buffer();
                     let insert = buffer.iter_at_offset(buffer.cursor_position());
                     buffer.select_range(&insert, &insert);
-                    win.clear_surface_selections(Some(source));
+                    document.clear_surface_selections(Some(source));
                 }
             );
             match surface {
@@ -189,16 +197,16 @@ impl BlinkWindow {
     /// In the split view, scrolling `source` scrolls `target` to the same proportion.
     fn sync_scroll(&self, source: &gtk::Adjustment, target: &gtk::Adjustment) {
         source.connect_value_changed(glib::clone!(
-            #[weak(rename_to = win)]
+            #[weak(rename_to = document)]
             self,
             #[weak]
             target,
             move |source| {
-                let imp = win.imp();
+                let imp = document.imp();
                 if imp.view_mode.get() != ViewMode::Split || imp.preview.syncing.get() {
                     return;
                 }
-                win.set_ratio(&target, adjustment_ratio(source));
+                document.set_ratio(&target, adjustment_ratio(source));
             }
         ));
     }
@@ -299,11 +307,11 @@ impl BlinkWindow {
         let id = glib::timeout_add_local_once(
             RENDER_DELAY,
             glib::clone!(
-                #[weak(rename_to = win)]
+                #[weak(rename_to = document)]
                 self,
                 move || {
-                    win.imp().preview.render_timer.take();
-                    win.render_tick();
+                    document.imp().preview.render_timer.take();
+                    document.render_tick();
                 }
             ),
         );
@@ -346,9 +354,9 @@ impl BlinkWindow {
             self.render_preview();
             // The rebuilt preview is laid out before idle callbacks run.
             glib::idle_add_local_once(glib::clone!(
-                #[weak(rename_to = win)]
+                #[weak(rename_to = document)]
                 self,
-                move || win.set_ratio(&vadj, ratio)
+                move || document.set_ratio(&vadj, ratio)
             ));
         } else {
             self.update_status(&buffer_text(&*imp.edit_buffer));
@@ -373,9 +381,9 @@ impl BlinkWindow {
             let preview = imp.preview_scroll.vadjustment();
             let ratio = adjustment_ratio(&imp.edit_scroll.vadjustment());
             glib::idle_add_local_once(glib::clone!(
-                #[weak(rename_to = win)]
+                #[weak(rename_to = document)]
                 self,
-                move || win.set_ratio(&preview, ratio)
+                move || document.set_ratio(&preview, ratio)
             ));
         } else {
             imp.preview_scroll.remove_css_class("split-preview");

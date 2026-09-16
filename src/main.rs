@@ -2,6 +2,7 @@ mod application;
 mod backup;
 mod config;
 mod conflict;
+mod document;
 mod editor_view;
 mod export;
 mod markdown;

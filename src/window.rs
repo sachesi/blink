@@ -1,52 +1,24 @@
-//! The document window: the editor, its rendered preview, or both side by side.
+//! A window: the header bar, and the documents it holds as tabs.
 //!
-//! In `window/`: the document's file lifecycle and the queue its operations run through,
-//! crash recovery, the preview, and find and replace.
+//! The header bar and the `win.*` actions act on the selected document. Documents move
+//! between windows with their tabs, and a tab dropped outside every window opens in a new
+//! one.
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
-use sourceview5::prelude::*;
 use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::HashMap;
 
+use crate::application::BlinkApplication;
 use crate::config;
-use crate::editor_view::BlinkEditorView;
-use crate::markdown;
+use crate::document::{BlinkDocument, Command, ViewMode};
 
-mod document;
-mod preview;
-mod recovery;
-mod search;
-
-use document::Command;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ViewMode {
-    #[default]
-    Edit,
-    Preview,
-    Split,
-}
-
-impl ViewMode {
-    /// The name of the view's toggle in the header bar.
-    fn name(self) -> &'static str {
-        match self {
-            Self::Edit => "edit",
-            Self::Preview => "preview",
-            Self::Split => "split",
-        }
-    }
-
-    fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "edit" => Some(Self::Edit),
-            "preview" => Some(Self::Preview),
-            "split" => Some(Self::Split),
-            _ => None,
-        }
-    }
+/// What ties a document to the window it is in, undone when it leaves.
+struct Attachment {
+    bindings: Vec<glib::Binding>,
+    handlers: Vec<glib::SignalHandlerId>,
 }
 
 mod imp {
@@ -71,58 +43,25 @@ mod imp {
         #[template_child]
         pub recent_menu: TemplateChild<gio::Menu>,
         #[template_child]
-        pub search_bar: TemplateChild<gtk::Box>,
-        #[template_child]
-        pub search_entry: TemplateChild<gtk::SearchEntry>,
-        #[template_child]
-        pub search_status: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub replace_row: TemplateChild<gtk::Box>,
-        #[template_child]
-        pub replace_entry: TemplateChild<gtk::Entry>,
-        #[template_child]
-        pub replace_button: TemplateChild<gtk::Button>,
-        #[template_child]
-        pub replace_all_button: TemplateChild<gtk::Button>,
-        #[template_child]
-        pub monitor_banner: TemplateChild<adw::Banner>,
-        #[template_child]
-        pub edit_scroll: TemplateChild<gtk::ScrolledWindow>,
-        #[template_child]
-        pub edit_view: TemplateChild<BlinkEditorView>,
-        #[template_child]
-        pub edit_buffer: TemplateChild<sourceview5::Buffer>,
-        #[template_child]
-        pub preview_scroll: TemplateChild<gtk::ScrolledWindow>,
-        #[template_child]
-        pub preview_view: TemplateChild<gtk::TextView>,
-        #[template_child]
-        pub status_label: TemplateChild<gtk::Label>,
+        pub tab_view: TemplateChild<adw::TabView>,
 
         /// Full screen, with the header bar and the status bar hidden.
         #[property(get, set = Self::set_focus_mode)]
         focus_mode: Cell<bool>,
-        /// The widest the editor and the preview get, in pixels.
+        /// The widest the editor and the preview of its documents get, in pixels.
         #[property(get, set)]
         content_width: Cell<i32>,
 
         pub settings: OnceCell<gio::Settings>,
-        /// The fonts and the zoom, as CSS that changes with the settings.
-        pub font_css: OnceCell<gtk::CssProvider>,
-        pub style_handlers: RefCell<Vec<glib::SignalHandlerId>>,
-        pub autosave_timer: RefCell<Option<glib::SourceId>>,
-
-        pub view_mode: Cell<ViewMode>,
-        /// The single-pane view the split view was entered from, which it falls back to.
-        pub last_single_mode: Cell<ViewMode>,
-
-        pub preview: preview::State,
-        pub search: search::State,
-        pub document: RefCell<document::State>,
-        pub recovery: RefCell<recovery::State>,
-        pub commands: OnceCell<async_channel::Sender<Command>>,
-        /// Set once the close has been confirmed, so the next close request goes through.
+        /// The window is too narrow for the split view.
+        pub narrow: Cell<bool>,
+        /// Every document has been closed, so the next close request goes through.
         pub closing: Cell<bool>,
+        /// The window is closing its documents one after the other.
+        pub closing_all: Cell<bool>,
+        /// The tab whose context menu is open.
+        pub menu_page: RefCell<Option<adw::TabPage>>,
+        pub(super) attachments: RefCell<HashMap<adw::TabPage, Attachment>>,
     }
 
     #[glib::object_subclass]
@@ -132,31 +71,56 @@ mod imp {
         type ParentType = adw::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
-            BlinkEditorView::ensure_type();
+            BlinkDocument::ensure_type();
             klass.bind_template();
             klass.bind_template_callbacks();
 
+            klass.install_action("win.new", None, |win, _, _| {
+                win.app().new_document(Some(win));
+            });
+            klass.install_action_async("win.open", None, |win, _, _| async move {
+                win.open().await;
+            });
+            klass.install_action(
+                "win.open-recent",
+                Some(glib::VariantTy::STRING),
+                |win, _, param| {
+                    if let Some(path) = param.and_then(glib::Variant::str) {
+                        win.app().open_file(gio::File::for_path(path), Some(win));
+                    }
+                },
+            );
             for (name, command) in [
-                ("win.new", Command::New),
-                ("win.open", Command::Open),
                 ("win.save", Command::Save),
                 ("win.save-as", Command::SaveAs),
                 ("win.export-html", Command::ExportHtml),
                 ("win.export-pdf", Command::ExportPdf),
             ] {
                 klass.install_action(name, None, move |win, _, _| {
-                    win.enqueue(command.clone());
+                    if let Some(document) = win.selected_document() {
+                        document.enqueue(command.clone());
+                    }
                 });
             }
-            klass.install_action(
-                "win.open-recent",
-                Some(glib::VariantTy::STRING),
-                |win, _, param| {
-                    if let Some(path) = param.and_then(glib::Variant::str) {
-                        win.enqueue(Command::OpenFile(gio::File::for_path(path)));
-                    }
-                },
-            );
+            klass.install_action("win.close-document", None, |win, _, _| {
+                if let Some(page) = win.imp().tab_view.selected_page() {
+                    win.imp().tab_view.close_page(&page);
+                }
+            });
+            klass.install_action("win.tab-to-new-window", None, |win, _, _| {
+                if let Some(page) = win.imp().menu_page.take() {
+                    let window = super::BlinkWindow::new(&win.app());
+                    win.imp()
+                        .tab_view
+                        .transfer_page(&page, &window.imp().tab_view, 0);
+                    window.present();
+                }
+            });
+            klass.install_action("win.tab-close", None, |win, _, _| {
+                if let Some(page) = win.imp().menu_page.take() {
+                    win.imp().tab_view.close_page(&page);
+                }
+            });
 
             klass.install_action(
                 "win.copy-code",
@@ -169,20 +133,30 @@ mod imp {
                 },
             );
 
-            klass.install_action("win.find", None, |win, _, _| win.toggle_find());
-            klass.install_action("win.find-next", None, |win, _, _| win.find_next(true));
-            klass.install_action("win.find-previous", None, |win, _, _| win.find_next(false));
-            klass.install_action("win.replace", None, |win, _, _| win.show_replace());
-            klass.install_action("win.replace-all", None, |win, _, _| win.replace_all());
+            klass.install_action("win.find", None, |win, _, _| {
+                win.with_document(BlinkDocument::toggle_find);
+            });
+            klass.install_action("win.find-next", None, |win, _, _| {
+                win.with_document(|document| document.find_next(true));
+            });
+            klass.install_action("win.find-previous", None, |win, _, _| {
+                win.with_document(|document| document.find_next(false));
+            });
+            klass.install_action("win.replace", None, |win, _, _| {
+                win.with_document(BlinkDocument::show_replace);
+            });
+            klass.install_action("win.replace-all", None, |win, _, _| {
+                win.with_document(BlinkDocument::replace_all);
+            });
 
             klass.install_action("win.format-bold", None, |win, _, _| {
-                win.wrap_selection("**", "**");
+                win.with_document(|document| document.wrap_selection("**", "**"));
             });
             klass.install_action("win.format-italic", None, |win, _, _| {
-                win.wrap_selection("*", "*");
+                win.with_document(|document| document.wrap_selection("*", "*"));
             });
             klass.install_action("win.format-link", None, |win, _, _| {
-                win.wrap_selection("[", "](url)");
+                win.with_document(|document| document.wrap_selection("[", "](url)"));
             });
 
             klass.install_action("win.zoom-in", None, |win, _, _| win.zoom(1));
@@ -214,50 +188,37 @@ mod imp {
             self.settings.set(settings).ok();
 
             obj.setup_content_width();
-            obj.setup_editor();
-            obj.setup_preview();
-            obj.setup_search();
-            obj.setup_theme();
             obj.setup_recent_menu();
             obj.setup_drop();
             obj.setup_focus_mode_escape();
-            obj.setup_document();
-        }
-
-        fn dispose(&self) {
-            if let Some(id) = self.autosave_timer.take() {
-                id.remove();
-            }
-            if let Some(id) = self.preview.render_timer.take() {
-                id.remove();
-            }
-            if let Some(id) = self.recovery.borrow_mut().timer.take() {
-                id.remove();
-            }
-            if let Some(monitor) = self.document.borrow_mut().monitor.take() {
-                monitor.cancel();
-            }
-            let style_manager = adw::StyleManager::default();
-            for handler in self.style_handlers.take() {
-                style_manager.disconnect(handler);
-            }
-            if let (Some(css), Some(display)) = (self.font_css.get(), gtk::gdk::Display::default())
-            {
-                gtk::style_context_remove_provider_for_display(&display, css);
-            }
+            // Losing focus is when a crash elsewhere, a logout or a power cut is likeliest
+            // to catch unsaved work.
+            obj.connect_is_active_notify(|win| {
+                if !win.is_active() {
+                    for document in win.documents() {
+                        document.enqueue(Command::Backup);
+                    }
+                }
+            });
+            obj.sync_header();
         }
     }
 
     impl WidgetImpl for BlinkWindow {}
 
     impl WindowImpl for BlinkWindow {
-        /// Closing goes through the document queue, which asks about unsaved changes and
-        /// then closes the window again for real.
+        /// Closing closes the documents one by one, each asking about its unsaved changes,
+        /// and closes the window again once none is left. Cancelling one question stops
+        /// there, with the documents not yet closed still open.
         fn close_request(&self) -> glib::Propagation {
-            if self.closing.get() {
+            let obj = self.obj();
+            if self.closing.get() || self.tab_view.n_pages() == 0 {
+                obj.save_window_state();
                 return self.parent_close_request();
             }
-            self.obj().enqueue(Command::Close);
+            if !self.closing_all.replace(true) {
+                obj.close_next_document();
+            }
             glib::Propagation::Stop
         }
     }
@@ -273,50 +234,106 @@ mod imp {
                 .view_toggles
                 .active_name()
                 .and_then(|name| ViewMode::from_name(&name))
-                && mode != self.view_mode.get()
+                && let Some(document) = self.obj().selected_document()
+                && mode != document.view_mode()
             {
-                self.obj().set_view_mode(mode);
+                document.set_view_mode(mode);
             }
         }
 
         /// The window became too narrow for the split view.
         #[template_callback]
         fn on_narrow(&self) {
-            if self.view_mode.get() == ViewMode::Split {
-                self.obj().set_view_mode(self.last_single_mode.get());
+            self.narrow.set(true);
+            if let Some(document) = self.obj().selected_document() {
+                document.leave_split();
             }
         }
 
         #[template_callback]
-        fn on_buffer_changed(&self) {
+        fn on_wide(&self) {
+            self.narrow.set(false);
+        }
+
+        /// A tab is closing: its document asks about unsaved changes first.
+        #[template_callback]
+        fn on_close_page(&self, page: &adw::TabPage) -> bool {
             let obj = self.obj();
-            obj.schedule_render();
-            obj.schedule_backup();
+            let Ok(document) = page.child().downcast::<BlinkDocument>() else {
+                return false;
+            };
+            glib::spawn_future_local(glib::clone!(
+                #[weak]
+                obj,
+                #[weak]
+                page,
+                async move {
+                    let close = document.request_close().await;
+                    obj.imp().tab_view.close_page_finish(&page, close);
+                    if !close {
+                        obj.imp().closing_all.set(false);
+                    } else if obj.imp().closing_all.get() {
+                        obj.close_next_document();
+                    }
+                }
+            ));
+            // Stopped here; the answer above finishes the close.
+            true
+        }
+
+        /// A tab was dropped outside every window.
+        #[template_callback]
+        fn on_create_window(&self) -> Option<adw::TabView> {
+            let window = super::BlinkWindow::new(&self.obj().app());
+            window.present();
+            Some(window.imp().tab_view.get())
         }
 
         #[template_callback]
-        fn on_modified_changed(&self) {
-            self.obj().update_title();
+        fn on_page_attached(&self, page: &adw::TabPage) {
+            self.obj().attach(page);
         }
 
         #[template_callback]
-        fn on_search_changed(&self) {
-            self.obj().search_changed();
+        fn on_page_detached(&self, page: &adw::TabPage) {
+            let obj = self.obj();
+            if let Some(attachment) = self.attachments.borrow_mut().remove(page) {
+                let document = page.child();
+                for binding in attachment.bindings {
+                    binding.unbind();
+                }
+                for handler in attachment.handlers {
+                    document.disconnect(handler);
+                }
+            }
+            // The last document was closed or went to another window.
+            if self.tab_view.n_pages() == 0 {
+                self.closing.set(true);
+                glib::idle_add_local_once(glib::clone!(
+                    #[weak]
+                    obj,
+                    move || obj.close()
+                ));
+            }
         }
 
         #[template_callback]
-        fn on_search_next(&self) {
-            self.obj().find_next(true);
+        fn on_setup_menu(&self, page: Option<&adw::TabPage>) {
+            self.menu_page.replace(page.cloned());
+            // A window's only document is already in a window of its own.
+            self.obj()
+                .action_set_enabled("win.tab-to-new-window", self.tab_view.n_pages() > 1);
         }
 
         #[template_callback]
-        fn on_search_closed(&self) {
-            self.obj().close_search();
-        }
-
-        #[template_callback]
-        fn on_replace(&self) {
-            self.obj().replace_one();
+        fn on_selected_page(&self) {
+            let obj = self.obj();
+            if self.narrow.get()
+                && let Some(document) = obj.selected_document()
+            {
+                document.leave_split();
+            }
+            obj.sync_header();
         }
     }
 
@@ -343,8 +360,15 @@ glib::wrapper! {
 }
 
 impl BlinkWindow {
+    /// A window without documents; [`BlinkWindow::add_document`] gives it one.
     pub fn new(app: &impl IsA<gtk::Application>) -> Self {
         glib::Object::builder().property("application", app).build()
+    }
+
+    fn app(&self) -> BlinkApplication {
+        self.application()
+            .and_downcast()
+            .expect("windows belong to the application")
     }
 
     fn settings(&self) -> &gio::Settings {
@@ -354,9 +378,139 @@ impl BlinkWindow {
             .expect("settings set in constructed")
     }
 
-    /// Open `file`, asking first about unsaved changes.
-    pub fn open_file(&self, file: gio::File) {
-        self.enqueue(Command::OpenFile(file));
+    /// Add `document` as a tab after the others, and select it.
+    pub fn add_document(&self, document: &BlinkDocument) {
+        let tab_view = &self.imp().tab_view;
+        let page = tab_view.append(document);
+        tab_view.set_selected_page(&page);
+    }
+
+    pub fn select_document(&self, document: &BlinkDocument) {
+        let tab_view = &self.imp().tab_view;
+        tab_view.set_selected_page(&tab_view.page(document));
+    }
+
+    pub fn selected_document(&self) -> Option<BlinkDocument> {
+        self.imp()
+            .tab_view
+            .selected_page()
+            .and_then(|page| page.child().downcast().ok())
+    }
+
+    pub fn documents(&self) -> Vec<BlinkDocument> {
+        let tab_view = &self.imp().tab_view;
+        (0..tab_view.n_pages())
+            .filter_map(|i| tab_view.nth_page(i).child().downcast().ok())
+            .collect()
+    }
+
+    /// Close `document`, a blank one a file failed to open in, unless nothing else is
+    /// left in the window.
+    pub fn discard_blank(&self, document: &BlinkDocument) {
+        let tab_view = &self.imp().tab_view;
+        if tab_view.n_pages() > 1 {
+            tab_view.close_page(&tab_view.page(document));
+        }
+    }
+
+    fn with_document(&self, action: impl FnOnce(&BlinkDocument)) {
+        if let Some(document) = self.selected_document() {
+            action(&document);
+        }
+    }
+
+    /// Show a transient, non-blocking notice.
+    pub fn toast(&self, message: &str) {
+        self.imp().toast_overlay.add_toast(adw::Toast::new(message));
+    }
+
+    fn close_next_document(&self) {
+        let tab_view = &self.imp().tab_view;
+        if tab_view.n_pages() > 0 {
+            tab_view.close_page(&tab_view.nth_page(0));
+        }
+    }
+
+    /// The default size is the size the window has when it is not maximized, which is the
+    /// one to open with next time.
+    fn save_window_state(&self) {
+        let (width, height) = self.default_size();
+        let settings = self.settings();
+        let _ = settings.set("window-size", (width, height));
+        let _ = settings.set_boolean("window-maximized", self.is_maximized());
+    }
+
+    async fn open(&self) {
+        let dialog = gtk::FileDialog::new();
+        let (filters, markdown) = crate::document::markdown_filters();
+        dialog.set_filters(Some(&filters));
+        dialog.set_default_filter(Some(&markdown));
+        let Ok(files) = dialog.open_multiple_future(Some(self)).await else {
+            return;
+        };
+        let app = self.app();
+        for file in files.iter::<gio::File>().flatten() {
+            app.open_file(file, Some(self));
+        }
+    }
+
+    /// Tie a document that arrived to the window: its width and focus mode follow the
+    /// window's, and its title shows on its tab and, while selected, in the header bar.
+    fn attach(&self, page: &adw::TabPage) {
+        let Ok(document) = page.child().downcast::<BlinkDocument>() else {
+            return;
+        };
+        let bindings = vec![
+            self.bind_property("content-width", &document, "content-width")
+                .sync_create()
+                .build(),
+            self.bind_property("focus-mode", &document, "focus-mode")
+                .sync_create()
+                .build(),
+            document
+                .bind_property("title", page, "title")
+                .sync_create()
+                .build(),
+            // The tooltip is markup, and a folder name can hold markup characters.
+            document
+                .bind_property("folder", page, "tooltip")
+                .transform_to(|_, folder: String| Some(glib::markup_escape_text(&folder)))
+                .sync_create()
+                .build(),
+        ];
+        let sync = glib::clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |document: &BlinkDocument| {
+                if win.selected_document().as_ref() == Some(document) {
+                    win.sync_header();
+                }
+            }
+        );
+        let handlers = vec![
+            document.connect_title_notify(sync.clone()),
+            document.connect_folder_notify(sync.clone()),
+            document.connect_view_mode_name_notify(sync),
+        ];
+        self.imp()
+            .attachments
+            .borrow_mut()
+            .insert(page.clone(), Attachment { bindings, handlers });
+    }
+
+    /// Show the selected document's title, folder and view in the header bar.
+    fn sync_header(&self) {
+        let imp = self.imp();
+        let Some(document) = self.selected_document() else {
+            return;
+        };
+        let title = document.title();
+        imp.window_title.set_title(&title);
+        imp.window_title.set_subtitle(&document.folder());
+        self.set_title(Some(&title));
+        // Setting the name the group already has does not notify again.
+        imp.view_toggles
+            .set_active_name(Some(&document.view_mode_name()));
     }
 
     /// The window starts at the width in the settings and follows a change to it; the
@@ -366,11 +520,6 @@ impl BlinkWindow {
             .bind("content-width", self, "content-width")
             .get_only()
             .build();
-        let hadj = self.imp().preview_scroll.hadjustment();
-        markdown::set_content_width(&hadj, self.content_width());
-        self.connect_content_width_notify(move |win| {
-            markdown::set_content_width(&hadj, win.content_width());
-        });
         let menu = gio::Menu::new();
         for width in config::CONTENT_WIDTHS {
             let item = gio::MenuItem::new(Some(&config::content_width_label(width)), None);
@@ -380,173 +529,9 @@ impl BlinkWindow {
         self.imp().width_button.set_menu_model(Some(&menu));
     }
 
-    fn setup_editor(&self) {
-        let imp = self.imp();
-        if let Some(language) = sourceview5::LanguageManager::default().language("markdown") {
-            imp.edit_buffer.set_language(Some(&language));
-        }
-        markdown::setup_tags(imp.edit_buffer.upcast_ref::<gtk::TextBuffer>());
-
-        let settings = self.settings();
-        settings
-            .bind("show-line-numbers", &*imp.edit_view, "show-line-numbers")
-            .get_only()
-            .build();
-        settings
-            .bind("tab-width", &*imp.edit_view, "tab-width")
-            .get_only()
-            .build();
-        settings
-            .bind(
-                "highlight-current-line",
-                &*imp.edit_view,
-                "highlight-current-line",
-            )
-            .get_only()
-            .build();
-        settings
-            .bind(
-                "shade-alternate-lines",
-                &*imp.edit_view,
-                "shade-alternate-lines",
-            )
-            .get_only()
-            .build();
-        self.apply_wrap();
-        settings.connect_changed(
-            Some("wrap-text"),
-            glib::clone!(
-                #[weak(rename_to = win)]
-                self,
-                move |_, _| win.apply_wrap()
-            ),
-        );
-
-        // A provider of its own carries the font and zoom, so they change without
-        // touching the stylesheet.
-        let css = gtk::CssProvider::new();
-        if let Some(display) = gtk::gdk::Display::default() {
-            gtk::style_context_add_provider_for_display(
-                &display,
-                &css,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
-            );
-        }
-        imp.font_css.set(css).ok();
-        self.apply_font_css();
-        settings.connect_changed(
-            Some("zoom"),
-            glib::clone!(
-                #[weak(rename_to = win)]
-                self,
-                move |_, _| win.apply_font_css()
-            ),
-        );
-        let refont = glib::clone!(
-            #[weak(rename_to = win)]
-            self,
-            move || win.apply_fonts()
-        );
-        for key in ["text-font", "monospace-font"] {
-            let refont = refont.clone();
-            settings.connect_changed(Some(key), move |_, _| refont());
-        }
-        let style_manager = adw::StyleManager::default();
-        let handlers = [
-            style_manager.connect_document_font_name_notify({
-                let refont = refont.clone();
-                move |_| refont()
-            }),
-            style_manager.connect_monospace_font_name_notify(move |_| refont()),
-        ];
-        imp.style_handlers.borrow_mut().extend(handlers);
-    }
-
-    /// The font families of text and of monospace text.
-    pub fn font_families(&self) -> (String, String) {
-        let settings = self.settings();
-        (
-            config::font_family(settings, false),
-            config::font_family(settings, true),
-        )
-    }
-
-    /// Follow a change of font: the stylesheet, the inline code of the preview, and code in
-    /// its table cells, which only a new render changes.
-    fn apply_fonts(&self) {
-        let imp = self.imp();
-        self.apply_font_css();
-        let buffer = imp.preview_view.buffer();
-        markdown::set_monospace_family(&buffer, &self.font_families().1);
-        imp.preview.rendered.borrow_mut().clear(&buffer);
-        self.render_tick();
-    }
-
-    /// Word wrap, or a horizontal scrollbar: without wrapping the longest line would
-    /// otherwise become the window's minimum width.
-    fn apply_wrap(&self) {
-        let imp = self.imp();
-        let wrap = self.settings().boolean("wrap-text");
-        imp.edit_view.set_wrap_mode(if wrap {
-            gtk::WrapMode::Word
-        } else {
-            gtk::WrapMode::None
-        });
-        imp.edit_scroll.set_hscrollbar_policy(if wrap {
-            gtk::PolicyType::Never
-        } else {
-            gtk::PolicyType::Automatic
-        });
-    }
-
-    fn apply_font_css(&self) {
-        let size = (11 + self.settings().int("zoom")).clamp(6, 32);
-        let (text, monospace) = self.font_families();
-        let (text, monospace) = (css_string(&text), css_string(&monospace));
-        let css = format!(
-            "textview.editor-view {{ font-size: {size}pt; }}\n\
-             textview.transparent-bg {{ font-size: {size}pt; }}\n\
-             textview.preview-view {{ font-family: {text}; }}\n\
-             textview.editor-view, textview.code-view {{ font-family: {monospace}; }}"
-        );
-        if let Some(provider) = self.imp().font_css.get() {
-            provider.load_from_string(&css);
-        }
-    }
-
     fn zoom(&self, delta: i32) {
         let settings = self.settings();
         let _ = settings.set_int("zoom", (settings.int("zoom") + delta).clamp(-5, 21));
-    }
-
-    /// Follow the light or dark style and the accent colour: the editor's style scheme
-    /// and the preview's text tags cannot use CSS variables.
-    fn setup_theme(&self) {
-        self.apply_editor_scheme();
-        markdown::apply_theme_colors(&self.imp().preview_view.buffer());
-        let style_manager = adw::StyleManager::default();
-        let retheme = glib::clone!(
-            #[weak(rename_to = win)]
-            self,
-            move |_: &adw::StyleManager| win.retheme()
-        );
-        let handlers = vec![
-            style_manager.connect_dark_notify(retheme.clone()),
-            style_manager.connect_accent_color_notify(retheme),
-        ];
-        self.imp().style_handlers.borrow_mut().extend(handlers);
-    }
-
-    fn apply_editor_scheme(&self) {
-        if let Some(scheme) = markdown::current_scheme() {
-            self.imp().edit_buffer.set_style_scheme(Some(&scheme));
-        }
-    }
-
-    fn retheme(&self) {
-        self.apply_editor_scheme();
-        markdown::apply_theme_colors(&self.imp().preview_view.buffer());
-        self.restyle_code_blocks();
     }
 
     fn setup_recent_menu(&self) {
@@ -606,14 +591,13 @@ impl BlinkWindow {
             false,
             move |_, value, _, _| {
                 win.imp().drop_overlay.set_visible(false);
-                let Some(file) = value
-                    .get::<gtk::gdk::FileList>()
-                    .ok()
-                    .and_then(|list| list.files().into_iter().next())
-                else {
+                let Ok(files) = value.get::<gtk::gdk::FileList>() else {
                     return false;
                 };
-                win.open_file(file);
+                let app = win.app();
+                for file in files.files() {
+                    app.open_file(file, Some(&win));
+                }
                 true
             }
         ));
@@ -639,79 +623,4 @@ impl BlinkWindow {
         ));
         self.add_controller(keys);
     }
-
-    fn set_view_mode(&self, mode: ViewMode) {
-        let imp = self.imp();
-        if imp.view_mode.get() != mode {
-            self.close_search();
-            if mode != ViewMode::Split {
-                imp.last_single_mode.set(mode);
-            }
-            imp.view_mode.set(mode);
-        }
-        // Keeps the toggles in step when the mode is set from code; setting the name the
-        // group already has does not notify again.
-        imp.view_toggles.set_active_name(Some(mode.name()));
-        self.apply_view_mode();
-    }
-
-    /// Markdown markup around the selection in the editor. Nothing happens in the
-    /// preview, where the editor and its selection are out of sight.
-    fn wrap_selection(&self, prefix: &str, suffix: &str) {
-        let imp = self.imp();
-        if imp.view_mode.get() == ViewMode::Preview {
-            return;
-        }
-        let buffer = &imp.edit_buffer;
-        if let Some((mut start, mut end)) = buffer.selection_bounds() {
-            let text = buffer.text(&start, &end, false);
-            buffer.begin_user_action();
-            buffer.delete(&mut start, &mut end);
-            buffer.insert(&mut start, &format!("{prefix}{text}{suffix}"));
-            buffer.end_user_action();
-        }
-    }
-
-    /// Show a transient, non-blocking notice.
-    fn toast(&self, message: &str) {
-        self.imp().toast_overlay.add_toast(adw::Toast::new(message));
-    }
-
-    /// The document name with a marker while it has unsaved changes, and its folder as
-    /// the subtitle.
-    fn update_title(&self) {
-        let imp = self.imp();
-        let file = imp.document.borrow().file.clone();
-        let name = file
-            .as_ref()
-            .map(document::file_title)
-            .unwrap_or_else(|| gettext("Untitled Document"));
-        let title = if imp.edit_buffer.is_modified() {
-            format!("• {name}")
-        } else {
-            name
-        };
-        let subtitle = file
-            .and_then(|file| file.path())
-            .and_then(|path| path.parent().map(|dir| dir.display().to_string()))
-            .unwrap_or_default();
-        imp.window_title.set_title(&title);
-        imp.window_title.set_subtitle(&subtitle);
-        self.set_title(Some(&title));
-    }
-}
-
-/// The whole text of a buffer.
-fn buffer_text(buffer: &impl IsA<gtk::TextBuffer>) -> String {
-    let (start, end) = buffer.bounds();
-    buffer.text(&start, &end, false).to_string()
-}
-
-/// `text` as a quoted CSS string.
-fn css_string(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-fn saturating_u32(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
 }

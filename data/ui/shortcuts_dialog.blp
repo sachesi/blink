@@ -24,6 +24,40 @@ Adw.ShortcutsDialog shortcuts_dialog {
       title: _("Save As");
       accelerator: "<Control><Shift>s";
     }
+
+    Adw.ShortcutsItem {
+      title: _("Close Document");
+      accelerator: "<Control>w";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("Tabs");
+
+    Adw.ShortcutsItem {
+      title: _("Next Tab");
+      accelerator: "<Control>Page_Down <Control>Tab";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Previous Tab");
+      accelerator: "<Control>Page_Up <Control><Shift>Tab";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Move Tab Right");
+      accelerator: "<Control><Shift>Page_Down";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Move Tab Left");
+      accelerator: "<Control><Shift>Page_Up";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Go to Tab");
+      accelerator: "<Alt>1...9";
+    }
   }
 
   Adw.ShortcutsSection {

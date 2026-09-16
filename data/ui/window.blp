@@ -1,6 +1,5 @@
 using Gtk 4.0;
 using Adw 1;
-using GtkSource 5;
 
 menu primary_menu {
   section {
@@ -54,6 +53,22 @@ menu primary_menu {
   }
 }
 
+menu tab_menu {
+  section {
+    item {
+      label: _("Move to _New Window");
+      action: "win.tab-to-new-window";
+    }
+  }
+
+  section {
+    item {
+      label: _("_Close");
+      action: "win.tab-close";
+    }
+  }
+}
+
 template $BlinkWindow: Adw.ApplicationWindow {
   title: _("Untitled Document");
   width-request: 360;
@@ -71,13 +86,13 @@ template $BlinkWindow: Adw.ApplicationWindow {
     }
 
     apply => $on_narrow() swapped;
+    unapply => $on_wide() swapped;
   }
 
   content: Gtk.Overlay drop_area {
     child: Adw.ToastOverlay toast_overlay {
-      child: Adw.ToolbarView toolbar_view {
+      child: Adw.ToolbarView {
         reveal-top-bars: bind template.focus-mode inverted;
-        reveal-bottom-bars: bind template.focus-mode inverted;
 
         [top]
         Adw.HeaderBar {
@@ -137,178 +152,25 @@ template $BlinkWindow: Adw.ApplicationWindow {
           }
         }
 
+        // Shown once the window holds more than one document. Tabs are dragged between
+        // windows here, and a tab dropped outside every window opens in a new one.
         [top]
-        Gtk.Box search_bar {
-          orientation: vertical;
-          spacing: 6;
-          margin-start: 6;
-          margin-end: 6;
-          margin-top: 6;
-          margin-bottom: 6;
-          visible: false;
-
-          styles [
-            "toolbar",
-          ]
-
-          Gtk.Box {
-            spacing: 6;
-
-            Gtk.SearchEntry search_entry {
-              hexpand: true;
-              width-chars: 24;
-              placeholder-text: _("Search");
-              search-changed => $on_search_changed() swapped;
-              activate => $on_search_next() swapped;
-              stop-search => $on_search_closed() swapped;
-            }
-
-            Gtk.Label search_status {
-              xalign: 0;
-              ellipsize: end;
-              max-width-chars: 24;
-              width-chars: 16;
-            }
-
-            Gtk.Button {
-              icon-name: "go-up-symbolic";
-              tooltip-text: _("Previous Match");
-              action-name: "win.find-previous";
-            }
-
-            Gtk.Button {
-              icon-name: "go-down-symbolic";
-              tooltip-text: _("Next Match");
-              action-name: "win.find-next";
-            }
-
-            Gtk.Button {
-              icon-name: "window-close-symbolic";
-              tooltip-text: _("Close Search");
-              clicked => $on_search_closed() swapped;
-            }
-          }
-
-          Gtk.Box replace_row {
-            spacing: 6;
-
-            Gtk.Entry replace_entry {
-              hexpand: true;
-              width-chars: 24;
-              placeholder-text: _("Replace");
-              activate => $on_replace() swapped;
-            }
-
-            Gtk.Button replace_button {
-              label: _("Replace");
-              tooltip-text: _("Replace Match");
-              clicked => $on_replace() swapped;
-            }
-
-            Gtk.Button replace_all_button {
-              label: _("Replace All");
-              tooltip-text: _("Replace All Matches");
-              action-name: "win.replace-all";
-            }
-          }
+        Adw.TabBar {
+          view: tab_view;
         }
 
-        [top]
-        Adw.Banner monitor_banner {
-          title: _("Changes other programs make to this file will not be noticed until the next save");
-        }
-
-        content: Gtk.Box {
-          homogeneous: true;
-
-          Gtk.ScrolledWindow edit_scroll {
-            hexpand: true;
-            hscrollbar-policy: never;
-
-            // ClampScrollable rather than Clamp, so the scrolled window scrolls the view
-            // through its own scrollable interface. A plain Clamp is not scrollable, and
-            // the scrolled window would scroll the whole view to its top on every click.
-            child: Adw.ClampScrollable {
-              maximum-size: bind template.content-width;
-
-              child: $BlinkEditorView edit_view {
-                monospace: true;
-                wrap-mode: word;
-                left-margin: 32;
-                right-margin: 32;
-                top-margin: 32;
-                bottom-margin: 32;
-                pixels-above-lines: 4;
-                pixels-below-lines: 4;
-                margin-top: 12;
-                margin-bottom: 12;
-
-                buffer: GtkSource.Buffer edit_buffer {
-                  changed => $on_buffer_changed() swapped;
-                  modified-changed => $on_modified_changed() swapped;
-                };
-
-                styles [
-                  "editor-view",
-                ]
-              };
-            };
-          }
-
-          // External rather than never: tables, code blocks and images are sized from
-          // this window's page width, and with never the viewport could not become
-          // narrower than what it sizes, so the window could not shrink once such a
-          // document is open. External allows that without a scrollbar the content
-          // never needs.
-          Gtk.ScrolledWindow preview_scroll {
-            hexpand: true;
-            hscrollbar-policy: external;
-            visible: false;
-
-            child: Adw.ClampScrollable {
-              maximum-size: bind template.content-width;
-
-              // Read-only but focusable, so its text and tables can be selected and
-              // copied.
-              child: Gtk.TextView preview_view {
-                editable: false;
-                cursor-visible: false;
-                wrap-mode: word;
-                top-margin: 32;
-                bottom-margin: 32;
-                pixels-above-lines: 4;
-                pixels-below-lines: 4;
-                // Wrapped lines of a paragraph spaced like separate lines.
-                pixels-inside-wrap: 8;
-
-                styles [
-                  "transparent-bg",
-                  "preview-view",
-                ]
-              };
-            };
-          }
+        content: Adw.TabView tab_view {
+          menu-model: tab_menu;
+          // Not Ctrl+Home and Ctrl+End, with or without Shift: in the editor they move the
+          // cursor to the start and the end, and select up to them.
+          shortcuts: control_tab | control_shift_tab | control_page_up | control_page_down | control_shift_page_up | control_shift_page_down | alt_digits | alt_zero;
+          close-page => $on_close_page() swapped;
+          create-window => $on_create_window() swapped;
+          page-attached => $on_page_attached() swapped;
+          page-detached => $on_page_detached() swapped;
+          setup-menu => $on_setup_menu() swapped;
+          notify::selected-page => $on_selected_page() swapped;
         };
-
-        [bottom]
-        Gtk.Box {
-          styles [
-            "toolbar",
-          ]
-
-          Gtk.Label status_label {
-            hexpand: true;
-            halign: end;
-            margin-top: 4;
-            margin-bottom: 4;
-            margin-end: 12;
-
-            styles [
-              "dim-label",
-              "numeric",
-            ]
-          }
-        }
       };
     };
 

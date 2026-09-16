@@ -30,6 +30,8 @@ mod imp {
         #[template_child]
         pub monospace_font_reset: TemplateChild<gtk::Button>,
         #[template_child]
+        pub tabs_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub wrap_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub line_numbers_row: TemplateChild<adw::SwitchRow>,
@@ -127,6 +129,9 @@ mod imp {
                     family.is_none_or(|family| family.is_monospace())
                 })));
             }
+            settings
+                .bind("open-in-tabs", &*self.tabs_row, "active")
+                .build();
             settings
                 .bind("wrap-text", &*self.wrap_row, "active")
                 .build();

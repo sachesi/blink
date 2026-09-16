@@ -7,8 +7,9 @@ crash, and a change another program made to the file is never overwritten withou
 
 The preview renders tables, task lists, footnotes, syntax-coloured code blocks and images
 from the document's own folder. Find works in the source and in the rendered text,
-replace in the source. There is a focus mode, full screen with nothing but the text, and
-an export to a standalone HTML file or to PDF.
+replace in the source. Documents open in tabs, which can be dragged out into windows of
+their own, or each in a window of its own if you prefer. There is a focus mode, full
+screen with nothing but the text, and an export to a standalone HTML file or to PDF.
 
 ## Building and installing
 

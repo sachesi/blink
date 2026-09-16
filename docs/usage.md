@@ -1,17 +1,35 @@
 # Using Blink
 
+## Tabs and windows
+
+Documents open as tabs of the window they are opened from: a new document, a file from the
+Open dialog or Open Recent, a file dropped on the window, and a file passed to `blink` while
+it is running. The tab bar shows once a window holds more than one document. A file that is
+already open is brought to the front instead of being opened a second time, and a file
+opened while the window shows an untitled document that was never typed in takes its place.
+
+A tab dragged out of its window and dropped outside every window opens in a window of its
+own, and dropped on another window's tab bar joins it. "Move to New Window" in a tab's
+context menu does the same without dragging. Closing a window closes its documents one
+after the other, each asking about unsaved changes first; cancelling that question leaves
+the window open with the documents not yet closed. Closing the last tab closes the window.
+
+With "Open Documents in Tabs" turned off in Preferences, every new or opened document gets
+a window of its own instead. Tabs can still be dragged between windows.
+
 ## Views
 
 The three toggles in the header bar show the source, the rendered preview, or both side by
-side. In the split view the two scroll together. A window narrower than 700 pixels at the
+side, for the document in the selected tab; each document keeps its own. In the split view the two scroll together. A window narrower than 700 pixels at the
 normal text size has no room for two panes: the split view gives way to the view it was
 opened from, and comes back only once the window is wider and it is picked again.
 
 A file opens in the preview, a new document in the source.
 
 On a wide window the source and the preview stay in a column of 700, 800, 900 or 1000
-pixels, 900 unless changed. The button beside the view toggles changes it for the window;
-picked in Preferences, it applies to the window and to every window opened later.
+pixels, 900 unless changed. The button beside the view toggles changes it for the window
+and its tabs; picked in Preferences, it applies to the window and to every window opened
+later. A tab moved to another window takes that window's width.
 
 Focus mode (F11, or the main menu) puts the window in full screen without the header bar
 and the status bar; F11 or Escape leaves it.
@@ -79,6 +97,10 @@ Ctrl+? lists them all.
 | Ctrl+O | Open |
 | Ctrl+S | Save |
 | Shift+Ctrl+S | Save as |
+| Ctrl+W | Close the document |
+| Ctrl+Page Down, Ctrl+Page Up | Next and previous tab; Ctrl+Tab and Shift+Ctrl+Tab too |
+| Shift+Ctrl+Page Down, Shift+Ctrl+Page Up | Move the tab right or left |
+| Alt+1 to Alt+9 | Go to a tab |
 | Ctrl+B, Ctrl+I, Ctrl+K | Bold, italic, link around the selection, in the source |
 | Ctrl+F | Find, or close the search |
 | Ctrl+G, Shift+Ctrl+G | Next and previous match |
@@ -92,7 +114,7 @@ Ctrl+? lists them all.
 ## Settings
 
 Preferences holds the style (follow the system, light or dark), the content width, the
-fonts, word wrap, line numbers, the highlight of the line with the cursor, the shading of
+fonts, whether documents open in tabs or in windows of their own, word wrap, line numbers, the highlight of the line with the cursor, the shading of
 every other line and the tab width. The text font is the one of the preview, the
 monospace font the one of the editor and of code; either follows the system's document or
 monospace font until another is picked, and the button beside it goes back to that.
