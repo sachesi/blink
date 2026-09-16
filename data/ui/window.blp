@@ -81,8 +81,16 @@ template $BlinkWindow: Adw.ApplicationWindow {
 
     setters {
       split_toggle.enabled: false;
+      bottom_split_toggle.enabled: false;
       // The content is narrower than any of the widths anyway.
       width_button.visible: false;
+      // Too narrow for more than a few tabs side by side: the tabs are shown in the
+      // overview instead.
+      tab_bar.visible: false;
+      tab_button.visible: true;
+      // Beside the title there is no room for the view toggles as well.
+      view_toggles.visible: false;
+      view_bar.visible: true;
     }
 
     apply => $on_narrow() swapped;
@@ -91,85 +99,129 @@ template $BlinkWindow: Adw.ApplicationWindow {
 
   content: Gtk.Overlay drop_area {
     child: Adw.ToastOverlay toast_overlay {
-      child: Adw.ToolbarView {
-        reveal-top-bars: bind template.focus-mode inverted;
+      child: Adw.TabOverview {
+        view: tab_view;
+        enable-new-tab: true;
+        create-tab => $on_create_tab() swapped;
 
-        [top]
-        Adw.HeaderBar {
-          [start]
-          Gtk.Button {
-            icon-name: "document-open-symbolic";
-            tooltip-text: _("Open Document");
-            action-name: "win.open";
+        child: Adw.ToolbarView {
+          reveal-top-bars: bind template.focus-mode inverted;
+          reveal-bottom-bars: bind template.focus-mode inverted;
+
+          [top]
+          Adw.HeaderBar {
+            [start]
+            Gtk.Button {
+              icon-name: "document-open-symbolic";
+              tooltip-text: _("Open Document");
+              action-name: "win.open";
+            }
+
+            [start]
+            Gtk.Button {
+              icon-name: "document-save-symbolic";
+              tooltip-text: _("Save Document");
+              action-name: "win.save";
+            }
+
+            title-widget: Adw.WindowTitle window_title {
+              title: _("Untitled Document");
+            };
+
+            [end]
+            Gtk.MenuButton {
+              icon-name: "open-menu-symbolic";
+              tooltip-text: _("Main Menu");
+              menu-model: primary_menu;
+              primary: true;
+            }
+
+            [end]
+            Adw.TabButton tab_button {
+              view: tab_view;
+              action-name: "overview.open";
+              visible: false;
+            }
+
+            [end]
+            Adw.ToggleGroup view_toggles {
+              notify::active-name => $on_view_toggled() swapped;
+
+              Adw.Toggle {
+                name: "edit";
+                icon-name: "document-edit-symbolic";
+                tooltip: _("Edit Document");
+              }
+
+              Adw.Toggle {
+                name: "preview";
+                icon-name: "view-reveal-symbolic";
+                tooltip: _("Preview Document");
+              }
+
+              Adw.Toggle split_toggle {
+                name: "split";
+                icon-name: "view-dual-symbolic";
+                tooltip: _("Split View");
+              }
+            }
+
+            [end]
+            Gtk.MenuButton width_button {
+              icon-name: "format-justify-fill-symbolic";
+              tooltip-text: _("Content Width");
+            }
           }
 
-          [start]
-          Gtk.Button {
-            icon-name: "document-save-symbolic";
-            tooltip-text: _("Save Document");
-            action-name: "win.save";
+          // Shown once a window wide enough for it holds more than one document. Tabs are
+          // dragged between windows here, and a tab dropped outside every window opens in a
+          // new one.
+          [top]
+          Adw.TabBar tab_bar {
+            view: tab_view;
           }
 
-          title-widget: Adw.WindowTitle window_title {
-            title: _("Untitled Document");
+          content: Adw.TabView tab_view {
+            menu-model: tab_menu;
+            // Not Ctrl+Home and Ctrl+End, with or without Shift: in the editor they move the
+            // cursor to the start and the end, and select up to them.
+            shortcuts: control_tab | control_shift_tab | control_page_up | control_page_down | control_shift_page_up | control_shift_page_down | alt_digits | alt_zero;
+            close-page => $on_close_page() swapped;
+            create-window => $on_create_window() swapped;
+            page-attached => $on_page_attached() swapped;
+            page-detached => $on_page_detached() swapped;
+            setup-menu => $on_setup_menu() swapped;
+            notify::selected-page => $on_selected_page() swapped;
           };
 
-          [end]
-          Gtk.MenuButton {
-            icon-name: "open-menu-symbolic";
-            tooltip-text: _("Main Menu");
-            menu-model: primary_menu;
-            primary: true;
-          }
+          // The view toggles of a narrow window.
+          [bottom]
+          Gtk.ActionBar view_bar {
+            visible: false;
 
-          [end]
-          Adw.ToggleGroup view_toggles {
-            notify::active-name => $on_view_toggled() swapped;
+            [center]
+            Adw.ToggleGroup {
+              active-name: bind view_toggles.active-name bidirectional;
 
-            Adw.Toggle {
-              name: "edit";
-              icon-name: "document-edit-symbolic";
-              tooltip: _("Edit Document");
-            }
+              Adw.Toggle {
+                name: "edit";
+                icon-name: "document-edit-symbolic";
+                tooltip: _("Edit Document");
+              }
 
-            Adw.Toggle {
-              name: "preview";
-              icon-name: "view-reveal-symbolic";
-              tooltip: _("Preview Document");
-            }
+              Adw.Toggle {
+                name: "preview";
+                icon-name: "view-reveal-symbolic";
+                tooltip: _("Preview Document");
+              }
 
-            Adw.Toggle split_toggle {
-              name: "split";
-              icon-name: "view-dual-symbolic";
-              tooltip: _("Split View");
+              Adw.Toggle bottom_split_toggle {
+                name: "split";
+                icon-name: "view-dual-symbolic";
+                tooltip: _("Split View");
+              }
             }
           }
-
-          [end]
-          Gtk.MenuButton width_button {
-            icon-name: "format-justify-fill-symbolic";
-            tooltip-text: _("Content Width");
-          }
-        }
-
-        // Shown once the window holds more than one document. Tabs are dragged between
-        // windows here, and a tab dropped outside every window opens in a new one.
-        [top]
-        Adw.TabBar {
-          view: tab_view;
-        }
-
-        content: Adw.TabView tab_view {
-          menu-model: tab_menu;
-          // Not Ctrl+Home and Ctrl+End, with or without Shift: in the editor they move the
-          // cursor to the start and the end, and select up to them.
-          shortcuts: control_tab | control_shift_tab | control_page_up | control_page_down | control_shift_page_up | control_shift_page_down | alt_digits | alt_zero;
-          close-page => $on_close_page() swapped;
-          create-window => $on_create_window() swapped;
-          page-attached => $on_page_attached() swapped;
-          page-detached => $on_page_detached() swapped;
-          setup-menu => $on_setup_menu() swapped;
-          notify::selected-page => $on_selected_page() swapped;
         };
       };
     };

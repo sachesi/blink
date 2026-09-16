@@ -279,6 +279,18 @@ mod imp {
             true
         }
 
+        /// "New Tab" in the tab overview: a new document, in the source.
+        #[template_callback]
+        fn on_create_tab(&self) -> adw::TabPage {
+            let document = BlinkDocument::new();
+            let page = self.tab_view.append(&document);
+            // Selected before the view is set, which selecting would replace with the
+            // window's.
+            self.tab_view.set_selected_page(&page);
+            document.set_view_mode(ViewMode::Edit);
+            page
+        }
+
         /// A tab was dropped outside every window.
         #[template_callback]
         fn on_create_window(&self) -> Option<adw::TabView> {

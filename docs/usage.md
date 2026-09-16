@@ -16,6 +16,10 @@ context menu does the same without dragging. Closing a window closes its documen
 after the other, each asking about unsaved changes first; cancelling that question leaves
 the window open with the documents not yet closed. Closing the last tab closes the window.
 
+A window narrower than 700 pixels at the normal text size has no room for the tab bar. The
+button with the number of tabs in the header bar shows all of them instead, to pick, close
+or add one.
+
 With "Open Documents in Tabs" turned off in Preferences, every new or opened document gets
 a window of its own instead. Tabs can still be dragged between windows.
 
@@ -25,7 +29,8 @@ The three toggles in the header bar show the source, the rendered preview, or bo
 side. The view is the window's: switching tabs keeps it. In the split view the two scroll
 together. A window narrower than 700 pixels at the normal text size has no room for two
 panes: the split view gives way to the view it was opened from, and comes back only once
-the window is wider and it is picked again.
+the window is wider and it is picked again. The toggles move to the bottom of such a
+window, to leave room for the title.
 
 A file opens in the preview, a new document in the source.
 
