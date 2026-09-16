@@ -142,6 +142,7 @@ mod imp {
                 ("win.save", Command::Save),
                 ("win.save-as", Command::SaveAs),
                 ("win.export-html", Command::ExportHtml),
+                ("win.export-pdf", Command::ExportPdf),
             ] {
                 klass.install_action(name, None, move |win, _, _| {
                     win.enqueue(command.clone());

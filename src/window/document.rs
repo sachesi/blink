@@ -1,4 +1,4 @@
-//! The document's file: opening, saving, autosave, HTML export, changes made on disk by
+//! The document's file: opening, saving, autosave, export, changes made on disk by
 //! other programs, and closing.
 //!
 //! Everything here that can wait on a dialog or the disk runs as a [`Command`] through one
@@ -16,6 +16,7 @@ use super::{BlinkWindow, ViewMode, buffer_text};
 use crate::conflict::{self, AutosaveOutcome, FileFingerprint};
 use crate::export;
 use crate::markdown;
+use crate::pdf;
 
 /// How often unsaved changes to a file are written to it.
 const AUTOSAVE_INTERVAL_SECS: u32 = 10;
@@ -31,6 +32,7 @@ pub enum Command {
     Save,
     SaveAs,
     ExportHtml,
+    ExportPdf,
     Close,
     Autosave,
     Backup,
@@ -104,6 +106,7 @@ impl BlinkWindow {
                 self.save_as().await;
             }
             Command::ExportHtml => self.export_html().await,
+            Command::ExportPdf => self.export_pdf().await,
             Command::Close => self.close_guarded().await,
             Command::Autosave => self.autosave().await,
             Command::Backup => self.write_backup_now().await,
@@ -299,25 +302,35 @@ impl BlinkWindow {
         }
     }
 
-    async fn export_html(&self) {
+    /// Ask where to export to, as a file of `mime_type` ending in `.suffix`.
+    async fn choose_export_file(
+        &self,
+        filter_name: String,
+        mime_type: &str,
+        suffix: &str,
+    ) -> Option<PathBuf> {
         let dialog = gtk::FileDialog::new();
-        let html_filter = gtk::FileFilter::new();
-        html_filter.set_name(Some(&gettext("HTML Files")));
-        html_filter.add_mime_type("text/html");
-        html_filter.add_suffix("html");
+        let filter = gtk::FileFilter::new();
+        filter.set_name(Some(&filter_name));
+        filter.add_mime_type(mime_type);
+        filter.add_suffix(suffix);
         let filters = gio::ListStore::new::<gtk::FileFilter>();
-        filters.append(&html_filter);
+        filters.append(&filter);
         dialog.set_filters(Some(&filters));
-        dialog.set_default_filter(Some(&html_filter));
+        dialog.set_default_filter(Some(&filter));
         let stem = self
             .current_path()
             .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().into_owned()))
             .unwrap_or_else(|| gettext("Untitled"));
-        dialog.set_initial_name(Some(&format!("{stem}.html")));
-        let Ok(file) = dialog.save_future(Some(self)).await else {
-            return;
-        };
-        let Some(path) = file.path() else {
+        dialog.set_initial_name(Some(&format!("{stem}.{suffix}")));
+        dialog.save_future(Some(self)).await.ok()?.path()
+    }
+
+    async fn export_html(&self) {
+        let Some(path) = self
+            .choose_export_file(gettext("HTML Files"), "text/html", "html")
+            .await
+        else {
             return;
         };
         let text = buffer_text(&*self.imp().edit_buffer);
@@ -326,12 +339,38 @@ impl BlinkWindow {
             ..self.export_options(&text)
         };
         let written = blocking(move || {
-            conflict::write_text_atomically(&path, &export::render_html(&text, &options))
+            conflict::write_text_atomically(&path, export::render_html(&text, &options))
         })
         .await;
         if let Err(err) = written {
             self.present_error(
                 gettext("Error Exporting HTML"),
+                format!(
+                    "{}\n\n{}",
+                    gettext("Could not export the file"),
+                    describe_io_error(&err)
+                ),
+            );
+        }
+    }
+
+    async fn export_pdf(&self) {
+        let Some(path) = self
+            .choose_export_file(gettext("PDF Files"), "application/pdf", "pdf")
+            .await
+        else {
+            return;
+        };
+        let text = buffer_text(&*self.imp().edit_buffer);
+        let options = self.export_options(&text);
+        let written = blocking(move || {
+            let pdf = pdf::render_pdf(&text, &options).map_err(std::io::Error::other)?;
+            conflict::write_text_atomically(&path, pdf)
+        })
+        .await;
+        if let Err(err) = written {
+            self.present_error(
+                gettext("Error Exporting PDF"),
                 format!(
                     "{}\n\n{}",
                     gettext("Could not export the file"),

@@ -64,6 +64,11 @@ alternative text. Raw HTML in the document is left out, and so are link addresse
 than web and mail addresses and relative paths, so the page runs no script when a browser
 opens it.
 
+"Export as PDF…" sets the document on A4 pages in the same fonts, with page numbers and code
+coloured as in the light style. The text can be selected and searched, web and mail links
+can be followed, and the headings make the outline. Code lines too long for the page wrap.
+As in the preview, only images from the document's folder are shown.
+
 ## Keyboard shortcuts
 
 Ctrl+? lists them all.

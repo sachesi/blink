@@ -44,7 +44,7 @@ impl FileFingerprint {
 /// crash-durable until the directory's metadata is flushed. The directory fsync
 /// is best-effort — the rename has already taken effect, so a flush failure does
 /// not roll it back.
-pub fn write_text_atomically(path: &Path, text: &str) -> io::Result<()> {
+pub fn write_text_atomically(path: &Path, text: impl AsRef<[u8]>) -> io::Result<()> {
     // Write through a symbolic link rather than over it: renaming onto the link would
     // turn it into a regular file and leave the file it points at unchanged.
     let resolved = fs::canonicalize(path).ok();
@@ -76,7 +76,7 @@ pub fn write_text_atomically(path: &Path, text: &str) -> io::Result<()> {
             .write(true)
             .create_new(true)
             .open(&tmp_path)?;
-        file.write_all(text.as_bytes())?;
+        file.write_all(text.as_ref())?;
         file.sync_all()
     })();
     if let Err(err) = write_result {

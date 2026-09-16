@@ -5,6 +5,7 @@ mod conflict;
 mod editor_view;
 mod export;
 mod markdown;
+mod pdf;
 mod preferences;
 mod window;
 
