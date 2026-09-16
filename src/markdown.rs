@@ -1064,6 +1064,21 @@ fn decode_entities(text: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// How many words `text` has, as the runs of characters between spaces. The empty box of a
+/// task list item, `[ ]`, is one word, as a ticked one, `[x]`, is, so that ticking a box
+/// leaves the count as it was.
+pub fn word_count(text: &str) -> usize {
+    let mut words = text.split_whitespace().peekable();
+    let mut count = 0;
+    while let Some(word) = words.next() {
+        if word == "[" && words.peek() == Some(&"]") {
+            words.next();
+        }
+        count += 1;
+    }
+    count
+}
+
 /// Whether a link may be handed to the system URI launcher. Documents can come
 /// from untrusted sources, so only web and mail links are ever followed.
 pub fn is_safe_link(url: &str) -> bool {
@@ -2647,7 +2662,7 @@ mod tests {
         HtmlPart, LinkTarget, bare_links, close_tag, definitions, events, heading_slug,
         html_images, html_parts, is_safe_link, lang_candidates, link_target, list_marker,
         local_image_path, replace_shortcodes, strip_html, top_level_blocks, unchanged_ends,
-        wiki_destination,
+        wiki_destination, word_count,
     };
     use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
     use std::fs;
@@ -3007,6 +3022,13 @@ mod tests {
         assert_eq!(link_target("/etc/notes.md", Some(base)), None);
         assert_eq!(link_target("file:///docs/a.md", Some(base)), None);
         assert_eq!(link_target("a.md", None), None);
+    }
+
+    #[test]
+    fn ticking_a_box_leaves_the_word_count() {
+        assert_eq!(word_count("- [ ] buy milk\n- [x] done"), 7);
+        assert_eq!(word_count("- [x] buy milk\n- [x] done"), 7);
+        assert_eq!(word_count("a [ b ]"), 4);
     }
 
     #[test]

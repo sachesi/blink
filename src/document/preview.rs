@@ -493,7 +493,7 @@ impl BlinkDocument {
     /// The word and character count in the status bar.
     fn update_status(&self, text: &str) {
         let chars = text.chars().count();
-        let words = text.split_whitespace().count();
+        let words = markdown::word_count(text);
         let status = format!(
             "{}, {}",
             ngettext("{} word", "{} words", saturating_u32(words)).replacen(
