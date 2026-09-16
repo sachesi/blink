@@ -127,7 +127,7 @@ impl BlinkApplication {
         self.imp().settings.get().expect("settings set at startup")
     }
 
-    fn documents(&self) -> impl Iterator<Item = BlinkDocument> {
+    pub fn documents(&self) -> impl Iterator<Item = BlinkDocument> {
         self.windows()
             .into_iter()
             .filter_map(|window| window.downcast::<BlinkWindow>().ok())

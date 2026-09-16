@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.5.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 15:01+0300\n"
+"POT-Creation-Date: 2026-09-16 15:11+0300\n"
 "PO-Revision-Date: 2026-09-13 23:50+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -237,118 +237,127 @@ msgstr "sachesi <xsachesi@pm.me>"
 msgid "{} px"
 msgstr "{} пкс"
 
-#: src/document.rs:499 src/document/file.rs:368 src/document/file.rs:612
+#: src/document.rs:499 src/document/file.rs:389 src/document/file.rs:633
 #: src/document/recovery.rs:103 ui/window.ui:67 ui/window.ui:104
 #, no-c-format
 msgid "Untitled Document"
 msgstr "Документ без назви"
 
-#: src/document/file.rs:149 src/document/file.rs:181
+#: src/document/file.rs:150 src/document/file.rs:182
 #, no-c-format
 msgid "Error Opening File"
 msgstr "Помилка відкриття файлу"
 
-#: src/document/file.rs:150 src/document/file.rs:208
+#: src/document/file.rs:151 src/document/file.rs:209
 #, no-c-format
 msgid "Only local files are supported"
 msgstr "Підтримуються лише локальні файли"
 
-#: src/document/file.rs:184
+#: src/document/file.rs:185
 #, no-c-format
 msgid "Could not open the file"
 msgstr "Не вдалося відкрити файл"
 
-#: src/document/file.rs:207 src/document/file.rs:239
+#: src/document/file.rs:208 src/document/file.rs:240 src/document/file.rs:275
 #, no-c-format
 msgid "Error Saving File"
 msgstr "Помилка збереження файлу"
 
-#: src/document/file.rs:242
+#: src/document/file.rs:243
 #, no-c-format
 msgid "Could not save the file"
 msgstr "Не вдалося зберегти файл"
 
-#: src/document/file.rs:265
+#: src/document/file.rs:266
 #, no-c-format
 msgid "Untitled.md"
 msgstr "Без назви.md"
 
-#: src/document/file.rs:292
+#: src/document/file.rs:276
+#, no-c-format
+msgid ""
+"\"{}\" is open in another tab or window. Close it there first, or save under "
+"another name."
+msgstr ""
+"\"{}\" відкрито в іншій вкладці або вікні. Спершу закрийте його там "
+"або збережіть під іншою назвою."
+
+#: src/document/file.rs:313
 #, no-c-format
 msgid "Untitled"
 msgstr "Без назви"
 
-#: src/document/file.rs:303
+#: src/document/file.rs:324
 #, no-c-format
 msgid "HTML Files"
 msgstr "Файли HTML"
 
-#: src/document/file.rs:319
+#: src/document/file.rs:340
 #, no-c-format
 msgid "Error Exporting HTML"
 msgstr "Помилка експорту HTML"
 
-#: src/document/file.rs:322 src/document/file.rs:348
+#: src/document/file.rs:343 src/document/file.rs:369
 #, no-c-format
 msgid "Could not export the file"
 msgstr "Не вдалося експортувати файл"
 
-#: src/document/file.rs:331
+#: src/document/file.rs:352
 #, no-c-format
 msgid "PDF Files"
 msgstr "Файли PDF"
 
-#: src/document/file.rs:345
+#: src/document/file.rs:366
 #, no-c-format
 msgid "Error Exporting PDF"
 msgstr "Помилка експорту PDF"
 
-#: src/document/file.rs:384
+#: src/document/file.rs:405
 #, no-c-format
 msgid "Unsaved Changes"
 msgstr "Незбережені зміни"
 
-#: src/document/file.rs:386
+#: src/document/file.rs:407
 #, no-c-format
 msgid "You have unsaved changes. Do you want to close without saving?"
 msgstr "У вас є незбережені зміни. Бажаєте закрити без збереження?"
 
-#: src/document/file.rs:389
+#: src/document/file.rs:410
 #, no-c-format
 msgid "Cancel"
 msgstr "Скасувати"
 
-#: src/document/file.rs:390
+#: src/document/file.rs:411
 #, no-c-format
 msgid "Close Without Saving"
 msgstr "Закрити без збереження"
 
-#: src/document/file.rs:440
+#: src/document/file.rs:461
 #, no-c-format
 msgid "File changed on disk — autosave paused"
 msgstr "Файл змінено на диску — автозбереження призупинено"
 
-#: src/document/file.rs:443
+#: src/document/file.rs:464
 #, no-c-format
 msgid "File no longer exists"
 msgstr "Файл більше не існує"
 
-#: src/document/file.rs:448
+#: src/document/file.rs:469
 #, no-c-format
 msgid "Autosave failed"
 msgstr "Автозбереження не вдалося"
 
-#: src/document/file.rs:546
+#: src/document/file.rs:567
 #, no-c-format
 msgid "File was deleted on disk — save to keep your changes"
 msgstr "Файл видалено з диска — збережіть, щоб не втратити зміни"
 
-#: src/document/file.rs:559
+#: src/document/file.rs:580
 #, no-c-format
 msgid "File Changed on Disk"
 msgstr "Файл змінено на диску"
 
-#: src/document/file.rs:561
+#: src/document/file.rs:582
 #, no-c-format
 msgid ""
 "This file was modified by another program. Reload to discard your changes, "
@@ -357,52 +366,52 @@ msgstr ""
 "Цей файл було змінено іншою програмою. Перезавантажте, щоб відхилити ваші "
 "зміни, або перезапишіть, щоб зберегти їх."
 
-#: src/document/file.rs:564
+#: src/document/file.rs:585
 #, no-c-format
 msgid "Save As…"
 msgstr "Зберегти як…"
 
-#: src/document/file.rs:565
+#: src/document/file.rs:586
 #, no-c-format
 msgid "Overwrite"
 msgstr "Перезаписати"
 
-#: src/document/file.rs:566
+#: src/document/file.rs:587
 #, no-c-format
 msgid "Reload"
 msgstr "Перезавантажити"
 
-#: src/document/file.rs:595
+#: src/document/file.rs:616
 #, no-c-format
 msgid "OK"
 msgstr "ОК"
 
-#: src/document/file.rs:632
+#: src/document/file.rs:653
 #, no-c-format
 msgid "Markdown Files"
 msgstr "Файли Markdown"
 
-#: src/document/file.rs:637
+#: src/document/file.rs:658
 #, no-c-format
 msgid "All Files"
 msgstr "Усі файли"
 
-#: src/document/file.rs:650
+#: src/document/file.rs:671
 #, no-c-format
 msgid "You do not have permission to access this file."
 msgstr "У вас немає дозволу на доступ до цього файлу."
 
-#: src/document/file.rs:651
+#: src/document/file.rs:672
 #, no-c-format
 msgid "The file no longer exists."
 msgstr "Файл більше не існує."
 
-#: src/document/file.rs:652
+#: src/document/file.rs:673
 #, no-c-format
 msgid "There is not enough space left on the disk."
 msgstr "На диску недостатньо вільного місця."
 
-#: src/document/file.rs:653
+#: src/document/file.rs:674
 #, no-c-format
 msgid "The location is read-only."
 msgstr "Розташування доступне лише для читання."

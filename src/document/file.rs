@@ -13,6 +13,7 @@ use gtk::{gio, glib};
 use std::path::{Path, PathBuf};
 
 use super::{BlinkDocument, ViewMode, buffer_text};
+use crate::application::BlinkApplication;
 use crate::backup::BackupRecord;
 use crate::config;
 use crate::conflict::{self, AutosaveOutcome, FileFingerprint};
@@ -264,10 +265,30 @@ impl BlinkDocument {
             Some(file) => dialog.set_initial_file(Some(&file)),
             None => dialog.set_initial_name(Some(&gettext("Untitled.md"))),
         }
-        match dialog.save_future(self.dialog_parent().as_ref()).await {
-            Ok(file) => self.save_to(file).await,
-            Err(_) => false,
+        let Ok(file) = dialog.save_future(self.dialog_parent().as_ref()).await else {
+            return false;
+        };
+        // Two documents saving to one file would each take the other's writes for a change
+        // made by another program, and share one backup.
+        if self.open_elsewhere(&file) {
+            self.present_error(
+                gettext("Error Saving File"),
+                gettext("\"{}\" is open in another tab or window. Close it there first, or save under another name.")
+                    .replacen("{}", &file_title(&file), 1),
+            );
+            return false;
         }
+        self.save_to(file).await
+    }
+
+    /// Whether `file` is open in a document other than this one.
+    fn open_elsewhere(&self, file: &gio::File) -> bool {
+        gio::Application::default()
+            .and_downcast::<BlinkApplication>()
+            .is_some_and(|app| {
+                app.documents()
+                    .any(|document| document != *self && document.holds(file))
+            })
     }
 
     /// Ask where to export to, as a file of `mime_type` ending in `.suffix`.
