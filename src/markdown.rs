@@ -1079,6 +1079,22 @@ pub fn word_count(text: &str) -> usize {
     count
 }
 
+/// What ends a footnote: a space that keeps it on the line of the last word, and an arrow up
+/// that links back to the reference. Not GitHub's hooked arrow, which few text fonts have.
+pub const FOOTNOTE_BACKLINK: &str = "\u{a0}\u{2191}";
+
+/// The identifier of the footnote labelled `label`, which its references link to. The colon
+/// never appears in the identifier of a heading.
+pub fn footnote_id(label: &str) -> String {
+    format!("fn:{label}")
+}
+
+/// The identifier of the first reference to the footnote labelled `label`, which the
+/// footnote links back to.
+pub fn footnote_reference_id(label: &str) -> String {
+    format!("fnref:{label}")
+}
+
 /// Whether a link may be handed to the system URI launcher. Documents can come
 /// from untrusted sources, so only web and mail links are ever followed.
 pub fn is_safe_link(url: &str) -> bool {
@@ -1950,6 +1966,8 @@ pub fn render_markdown(
     // Clickable link ranges and the open-link stack of (url, start_offset).
     let mut links: Vec<(i32, i32, String)> = Vec::new();
     let mut link_starts: Vec<(String, i32)> = Vec::new();
+    // The labels of the footnotes being rendered.
+    let mut footnote_labels: Vec<String> = Vec::new();
     // Searchable child surfaces (code blocks, table cells).
     let mut surfaces: Vec<Surface> = Vec::new();
     let mut shown_images: Vec<PathBuf> = Vec::new();
@@ -2276,6 +2294,8 @@ pub fn render_markdown(
                     }
                     Tag::FootnoteDefinition(label) => {
                         end_block(&buffer, &mut iter);
+                        headings.push((iter.offset() - start_offset, footnote_id(&label)));
+                        footnote_labels.push(label.to_string());
                         let start_offset = iter.offset();
                         buffer.insert(&mut iter, &format!("[{label}]: "));
                         let start_iter = buffer.iter_at_offset(start_offset);
@@ -2331,6 +2351,30 @@ pub fn render_markdown(
                         start_line(&buffer, &mut iter);
                     }
                     TagEnd::DefinitionList => end_block(&buffer, &mut iter),
+                    // The note ends with a link back to where it is referred to, after its
+                    // last word rather than on a line of its own.
+                    TagEnd::FootnoteDefinition => {
+                        if let Some(label) = footnote_labels.pop() {
+                            let end_offset = iter.offset();
+                            let mut at = iter;
+                            while at.offset() > 0 {
+                                let mut before = at;
+                                before.backward_char();
+                                if before.char() != '\n' {
+                                    break;
+                                }
+                                at = before;
+                            }
+                            let link_start = at.offset() + 1;
+                            buffer.insert(&mut at, FOOTNOTE_BACKLINK);
+                            let start_iter = buffer.iter_at_offset(link_start);
+                            buffer.apply_tag_by_name("link", &start_iter, &at);
+                            let url = format!("#{}", footnote_reference_id(&label));
+                            links.push((link_start, at.offset(), url));
+                            iter =
+                                buffer.iter_at_offset(end_offset + (at.offset() - link_start + 1));
+                        }
+                    }
                     TagEnd::BlockQuote(_) => {
                         let name = format!("blockquote-{blockquote_depth}");
                         current_tags.retain(|t| t != &name);
@@ -2486,10 +2530,17 @@ pub fn render_markdown(
                     }
                 }
                 Event::FootnoteReference(name) => {
+                    headings.push((iter.offset() - start_offset, footnote_reference_id(&name)));
                     let start_offset = iter.offset();
                     buffer.insert(&mut iter, &format!("[{name}]"));
                     let start_iter = buffer.iter_at_offset(start_offset);
                     buffer.apply_tag_by_name("footnote", &start_iter, &iter);
+                    buffer.apply_tag_by_name("link", &start_iter, &iter);
+                    links.push((
+                        start_offset,
+                        iter.offset(),
+                        format!("#{}", footnote_id(&name)),
+                    ));
                 }
                 Event::TaskListMarker(checked) => {
                     // A bullet and a box would be two markers for one item.

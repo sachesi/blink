@@ -74,6 +74,8 @@ struct Paragraph {
     styles: Vec<(Range<usize>, Inline)>,
     links: Vec<(Range<usize>, String)>,
     objects: Vec<(usize, Object)>,
+    /// The destinations of links in the paragraph, by name.
+    anchors: Vec<(usize, String)>,
 }
 
 impl Paragraph {
@@ -216,6 +218,10 @@ struct Reader<'a> {
     links: Vec<(String, usize)>,
     /// Whether each open image is shown, which hides its alternative text.
     images: Vec<bool>,
+    /// The labels of the open footnotes.
+    footnotes: Vec<String>,
+    /// The labels of the footnotes referred to so far.
+    referenced: HashSet<String>,
     code: Option<(String, String)>,
     code_blocks: usize,
     /// The open table: its alignments, its rows and the row being read.
@@ -238,6 +244,8 @@ impl<'a> Reader<'a> {
             quote: 0,
             links: Vec::new(),
             images: Vec::new(),
+            footnotes: Vec::new(),
+            referenced: HashSet::new(),
             code: None,
             code_blocks: 0,
             table: None,
@@ -358,12 +366,23 @@ impl<'a> Reader<'a> {
             }
             Event::SoftBreak => self.push_text(" "),
             Event::HardBreak => self.push_text("\n"),
+            // A reference links to its note, and the first one is where the note links back to.
             Event::FootnoteReference(name) => {
                 let style = Inline {
                     footnote: true,
                     ..self.style
                 };
+                let start = self.paragraph.text.len();
+                if self.referenced.insert(name.to_string()) {
+                    self.paragraph
+                        .anchors
+                        .push((start, markdown::footnote_reference_id(&name)));
+                }
                 self.paragraph.push(&format!("[{name}]"), style);
+                let end = self.paragraph.text.len();
+                self.paragraph
+                    .links
+                    .push((start..end, format!("#{}", markdown::footnote_id(&name))));
             }
             Event::TaskListMarker(checked) => {
                 // The box takes the place of a bullet, as in the preview.
@@ -438,6 +457,10 @@ impl<'a> Reader<'a> {
             }
             Tag::FootnoteDefinition(label) => {
                 self.flush(PARAGRAPH_GAP);
+                self.paragraph
+                    .anchors
+                    .push((0, markdown::footnote_id(&label)));
+                self.footnotes.push(label.to_string());
                 let style = Inline {
                     bold: true,
                     ..Inline::default()
@@ -507,7 +530,25 @@ impl<'a> Reader<'a> {
                 }
             }
             TagEnd::Item => self.flush(ITEM_GAP),
-            TagEnd::FootnoteDefinition => self.flush(PARAGRAPH_GAP),
+            TagEnd::FootnoteDefinition => {
+                self.flush(PARAGRAPH_GAP);
+                // After the last word of the note, whose paragraph is set by now.
+                let label = self.footnotes.pop().unwrap_or_default();
+                if let Some(Block::Text { paragraph, .. }) = self.blocks.last_mut() {
+                    let start = paragraph.text.len() + '\u{a0}'.len_utf8();
+                    paragraph.push(markdown::FOOTNOTE_BACKLINK, Inline::default());
+                    let end = paragraph.text.len();
+                    let url = format!("#{}", markdown::footnote_reference_id(&label));
+                    paragraph.styles.push((
+                        start..end,
+                        Inline {
+                            link: true,
+                            ..Inline::default()
+                        },
+                    ));
+                    paragraph.links.push((start..end, url));
+                }
+            }
             TagEnd::TableCell => {
                 let cell = std::mem::take(&mut self.paragraph);
                 if let Some((_, _, row)) = self.table.as_mut() {
@@ -782,6 +823,7 @@ impl<'a> Typesetter<'a> {
                     .move_to(x + line.x, line_top + line.baseline - line.top);
                 pangocairo::functions::show_layout_line(&self.cr, &line.line);
                 self.draw_objects(line, x, line_top, paragraph, size);
+                self.anchor_line(line, x, line_top, paragraph);
                 self.link_line(line, x, line_top, &paragraph.links);
             }
             self.y = top + height + 2.0 * padding;
@@ -807,6 +849,23 @@ impl<'a> Typesetter<'a> {
                 top + line.baseline - line.top,
                 size,
             );
+        }
+    }
+
+    /// Make the destinations of `paragraph` on `line`, set at `x` and `top`.
+    fn anchor_line(&self, line: &Line, x: f64, top: f64, paragraph: &Paragraph) {
+        let scale = f64::from(pango::SCALE);
+        for (index, name) in &paragraph.anchors {
+            if !line.range.contains(index) && !(*index == 0 && line.range.start == 0) {
+                continue;
+            }
+            let left =
+                x + line.x + f64::from(line.line.index_to_x(saturating_i32(*index), false)) / scale;
+            self.cr.tag_begin(
+                cairo::CAIRO_TAG_DEST,
+                &format!("name='{}' x={left:.2} y={top:.2}", tag_string(name)),
+            );
+            self.cr.tag_end(cairo::CAIRO_TAG_DEST);
         }
     }
 
@@ -858,9 +917,15 @@ impl<'a> Typesetter<'a> {
         self.headings = blocks
             .iter()
             .filter_map(|block| match block {
-                Block::Text { id: Some(id), .. } => Some(id.clone()),
+                Block::Text { id, paragraph, .. } => Some(
+                    id.iter()
+                        .cloned()
+                        .chain(paragraph.anchors.iter().map(|(_, name)| name.clone()))
+                        .collect::<Vec<_>>(),
+                ),
                 _ => None,
             })
+            .flatten()
             .collect();
         for block in blocks {
             match block {

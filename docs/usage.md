@@ -58,6 +58,8 @@ more of what GitHub renders:
   block; it is not typeset.
 - Definition lists, a term with `: its definition` on the next line, and wiki links,
   `[[Page]]` for `Page.md`.
+- A footnote reference links to its note, and the note ends with an arrow that links back
+  to the first reference.
 
 Code blocks are coloured by GtkSourceView when their fence names a language it knows, or a
 common alias of one (`js`, `py`, `sh`, `rs` and so on). Raw HTML is not laid out: its tags
@@ -118,8 +120,9 @@ too, so the page runs no script when a browser opens it. Headings carry the name
 links to `#a-heading` point at.
 
 "Export as PDF…" sets the document on A4 pages in the same fonts, with page numbers and code
-coloured as in the light style. The text can be selected and searched, web and mail links
-and links to the document's headings can be followed, and the headings make the outline.
+coloured as in the light style. The text can be selected and searched, web and mail links,
+links to the document's headings and footnote references and their arrows back can be
+followed, and the headings make the outline.
 The content of `<details>` elements is set open. Code lines too long for the page wrap.
 As in the preview, only images from the document's folder are shown.
 

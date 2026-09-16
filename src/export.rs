@@ -3,6 +3,7 @@
 
 use gtk::{gio, glib};
 use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::markdown::{self, CodeRun, CodeStyle};
@@ -156,6 +157,11 @@ pub fn render_html(text: &str, options: &Options) -> String {
     let mut code_blocks = 0;
     // Whether each open image is kept; one that is not leaves its text behind.
     let mut images: Vec<bool> = Vec::new();
+    // Footnotes are numbered in the order they first come in, as pulldown-cmark numbers
+    // them, and the first reference to each is the one its note links back to.
+    let mut footnote_numbers: HashMap<String, usize> = HashMap::new();
+    let mut referenced: HashSet<String> = HashSet::new();
+    let mut footnotes: Vec<String> = Vec::new();
     for (event, _) in markdown::events(text) {
         if let Some((info, block)) = code.as_mut() {
             match event {
@@ -266,6 +272,48 @@ pub fn render_html(text: &str, options: &Options) -> String {
                     events.push(Event::End(TagEnd::Image));
                 }
             }
+            Event::FootnoteReference(name) => {
+                let next = footnote_numbers.len() + 1;
+                let number = *footnote_numbers.entry(name.to_string()).or_insert(next);
+                let id = if referenced.insert(name.to_string()) {
+                    format!(
+                        " id=\"{}\"",
+                        escape_html(&markdown::footnote_reference_id(&name))
+                    )
+                } else {
+                    String::new()
+                };
+                events.push(Event::InlineHtml(
+                    format!(
+                        "<sup class=\"footnote-reference\"{id}><a href=\"#{}\">{number}</a></sup>",
+                        escape_html(&markdown::footnote_id(&name))
+                    )
+                    .into(),
+                ));
+            }
+            Event::Start(Tag::FootnoteDefinition(name)) => {
+                let next = footnote_numbers.len() + 1;
+                let number = *footnote_numbers.entry(name.to_string()).or_insert(next);
+                events.push(Event::Html(
+                    format!(
+                        "<div class=\"footnote-definition\" id=\"{}\"><sup class=\"footnote-definition-label\">{number}</sup>\n",
+                        escape_html(&markdown::footnote_id(&name))
+                    )
+                    .into(),
+                ));
+                footnotes.push(name.to_string());
+            }
+            Event::End(TagEnd::FootnoteDefinition) => {
+                let name = footnotes.pop().unwrap_or_default();
+                events.push(Event::Html(
+                    format!(
+                        "<a href=\"#{}\" class=\"footnote-backref\">{}</a></div>\n",
+                        escape_html(&markdown::footnote_reference_id(&name)),
+                        markdown::FOOTNOTE_BACKLINK.trim_start_matches('\u{a0}')
+                    )
+                    .into(),
+                ));
+            }
             other => events.push(other),
         }
     }
@@ -311,6 +359,7 @@ dd {{ margin: 0 0 0.5em 20px; }}
 .markdown-alert-caution > p:first-child {{ color: #c00023; }}
 .footnote-definition {{ margin: 0.5em 0; }}
 .footnote-definition p {{ display: inline; }}
+.footnote-backref {{ margin-left: 0.25em; text-decoration: none; }}
 @media (prefers-color-scheme: dark) {{
   body {{ background: #1d1d20; color: #ffffff; }}
   a {{ color: #78aeed; }}
@@ -395,9 +444,14 @@ mod tests {
 
     #[test]
     fn export_renders_footnotes() {
-        let html = render("Text[^note].\n\n[^note]: The note.");
-        assert!(html.contains("footnote-reference"));
-        assert!(html.contains("The note."));
+        let html = render("Text[^note] and[^note].\n\n[^note]: The note.");
+        assert!(html.contains(
+            "<sup class=\"footnote-reference\" id=\"fnref:note\"><a href=\"#fn:note\">1</a></sup> and<sup class=\"footnote-reference\"><a href=\"#fn:note\">1</a></sup>"
+        ));
+        assert!(html.contains("<div class=\"footnote-definition\" id=\"fn:note\">"));
+        assert!(
+            html.contains("The note.</p>\n<a href=\"#fnref:note\" class=\"footnote-backref\">")
+        );
     }
 
     #[test]
