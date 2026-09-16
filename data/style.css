@@ -56,3 +56,14 @@ textview.editor-view gutter {
 .preview-table label.heading {
   background-color: alpha(currentColor, 0.05);
 }
+
+/* The box of a task list item as wide as a bullet and its space, so that the wrapped lines
+   of the item line up with its text, and sitting on the line as the text does. */
+checkbutton.task-check {
+  padding: 0;
+  margin: 0 4px -3px 0;
+}
+checkbutton.task-check check {
+  margin: 0;
+  padding: 1px;
+}

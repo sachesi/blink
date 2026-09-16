@@ -2,7 +2,7 @@
 //! so raw HTML is dropped and link and image addresses are limited to safe schemes.
 
 use gtk::{gio, glib};
-use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
 use std::path::{Path, PathBuf};
 
 use crate::markdown::{self, CodeRun, CodeStyle};
@@ -156,7 +156,7 @@ pub fn render_html(text: &str, options: &Options) -> String {
     let mut code_blocks = 0;
     // Whether each open image is kept; one that is not leaves its text behind.
     let mut images: Vec<bool> = Vec::new();
-    for event in Parser::new_ext(text, markdown::parser_options()) {
+    for (event, _) in markdown::events(text) {
         if let Some((info, block)) = code.as_mut() {
             match event {
                 Event::Text(text) => block.push_str(&text),
@@ -275,7 +275,15 @@ thead th {{ border-top: none; background: rgba(128, 128, 128, 0.08); }}
 th:first-child, td:first-child {{ border-left: none; }}
 img {{ display: block; max-width: 100%; height: auto; margin: 12px auto; }}
 hr {{ margin: 1.5em 0; border: none; border-top: 1px solid rgba(128, 128, 128, 0.3); }}
-li > input[type="checkbox"] {{ margin: 0 0.4em 0 0; }}
+li > input[type="checkbox"], li > p > input[type="checkbox"] {{ margin: 0 0.4em 0 0; }}
+ul > li:has(> input[type="checkbox"]), ul > li:has(> p > input[type="checkbox"]) {{ list-style: none; }}
+dt {{ font-weight: bold; }}
+dd {{ margin: 0 0 0.5em 20px; }}
+.markdown-alert-note > p:first-child {{ color: #0461be; }}
+.markdown-alert-tip > p:first-child {{ color: #15772e; }}
+.markdown-alert-important > p:first-child {{ color: #8939a4; }}
+.markdown-alert-warning > p:first-child {{ color: #905300; }}
+.markdown-alert-caution > p:first-child {{ color: #c00023; }}
 .footnote-definition {{ margin: 0.5em 0; }}
 .footnote-definition p {{ display: inline; }}
 @media (prefers-color-scheme: dark) {{
@@ -283,6 +291,11 @@ li > input[type="checkbox"] {{ margin: 0 0.4em 0 0; }}
   a {{ color: #78aeed; }}
   pre span {{ color: var(--dark); }}
   blockquote {{ color: rgba(255, 255, 255, 0.7); }}
+  .markdown-alert-note > p:first-child {{ color: #81d0ff; }}
+  .markdown-alert-tip > p:first-child {{ color: #8de698; }}
+  .markdown-alert-important > p:first-child {{ color: #fba7ff; }}
+  .markdown-alert-warning > p:first-child {{ color: #ffc057; }}
+  .markdown-alert-caution > p:first-child {{ color: #ff888c; }}
 }}
 @media print {{
   body {{ padding: 0; }}
@@ -407,6 +420,19 @@ mod tests {
         assert!(html.contains(
             "<pre><code class=\"language-rust\"><span style=\"--light:#110000;--dark:#220000;\">fn</span> main() {}</code></pre>"
         ));
+    }
+
+    #[test]
+    fn export_renders_github_markdown() {
+        let html = render(
+            "## Intro\n\n- [x] done, see https://example.com.\n\n> [!TIP]\n> Hint\n\n[back](#intro)\n",
+        );
+        assert!(html.contains("<h2 id=\"intro\">"));
+        assert!(html.contains("<a href=\"https://example.com\">https://example.com</a>."));
+        assert!(html.contains("checked=\"\""));
+        assert!(html.contains("class=\"markdown-alert-tip\""));
+        assert!(html.contains("<strong>Tip</strong>"));
+        assert!(html.contains("href=\"#intro\""));
     }
 
     #[test]

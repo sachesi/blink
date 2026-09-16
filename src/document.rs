@@ -438,7 +438,7 @@ impl BlinkDocument {
         let imp = self.imp();
         let buffer = imp.preview_view.buffer();
         markdown::set_monospace_family(&buffer, &config::font_family(self.settings(), true));
-        imp.preview.rendered.borrow_mut().clear(&buffer);
+        imp.preview.rendered.borrow_mut().clear(&imp.preview_view);
         self.render_tick();
     }
 

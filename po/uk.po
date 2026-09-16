@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 16:43+0300\n"
+"POT-Creation-Date: 2026-09-16 17:38+0300\n"
 "PO-Revision-Date: 2026-09-13 23:50+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -482,7 +482,12 @@ msgstr "На диску недостатньо вільного місця."
 msgid "The location is read-only."
 msgstr "Розташування доступне лише для читання."
 
-#: src/document/preview.rs:327
+#: src/document/preview.rs:273
+#, no-c-format
+msgid "The linked file does not exist"
+msgstr "Файл, на який вказує посилання, не існує"
+
+#: src/document/preview.rs:421
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
@@ -490,7 +495,7 @@ msgstr[0] "{} слово"
 msgstr[1] "{} слова"
 msgstr[2] "{} слів"
 
-#: src/document/preview.rs:332
+#: src/document/preview.rs:426
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -544,7 +549,34 @@ msgstr "Пошук…"
 msgid "{} matches"
 msgstr "{} збігів"
 
-#: src/markdown.rs:717
+#. Translators: the titles of the five kinds of alert a document can hold, as GitHub
+#. shows them over a note, a tip, an important note, a warning and a caution.
+#: src/markdown.rs:525
+#, no-c-format
+msgid "Note"
+msgstr "Примітка"
+
+#: src/markdown.rs:526
+#, no-c-format
+msgid "Tip"
+msgstr "Порада"
+
+#: src/markdown.rs:527
+#, no-c-format
+msgid "Important"
+msgstr "Важливо"
+
+#: src/markdown.rs:528
+#, no-c-format
+msgid "Warning"
+msgstr "Попередження"
+
+#: src/markdown.rs:529
+#, no-c-format
+msgid "Caution"
+msgstr "Обережно"
+
+#: src/markdown.rs:1228
 #, no-c-format
 msgid "Copy Code"
 msgstr "Копіювати код"

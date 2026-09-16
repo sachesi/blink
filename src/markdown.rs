@@ -1,7 +1,10 @@
 use adw::prelude::*;
 use gettextrs::gettext;
 use gtk::{Grid, Label, TextBuffer, TextView, gio, glib};
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, Parser, RefDefs, Tag, TagEnd};
+use pulldown_cmark::{
+    Alignment, BlockQuoteKind, CodeBlockKind, Event, LinkType, MetadataBlockKind, Parser, RefDefs,
+    Tag, TagEnd,
+};
 use sourceview5::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -248,6 +251,12 @@ pub fn apply_theme_colors(buffer: &TextBuffer) {
             tag.set_foreground(Some(dim));
         }
     });
+    let dark = adw::StyleManager::default().is_dark();
+    for (name, color) in ALERT_COLORS {
+        if let Some(tag) = table.lookup(name) {
+            tag.set_foreground_rgba(Some(&color.to_standalone_rgba(dark)));
+        }
+    }
 }
 
 /// A child widget embedded in the preview whose text lives outside the main
@@ -290,12 +299,25 @@ impl Surface {
     }
 }
 
-/// Output of a render pass: clickable link ranges and the searchable child
-/// surfaces (code blocks, table cells), all of them and the ones this pass made.
+/// A task list item's box in the preview.
+#[derive(Clone)]
+pub struct Task {
+    pub anchor: gtk::TextChildAnchor,
+    pub check: gtk::CheckButton,
+    /// The byte offset of the item's `[ ]` or `[x]` in the source.
+    pub source: usize,
+}
+
+/// Output of a render pass: clickable link ranges, the searchable child surfaces (code
+/// blocks, table cells), all of them and the ones this pass made, the boxes of the task
+/// list items, those this pass made, and where the headings start, by identifier.
 pub struct RenderResult {
     pub links: Vec<(i32, i32, String)>,
     pub surfaces: Vec<Surface>,
     pub added: Vec<Surface>,
+    pub tasks: Vec<Task>,
+    pub added_tasks: Vec<Task>,
+    pub headings: Vec<(i32, String)>,
 }
 
 pub fn setup_tags(buffer: &TextBuffer) {
@@ -358,6 +380,36 @@ pub fn setup_tags(buffer: &TextBuffer) {
     );
     // Placeholder for an image that could not be shown.
     buffer.create_tag(Some("image-alt"), &[("style", &gtk::pango::Style::Italic)]);
+    // The definition of a term, under the term.
+    buffer.create_tag(
+        Some("definition"),
+        &[("left-margin", &(TEXT_MARGIN + LIST_INDENT))],
+    );
+    for (name, _) in ALERT_COLORS {
+        buffer.create_tag(Some(name), &[]);
+    }
+}
+
+/// The text tag of the title of each kind of alert, and the accent colour it is shown in,
+/// as on GitHub.
+const ALERT_COLORS: [(&str, adw::AccentColor); 5] = [
+    ("alert-note", adw::AccentColor::Blue),
+    ("alert-tip", adw::AccentColor::Green),
+    ("alert-important", adw::AccentColor::Purple),
+    ("alert-warning", adw::AccentColor::Yellow),
+    ("alert-caution", adw::AccentColor::Red),
+];
+
+/// The name of the text tag of the title of an alert of `kind`.
+fn alert_tag(kind: BlockQuoteKind) -> &'static str {
+    let index = match kind {
+        BlockQuoteKind::Note => 0,
+        BlockQuoteKind::Tip => 1,
+        BlockQuoteKind::Important => 2,
+        BlockQuoteKind::Warning => 3,
+        BlockQuoteKind::Caution => 4,
+    };
+    ALERT_COLORS[index].0
 }
 
 /// Close the innermost open `name` tag, so that when the same inline tag nests
@@ -438,20 +490,479 @@ fn keep_presses(block: &impl IsA<gtk::Widget>, view: &TextView) {
 }
 
 /// The Markdown the preview and the exports understand: CommonMark with tables,
-/// strikethrough, task lists and footnotes.
-pub fn parser_options() -> pulldown_cmark::Options {
+/// strikethrough, task lists, footnotes, GitHub's alerts, front matter, math, definition lists
+/// and wiki links.
+fn parser_options() -> pulldown_cmark::Options {
     let mut options = pulldown_cmark::Options::empty();
     options.insert(pulldown_cmark::Options::ENABLE_TABLES);
     options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
     options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
     options.insert(pulldown_cmark::Options::ENABLE_FOOTNOTES);
+    options.insert(pulldown_cmark::Options::ENABLE_GFM);
+    options.insert(pulldown_cmark::Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    options.insert(pulldown_cmark::Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS);
+    options.insert(pulldown_cmark::Options::ENABLE_MATH);
+    options.insert(pulldown_cmark::Options::ENABLE_DEFINITION_LIST);
+    options.insert(pulldown_cmark::Options::ENABLE_WIKILINKS);
     options
+}
+
+/// The events of `text` as the preview and the exports read them, with their source ranges.
+pub fn events(text: &str) -> Vec<(Event<'_>, Range<usize>)> {
+    extend_events(
+        text,
+        Parser::new_ext(text, parser_options())
+            .into_offset_iter()
+            .collect(),
+    )
+}
+
+/// The title GitHub gives an alert of `kind`.
+fn alert_title(kind: BlockQuoteKind) -> String {
+    match kind {
+        // Translators: the titles of the five kinds of alert a document can hold, as GitHub
+        // shows them over a note, a tip, an important note, a warning and a caution.
+        BlockQuoteKind::Note => gettext("Note"),
+        BlockQuoteKind::Tip => gettext("Tip"),
+        BlockQuoteKind::Important => gettext("Important"),
+        BlockQuoteKind::Warning => gettext("Warning"),
+        BlockQuoteKind::Caution => gettext("Caution"),
+    }
+}
+
+/// Turn what the parser reads but the renderers have no layout of their own for into what
+/// they have, so that the preview and the exports show it alike:
+///
+/// - front matter and math standing alone in a paragraph become code blocks, and other math
+///   inline code;
+/// - web addresses written out become links, as on GitHub;
+/// - `<img>` tags in raw HTML become images, held to the same rules as Markdown images;
+/// - an alert starts with its title in bold;
+/// - headings get the identifiers GitHub gives them, which links to `#section` point at;
+/// - a wiki link points at the Markdown file of its page.
+fn extend_events<'a>(
+    text: &'a str,
+    events: Vec<(Event<'a>, Range<usize>)>,
+) -> Vec<(Event<'a>, Range<usize>)> {
+    let mut out = Vec::with_capacity(events.len());
+    // Addresses are not made links inside links, image descriptions and code.
+    let mut in_link = 0usize;
+    let mut in_code = false;
+    let mut slugs: HashMap<String, usize> = HashMap::new();
+    let mut index = 0;
+    while index < events.len() {
+        let (event, range) = events[index].clone();
+        index += 1;
+        match event {
+            Event::Start(Tag::MetadataBlock(kind)) => {
+                in_code = true;
+                let language = match kind {
+                    MetadataBlockKind::YamlStyle => "yaml",
+                    MetadataBlockKind::PlusesStyle => "toml",
+                };
+                out.push((
+                    Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(language.into()))),
+                    range,
+                ));
+            }
+            Event::End(TagEnd::MetadataBlock(_)) => {
+                in_code = false;
+                out.push((Event::End(TagEnd::CodeBlock), range));
+            }
+            Event::Start(Tag::CodeBlock(_)) => {
+                in_code = true;
+                out.push((event, range));
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                in_code = false;
+                out.push((event, range));
+            }
+            Event::Start(Tag::Paragraph)
+                if matches!(
+                    (events.get(index), events.get(index + 1)),
+                    (
+                        Some((Event::DisplayMath(_), _)),
+                        Some((Event::End(TagEnd::Paragraph), _))
+                    )
+                ) =>
+            {
+                if let Event::DisplayMath(math) = &events[index].0 {
+                    let fence = CodeBlockKind::Fenced("latex".into());
+                    out.push((Event::Start(Tag::CodeBlock(fence)), range.clone()));
+                    let code = format!("{}\n", math.trim_matches('\n'));
+                    out.push((Event::Text(code.into()), events[index].1.clone()));
+                    out.push((Event::End(TagEnd::CodeBlock), range));
+                }
+                index += 2;
+            }
+            Event::InlineMath(math) | Event::DisplayMath(math) => {
+                out.push((Event::Code(math), range));
+            }
+            Event::Start(Tag::Link {
+                link_type: link_type @ LinkType::WikiLink { .. },
+                dest_url,
+                title,
+                id,
+            }) => {
+                in_link += 1;
+                let tag = Tag::Link {
+                    link_type,
+                    dest_url: wiki_destination(&dest_url).into(),
+                    title,
+                    id,
+                };
+                out.push((Event::Start(tag), range));
+            }
+            Event::Start(Tag::Link { .. } | Tag::Image { .. }) => {
+                in_link += 1;
+                out.push((event, range));
+            }
+            Event::End(TagEnd::Link | TagEnd::Image) => {
+                in_link = in_link.saturating_sub(1);
+                out.push((event, range));
+            }
+            Event::Start(Tag::BlockQuote(Some(kind))) => {
+                out.push((event, range.clone()));
+                out.push((Event::Start(Tag::Paragraph), range.clone()));
+                out.push((Event::Start(Tag::Strong), range.clone()));
+                out.push((Event::Text(alert_title(kind).into()), range.clone()));
+                out.push((Event::End(TagEnd::Strong), range.clone()));
+                out.push((Event::End(TagEnd::Paragraph), range));
+            }
+            Event::Start(Tag::Heading {
+                level,
+                id: None,
+                classes,
+                attrs,
+            }) => {
+                let mut title = String::new();
+                for (event, _) in &events[index..] {
+                    match event {
+                        Event::End(TagEnd::Heading(_)) => break,
+                        Event::Text(text) | Event::Code(text) | Event::InlineMath(text) => {
+                            title.push_str(text);
+                        }
+                        _ => {}
+                    }
+                }
+                let slug = heading_slug(&title);
+                let count = slugs.entry(slug.clone()).or_default();
+                let id = if *count == 0 {
+                    slug
+                } else {
+                    format!("{slug}-{count}")
+                };
+                *count += 1;
+                let tag = Tag::Heading {
+                    level,
+                    id: Some(id.into()),
+                    classes,
+                    attrs,
+                };
+                out.push((Event::Start(tag), range));
+            }
+            Event::Text(first) => {
+                // The parser splits text where markup might have started.
+                let mut merged = first.to_string();
+                let mut source = range;
+                while let Some((Event::Text(next), next_range)) = events.get(index) {
+                    merged.push_str(next);
+                    source.end = next_range.end;
+                    index += 1;
+                }
+                if in_code || in_link > 0 {
+                    out.push((Event::Text(merged.into()), source));
+                    continue;
+                }
+                // Only text as written in the source has ranges within it; the rest keeps
+                // the range of the whole.
+                let exact = text.get(source.clone()) == Some(merged.as_str());
+                let part = |part: Range<usize>| {
+                    if exact {
+                        source.start + part.start..source.start + part.end
+                    } else {
+                        source.clone()
+                    }
+                };
+                let mut last = 0;
+                for (link, url) in bare_links(&merged) {
+                    if link.start > last {
+                        let before = merged[last..link.start].to_owned();
+                        out.push((Event::Text(before.into()), part(last..link.start)));
+                    }
+                    let tag = Tag::Link {
+                        link_type: LinkType::Autolink,
+                        dest_url: url.into(),
+                        title: "".into(),
+                        id: "".into(),
+                    };
+                    out.push((Event::Start(tag), part(link.clone())));
+                    let shown = merged[link.clone()].to_owned();
+                    out.push((Event::Text(shown.into()), part(link.clone())));
+                    out.push((Event::End(TagEnd::Link), part(link.clone())));
+                    last = link.end;
+                }
+                if last < merged.len() {
+                    let rest = merged[last..].to_owned();
+                    out.push((Event::Text(rest.into()), part(last..merged.len())));
+                }
+            }
+            Event::Html(ref chunk) | Event::InlineHtml(ref chunk) if in_link == 0 => {
+                let images = html_images(chunk);
+                if images.is_empty() {
+                    out.push((event, range));
+                    continue;
+                }
+                let block = matches!(event, Event::Html(_));
+                let html = |part: &str| -> Event<'a> {
+                    if block {
+                        Event::Html(part.to_owned().into())
+                    } else {
+                        Event::InlineHtml(part.to_owned().into())
+                    }
+                };
+                let mut last = 0;
+                for (tag, source, alt) in images {
+                    if tag.start > last {
+                        out.push((html(&chunk[last..tag.start]), range.clone()));
+                    }
+                    let image = Tag::Image {
+                        link_type: LinkType::Inline,
+                        dest_url: source.into(),
+                        title: "".into(),
+                        id: "".into(),
+                    };
+                    out.push((Event::Start(image), range.clone()));
+                    if !alt.is_empty() {
+                        out.push((Event::Text(alt.into()), range.clone()));
+                    }
+                    out.push((Event::End(TagEnd::Image), range.clone()));
+                    last = tag.end;
+                }
+                if last < chunk.len() {
+                    out.push((html(&chunk[last..]), range));
+                }
+            }
+            _ => out.push((event, range)),
+        }
+    }
+    out
+}
+
+/// The identifier GitHub gives a heading titled `title`, before a number is added to tell
+/// headings of the same title apart.
+fn heading_slug(title: &str) -> String {
+    title
+        .chars()
+        .filter_map(|c| match c {
+            ' ' => Some('-'),
+            c if c.is_alphanumeric() || c == '-' || c == '_' => Some(c),
+            _ => None,
+        })
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Where a wiki link to `page` points: the Markdown file of the page, with the section the
+/// link names, if any.
+fn wiki_destination(page: &str) -> String {
+    let (file, section) = match page.split_once('#') {
+        Some((file, section)) => (file, Some(section)),
+        None => (page, None),
+    };
+    let mut destination = file.to_owned();
+    if !file.is_empty() && Path::new(file).extension().is_none() {
+        destination.push_str(".md");
+    }
+    if let Some(section) = section {
+        destination.push('#');
+        destination.push_str(&heading_slug(section));
+    }
+    destination
+}
+
+/// The web addresses written out in `text`, as GitHub makes links of them: their byte
+/// ranges, and the address each one follows.
+fn bare_links(text: &str) -> Vec<(Range<usize>, String)> {
+    const PREFIXES: [&str; 3] = ["https://", "http://", "www."];
+    // Lowercased ASCII keeps the byte offsets of the text.
+    let lower = text.to_ascii_lowercase();
+    let mut links = Vec::new();
+    let mut from = 0;
+    while let Some((start, prefix)) = PREFIXES
+        .iter()
+        .filter_map(|prefix| lower[from..].find(prefix).map(|at| (from + at, *prefix)))
+        .min_by_key(|(start, _)| *start)
+    {
+        from = start + prefix.len();
+        // An address starts a word, or follows an opening bracket or emphasis.
+        if text[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|c| !c.is_whitespace() && !matches!(c, '(' | '*' | '_' | '~'))
+        {
+            continue;
+        }
+        let end = text[start..]
+            .find(|c: char| c.is_whitespace() || c == '<')
+            .map_or(text.len(), |length| start + length);
+        let mut address = &text[start..end];
+        // Punctuation that ends a sentence, and a closing bracket without its opening one,
+        // are not part of the address.
+        loop {
+            if let Some(trimmed) = address.strip_suffix(|c| {
+                matches!(
+                    c,
+                    '?' | '!' | '.' | ',' | ':' | ';' | '*' | '_' | '~' | '\'' | '"'
+                )
+            }) {
+                address = trimmed;
+            } else if address.ends_with(')')
+                && address.matches(')').count() > address.matches('(').count()
+            {
+                address = &address[..address.len() - 1];
+            } else {
+                break;
+            }
+        }
+        let Some(after_prefix) = address.get(prefix.len()..) else {
+            continue;
+        };
+        let host = after_prefix
+            .split(['/', '?', '#'])
+            .next()
+            .unwrap_or_default();
+        let valid_host = !host.is_empty()
+            && host
+                .chars()
+                .all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ':'))
+            && (prefix != "www." || !host.starts_with('.'));
+        if !valid_host {
+            continue;
+        }
+        let url = if prefix == "www." {
+            format!("http://{address}")
+        } else {
+            address.to_owned()
+        };
+        links.push((start..start + address.len(), url));
+        from = start + address.len();
+    }
+    links
+}
+
+/// The `<img>` tags of a raw HTML chunk: the byte range of each, its `src` and its `alt`.
+fn html_images(chunk: &str) -> Vec<(Range<usize>, String, String)> {
+    let lower = chunk.to_ascii_lowercase();
+    let mut images = Vec::new();
+    let mut from = 0;
+    while let Some(at) = lower[from..].find("<img") {
+        let start = from + at;
+        from = start + 4;
+        if !lower[from..].starts_with(|c: char| c.is_ascii_whitespace() || c == '/' || c == '>') {
+            continue;
+        }
+        let mut attributes = Vec::new();
+        let mut rest = &chunk[from..];
+        let end = loop {
+            rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '/');
+            if rest.is_empty() {
+                break None;
+            }
+            if let Some(after) = rest.strip_prefix('>') {
+                break Some(chunk.len() - after.len());
+            }
+            let name_length = rest
+                .find(|c: char| c.is_ascii_whitespace() || matches!(c, '=' | '>' | '/'))
+                .unwrap_or(rest.len());
+            let name = rest[..name_length].to_ascii_lowercase();
+            rest = rest[name_length..].trim_start();
+            let mut value = String::new();
+            if let Some(after) = rest.strip_prefix('=') {
+                rest = after.trim_start();
+                let (raw, remainder) = match rest.chars().next() {
+                    Some(quote @ ('"' | '\'')) => match rest[1..].find(quote) {
+                        Some(length) => (&rest[1..=length], &rest[length + 2..]),
+                        None => (&rest[1..], ""),
+                    },
+                    _ => {
+                        let length = rest
+                            .find(|c: char| c.is_ascii_whitespace() || c == '>')
+                            .unwrap_or(rest.len());
+                        (&rest[..length], &rest[length..])
+                    }
+                };
+                value = decode_entities(raw);
+                rest = remainder;
+            }
+            attributes.push((name, value));
+        };
+        let Some(end) = end else {
+            break;
+        };
+        let attribute = |wanted: &str| {
+            attributes
+                .iter()
+                .find(|(name, _)| name == wanted)
+                .map(|(_, value)| value.clone())
+                .unwrap_or_default()
+        };
+        images.push((start..end, attribute("src"), attribute("alt")));
+        from = end;
+    }
+    images
+}
+
+/// `text` with the character references of HTML that addresses and descriptions commonly
+/// hold replaced by their characters.
+fn decode_entities(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
 }
 
 /// Whether a link may be handed to the system URI launcher. Documents can come
 /// from untrusted sources, so only web and mail links are ever followed.
 pub fn is_safe_link(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://") || url.starts_with("mailto:")
+}
+
+/// What a link of the preview is followed to.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LinkTarget {
+    /// A web or mail address, for the system to open.
+    Web(String),
+    /// The heading of the document with this identifier.
+    Heading(String),
+    /// A Markdown file, which may not exist.
+    Document(PathBuf),
+}
+
+/// What the link to `url` of a document in `base_dir` is followed to, if anything: web and
+/// mail addresses, headings of the document, and Markdown files by their path from the
+/// document's folder. The section of another file a link names is not looked for.
+pub fn link_target(url: &str, base_dir: Option<&Path>) -> Option<LinkTarget> {
+    if is_safe_link(url) {
+        return Some(LinkTarget::Web(url.to_owned()));
+    }
+    if let Some(id) = url.strip_prefix('#') {
+        return Some(LinkTarget::Heading(
+            glib::Uri::unescape_string(id, None::<&str>).map_or_else(|| id.to_owned(), Into::into),
+        ));
+    }
+    if glib::Uri::peek_scheme(url).is_some() {
+        return None;
+    }
+    let path = url.split(['#', '?']).next().unwrap_or_default();
+    let path = glib::Uri::unescape_string(path, None::<&str>)?;
+    let path = Path::new(path.as_str());
+    let markdown = path.extension().is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")
+    });
+    let base_dir = base_dir?;
+    (markdown && path.is_relative()).then(|| LinkTarget::Document(base_dir.join(path)))
 }
 
 /// The readable text of a raw HTML chunk: tags removed, `<br>` turned into a
@@ -575,7 +1086,7 @@ pub async fn code_highlights(text: &str, dark: bool) -> Vec<Vec<CodeRun>> {
     });
     let mut blocks = Vec::new();
     let mut block: Option<(String, String)> = None;
-    for event in Parser::new_ext(text, parser_options()) {
+    for (event, _) in events(text) {
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
                 let info = match kind {
@@ -862,6 +1373,10 @@ struct RenderedBlock {
     links: Vec<(i32, i32, String)>,
     surfaces: Vec<Surface>,
     images: Vec<PathBuf>,
+    /// The boxes of task list items, with the offset of their marker from the start of the
+    /// block's source.
+    tasks: Vec<Task>,
+    headings: Vec<(i32, String)>,
 }
 
 /// What the preview buffer holds, so a render can keep the blocks that did not change.
@@ -873,14 +1388,37 @@ pub struct Rendered {
 }
 
 impl Rendered {
-    /// Empty `buffer`, so that the next render builds every block again.
-    pub fn clear(&mut self, buffer: &TextBuffer) {
+    /// Empty the buffer of `view`, so that the next render builds every block again.
+    pub fn clear(&mut self, view: &TextView) {
+        let buffer = view.buffer();
         for block in self.blocks.drain(..) {
             buffer.delete_mark(&block.start);
         }
         let (mut start, mut end) = buffer.bounds();
-        buffer.delete(&mut start, &mut end);
+        delete_output(view, &mut start, &mut end);
     }
+}
+
+/// Delete the output between `start` and `end` from the buffer of `view`, and the widgets in
+/// it.
+///
+/// The widgets are taken out of the view first. Deleting the text of a widget under the
+/// pointer unmaps it in the middle of the deletion, and GTK then reads the half-changed
+/// buffer to tell the view that the pointer is back over it, and crashes.
+fn delete_output(view: &TextView, start: &mut gtk::TextIter, end: &mut gtk::TextIter) {
+    let mut from = *start;
+    // Child widgets match the object replacement character.
+    while let Some((anchor_start, anchor_end)) =
+        from.forward_search("\u{FFFC}", gtk::TextSearchFlags::empty(), Some(end))
+    {
+        if let Some(anchor) = anchor_start.child_anchor() {
+            for widget in anchor.widgets() {
+                view.remove(&widget);
+            }
+        }
+        from = anchor_end;
+    }
+    view.buffer().delete(start, end);
 }
 
 /// The link reference and footnote definitions of a document, in a comparable form. A
@@ -957,7 +1495,7 @@ pub fn render_markdown(
 
     // The offset iterator keeps the parser, and with it the link definitions.
     let mut parser = Parser::new_ext(text, parser_options()).into_offset_iter();
-    let events: Vec<(Event, Range<usize>)> = parser.by_ref().collect();
+    let events = extend_events(text, parser.by_ref().collect());
     let definitions = definitions(parser.reference_definitions(), &events);
     let blocks = top_level_blocks(&events);
 
@@ -965,7 +1503,7 @@ pub fn render_markdown(
     // any block may hold: when either changes, every block is rendered again.
     let base_dir = image_base_dir.map(Path::to_path_buf);
     if rendered.base_dir != base_dir || rendered.definitions != definitions {
-        rendered.clear(&buffer);
+        rendered.clear(view);
         rendered.base_dir = base_dir;
         rendered.definitions = definitions;
     }
@@ -985,7 +1523,7 @@ pub fn render_markdown(
     };
     let mut iter = block_start(removed.start);
     let mut removed_end = block_start(removed.end);
-    buffer.delete(&mut iter, &mut removed_end);
+    delete_output(view, &mut iter, &mut removed_end);
     for block in rendered.blocks.drain(removed) {
         buffer.delete_mark(&block.start);
     }
@@ -1009,6 +1547,7 @@ pub fn render_markdown(
     let mut iter = buffer.iter_at_offset(insert_offset);
     let mut new_blocks = Vec::new();
     let mut added = Vec::new();
+    let mut added_tasks = Vec::new();
 
     let mut current_tags: Vec<String> = Vec::new();
 
@@ -1041,16 +1580,22 @@ pub fn render_markdown(
     // Searchable child surfaces (code blocks, table cells).
     let mut surfaces: Vec<Surface> = Vec::new();
     let mut shown_images: Vec<PathBuf> = Vec::new();
+    let mut tasks: Vec<Task> = Vec::new();
+    let mut headings: Vec<(i32, String)> = Vec::new();
+    // The offsets of the bullet of the item just started, which the box of a task takes the
+    // place of.
+    let mut item_bullet: Option<(i32, i32)> = None;
+    // The tag of the title of the alert just started, until the title's paragraph ends.
+    let mut alert_title: Option<&'static str> = None;
 
     let middle = &blocks[prefix..blocks.len() - suffix];
     let mut events = events
         .into_iter()
-        .map(|(event, _)| event)
         .skip(middle.first().map_or(0, |(events, _)| events.start));
     for (block_events, source) in middle {
         let start_offset = iter.offset();
         let start = buffer.create_mark(None, &iter, true);
-        for event in events.by_ref().take(block_events.len()) {
+        for (event, event_range) in events.by_ref().take(block_events.len()) {
             if in_code_block {
                 match event {
                     Event::Text(t) | Event::Code(t) => {
@@ -1258,7 +1803,10 @@ pub fn render_markdown(
                         table_rows.clear();
                         table_alignments = alignments;
                     }
-                    Tag::Heading { level, .. } => {
+                    Tag::Heading { level, id, .. } => {
+                        if let Some(id) = id {
+                            headings.push((iter.offset() - start_offset, id.to_string()));
+                        }
                         let level_num = level as u8;
                         current_tags.push(
                             match level_num {
@@ -1295,11 +1843,22 @@ pub fn render_markdown(
                             view.add_child_at_anchor(&picture, &anchor);
                         }
                     }
-                    Tag::BlockQuote(_) => {
+                    Tag::BlockQuote(kind) => {
                         blockquote_depth += 1;
                         let name = ensure_blockquote_tag(&buffer, blockquote_depth);
                         current_tags.push(name);
+                        if let Some(kind) = kind {
+                            let table = buffer.tag_table();
+                            // Over the colour of the quote, whose tag may be newer.
+                            if let Some(tag) = table.lookup(alert_tag(kind)) {
+                                tag.set_priority(table.size() - 1);
+                            }
+                            alert_title = Some(alert_tag(kind));
+                            current_tags.push(alert_tag(kind).to_owned());
+                        }
                     }
+                    Tag::DefinitionListTitle => current_tags.push("bold".to_owned()),
+                    Tag::DefinitionListDefinition => current_tags.push("definition".to_owned()),
                     Tag::List(first) => {
                         // A nested list opens while the parent item's line is still
                         // open, which ran its first marker on after the item text.
@@ -1314,6 +1873,9 @@ pub fn render_markdown(
                         let marker = list_marker(&mut list_stack);
                         let start_offset = iter.offset();
                         buffer.insert(&mut iter, &marker);
+                        if list_stack.last() == Some(&None) {
+                            item_bullet = Some((start_offset, iter.offset()));
+                        }
                         let start_iter = buffer.iter_at_offset(start_offset);
                         buffer.apply_tag_by_name("bold", &start_iter, &iter);
                         // The marker opens the line, and GTK takes a paragraph's
@@ -1371,6 +1933,15 @@ pub fn render_markdown(
                             }
                         }
                     }
+                    TagEnd::DefinitionListTitle => {
+                        close_tag(&mut current_tags, "bold");
+                        start_line(&buffer, &mut iter);
+                    }
+                    TagEnd::DefinitionListDefinition => {
+                        close_tag(&mut current_tags, "definition");
+                        start_line(&buffer, &mut iter);
+                    }
+                    TagEnd::DefinitionList => end_block(&buffer, &mut iter),
                     TagEnd::BlockQuote(_) => {
                         let name = format!("blockquote-{blockquote_depth}");
                         current_tags.retain(|t| t != &name);
@@ -1394,7 +1965,15 @@ pub fn render_markdown(
                             buffer.insert(&mut iter, "\n");
                         }
                     }
-                    TagEnd::Paragraph => end_block(&buffer, &mut iter),
+                    TagEnd::Paragraph => {
+                        // The title of an alert sits right over its text.
+                        if let Some(name) = alert_title.take() {
+                            close_tag(&mut current_tags, name);
+                            start_line(&buffer, &mut iter);
+                        } else {
+                            end_block(&buffer, &mut iter);
+                        }
+                    }
                     _ => {}
                 },
                 Event::Text(t) => {
@@ -1450,16 +2029,31 @@ pub fn render_markdown(
                     buffer.apply_tag_by_name("footnote", &start_iter, &iter);
                 }
                 Event::TaskListMarker(checked) => {
+                    // A bullet and a box would be two markers for one item.
+                    if let Some((bullet_start, bullet_end)) = item_bullet.take()
+                        && bullet_end == iter.offset()
+                    {
+                        let mut bullet = buffer.iter_at_offset(bullet_start);
+                        buffer.delete(&mut bullet, &mut iter);
+                    }
                     let start_offset = iter.offset();
-                    // Squares rather than the ballot-box characters: no font in a
-                    // default install covers U+2610/U+2611, which would show as
-                    // missing-glyph boxes.
-                    buffer.insert(&mut iter, if checked { "■ " } else { "□ " });
+                    let check = gtk::CheckButton::builder()
+                        .active(checked)
+                        .focus_on_click(false)
+                        .build();
+                    check.add_css_class("task-check");
+                    let anchor = buffer.create_child_anchor(&mut iter);
+                    view.add_child_at_anchor(&check, &anchor);
+                    // The box opens the line, which takes its margins from it.
                     let start_iter = buffer.iter_at_offset(start_offset);
-                    buffer.apply_tag_by_name("bold", &start_iter, &iter);
                     for tag in &current_tags {
                         buffer.apply_tag_by_name(tag, &start_iter, &iter);
                     }
+                    tasks.push(Task {
+                        anchor,
+                        check,
+                        source: event_range.start - source.start,
+                    });
                 }
                 Event::Rule => {
                     let sep = gtk::Separator::builder()
@@ -1504,6 +2098,7 @@ pub fn render_markdown(
         // depends on the block before it.
         end_block(&buffer, &mut iter);
         added.extend(surfaces.iter().cloned());
+        added_tasks.extend(tasks.iter().cloned());
         new_blocks.push(RenderedBlock {
             source: text[source.clone()].to_owned(),
             start,
@@ -1516,6 +2111,8 @@ pub fn render_markdown(
                 .map(|surface| surface.shifted(-start_offset))
                 .collect(),
             images: std::mem::take(&mut shown_images),
+            tasks: std::mem::take(&mut tasks),
+            headings: std::mem::take(&mut headings),
         });
     }
 
@@ -1543,10 +2140,24 @@ pub fn render_markdown(
         links: Vec::new(),
         surfaces: Vec::new(),
         added,
+        tasks: Vec::new(),
+        added_tasks,
+        headings: Vec::new(),
     };
     let mut images = HashSet::new();
-    for block in &rendered.blocks {
+    // The rendered blocks are the blocks of the text, in order.
+    for (block, (_, source)) in rendered.blocks.iter().zip(&blocks) {
         let offset = buffer.iter_at_mark(&block.start).offset();
+        result.tasks.extend(block.tasks.iter().map(|task| Task {
+            source: task.source + source.start,
+            ..task.clone()
+        }));
+        result.headings.extend(
+            block
+                .headings
+                .iter()
+                .map(|(start, id)| (start + offset, id.clone())),
+        );
         result.links.extend(
             block
                 .links
@@ -1565,12 +2176,14 @@ pub fn render_markdown(
 #[cfg(test)]
 mod tests {
     use super::{
-        close_tag, definitions, is_safe_link, lang_candidates, list_marker, local_image_path,
-        strip_html, top_level_blocks, unchanged_ends,
+        LinkTarget, bare_links, close_tag, definitions, events, heading_slug, html_images,
+        is_safe_link, lang_candidates, link_target, list_marker, local_image_path, strip_html,
+        top_level_blocks, unchanged_ends, wiki_destination,
     };
-    use pulldown_cmark::{Event, Options, Parser};
+    use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
     use std::fs;
     use std::ops::Range;
+    use std::path::{Path, PathBuf};
 
     fn offset_events(text: &str) -> Vec<(Event<'_>, Range<usize>)> {
         Parser::new_ext(text, Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES)
@@ -1722,6 +2335,196 @@ mod tests {
         assert!(is_safe_link("mailto:someone@example.invalid"));
         assert!(!is_safe_link("file:///etc/passwd"));
         assert!(!is_safe_link("javascript:alert(1)"));
+    }
+
+    #[test]
+    fn bare_addresses_become_links_without_the_punctuation_after_them() {
+        let links = |text| -> Vec<(String, String)> {
+            bare_links(text)
+                .into_iter()
+                .map(|(range, url)| (text[range].to_owned(), url))
+                .collect()
+        };
+        assert_eq!(
+            links("See https://example.com/a_b. And www.example.com, too"),
+            [
+                (
+                    "https://example.com/a_b".into(),
+                    "https://example.com/a_b".into()
+                ),
+                ("www.example.com".into(), "http://www.example.com".into()),
+            ]
+        );
+        // A closing bracket is kept only with its opening one.
+        assert_eq!(
+            links("(https://en.wikipedia.org/wiki/Foo_(bar))"),
+            [(
+                "https://en.wikipedia.org/wiki/Foo_(bar)".into(),
+                "https://en.wikipedia.org/wiki/Foo_(bar)".into()
+            )]
+        );
+        // Not in the middle of a word, and not without a host.
+        assert!(links("xhttps://example.com").is_empty());
+        assert!(links("https:// and www.").is_empty());
+    }
+
+    #[test]
+    fn img_tags_give_their_source_and_description() {
+        let chunk = r#"<p align="center"><img width=200 src="logo.png" alt='A &amp; B'/></p>"#;
+        let images = html_images(chunk);
+        assert_eq!(images.len(), 1);
+        let (range, source, alt) = &images[0];
+        assert!(chunk[range.clone()].starts_with("<img") && chunk[range.clone()].ends_with("/>"));
+        assert_eq!((source.as_str(), alt.as_str()), ("logo.png", "A & B"));
+        assert!(html_images("<imgx src=a>").is_empty());
+        assert!(html_images("<img src=a").is_empty());
+    }
+
+    #[test]
+    fn headings_get_the_identifiers_of_github() {
+        assert_eq!(heading_slug("Hello, World! 2"), "hello-world-2");
+        assert_eq!(heading_slug("snake_case and-dash"), "snake_case-and-dash");
+        assert_eq!(heading_slug("Привіт світ"), "привіт-світ");
+        let ids: Vec<String> = events(
+            "# A
+
+## A
+
+### `b` c
+",
+        )
+        .into_iter()
+        .filter_map(|(event, _)| match event {
+            Event::Start(Tag::Heading { id, .. }) => id.map(|id| id.to_string()),
+            _ => None,
+        })
+        .collect();
+        assert_eq!(ids, ["a", "a-1", "b-c"]);
+    }
+
+    #[test]
+    fn wiki_links_point_at_markdown_files() {
+        assert_eq!(wiki_destination("Other page"), "Other page.md");
+        assert_eq!(wiki_destination("notes.txt"), "notes.txt");
+        assert_eq!(
+            wiki_destination("Page#Some Section"),
+            "Page.md#some-section"
+        );
+        assert_eq!(wiki_destination("#Here"), "#here");
+    }
+
+    #[test]
+    fn front_matter_and_math_read_as_code() {
+        let events = events("---\ntitle: x\n---\n\n$$\na^2\n$$\n\nInline $b$.\n");
+        let code_blocks: Vec<String> = events
+            .iter()
+            .filter_map(|(event, _)| match event {
+                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => Some(info.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(code_blocks, ["yaml", "latex"]);
+        assert!(
+            events
+                .iter()
+                .any(|(event, _)| *event == Event::Code("b".into()))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|(event, _)| *event == Event::Text("a^2\n".into()))
+        );
+    }
+
+    #[test]
+    fn addresses_become_links_outside_code_and_links_only() {
+        let text = "Go to https://a.example now\n\n[https://b.example](https://c.example) `https://d.example`\n\n```\nhttps://e.example\n```\n";
+        let events = events(text);
+        let links: Vec<(String, LinkType)> = events
+            .iter()
+            .filter_map(|(event, _)| match event {
+                Event::Start(Tag::Link {
+                    dest_url,
+                    link_type,
+                    ..
+                }) => Some((dest_url.to_string(), *link_type)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            links,
+            [
+                ("https://a.example".into(), LinkType::Autolink),
+                ("https://c.example".into(), LinkType::Inline),
+            ]
+        );
+        // The link's text keeps its place in the source.
+        let range = events
+            .iter()
+            .find(|(event, _)| *event == Event::Text("https://a.example".into()))
+            .map(|(_, range)| range.clone())
+            .unwrap();
+        assert_eq!(&text[range], "https://a.example");
+    }
+
+    #[test]
+    fn alerts_start_with_their_title() {
+        let events: Vec<Event> = events("> [!WARNING]\n> Careful\n")
+            .into_iter()
+            .map(|(event, _)| event)
+            .collect();
+        assert_eq!(
+            events[1..6],
+            [
+                Event::Start(Tag::Paragraph),
+                Event::Start(Tag::Strong),
+                Event::Text("Warning".into()),
+                Event::End(TagEnd::Strong),
+                Event::End(TagEnd::Paragraph),
+            ]
+        );
+    }
+
+    #[test]
+    fn html_images_become_images() {
+        let events: Vec<Event> = events("<p><img src=\"a.png\" alt=\"A\"></p>\n")
+            .into_iter()
+            .map(|(event, _)| event)
+            .collect();
+        assert!(events.contains(&Event::Text("A".into())));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            Event::Start(Tag::Image { dest_url, .. }) if dest_url.as_ref() == "a.png"
+        )));
+    }
+
+    #[test]
+    fn links_are_followed_to_the_web_headings_and_markdown_files() {
+        let base = Path::new("/docs");
+        assert_eq!(
+            link_target("https://example.com", Some(base)),
+            Some(LinkTarget::Web("https://example.com".into()))
+        );
+        assert_eq!(
+            link_target("#caf%C3%A9", Some(base)),
+            Some(LinkTarget::Heading("café".into()))
+        );
+        assert_eq!(
+            link_target("guide/My%20Notes.md#intro", Some(base)),
+            Some(LinkTarget::Document(PathBuf::from(
+                "/docs/guide/My Notes.md"
+            )))
+        );
+        assert_eq!(
+            link_target("../README.MARKDOWN", Some(base)),
+            Some(LinkTarget::Document(PathBuf::from(
+                "/docs/../README.MARKDOWN"
+            )))
+        );
+        assert_eq!(link_target("script.sh", Some(base)), None);
+        assert_eq!(link_target("/etc/notes.md", Some(base)), None);
+        assert_eq!(link_target("file:///docs/a.md", Some(base)), None);
+        assert_eq!(link_target("a.md", None), None);
     }
 
     #[test]

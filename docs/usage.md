@@ -45,10 +45,27 @@ and the status bar; F11 or Escape leaves it.
 
 ## The preview
 
-The preview renders CommonMark with tables, strikethrough, task lists and footnotes. Code
-blocks are coloured by GtkSourceView when their fence names a language it knows, or a
+The preview renders CommonMark with tables, strikethrough, task lists and footnotes, and
+more of what GitHub renders:
+
+- Web addresses written out in the text, such as `https://example.com` or
+  `www.example.com`, are links.
+- Alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`) start with
+  their title in its colour.
+- Front matter, the YAML between `---` lines or the TOML between `+++` lines at the top of a
+  file, shows as a code block.
+- Math between `$` signs shows as inline code, and between `$$` lines as a LaTeX code
+  block; it is not typeset.
+- Definition lists, a term with `: its definition` on the next line, and wiki links,
+  `[[Page]]` for `Page.md`.
+
+Code blocks are coloured by GtkSourceView when their fence names a language it knows, or a
 common alias of one (`js`, `py`, `sh`, `rs` and so on). Raw HTML is not laid out: its tags
-are dropped and the text inside them is kept.
+are dropped and the text inside them is kept, except for `<img>`, which shows like a
+Markdown image.
+
+The box of a task list item can be ticked in the preview. It changes the `[ ]` or `[x]` in
+the source, as typing it would, so Ctrl+Z in the source takes it back.
 
 Text in code blocks and table cells is selected and copied like the rest of the preview. A
 code block also has a button that copies all of it, shown while the pointer is over the
@@ -60,7 +77,10 @@ Documents can come from anyone, so the preview is careful with what they point a
   it. Anything else, including web addresses, shows the image's alternative text. An
   untitled document shows no images.
 - Links open in the default browser or mail program when they are `http:`, `https:` or
-  `mailto:` addresses, and do nothing otherwise.
+  `mailto:` addresses. A link to `#a-heading` scrolls to the heading, named as GitHub names
+  them: in lower case, spaces made hyphens and punctuation left out. A link to a Markdown
+  file by its path from the document's folder opens the file in Blink, without going to
+  a heading of it. Other links do nothing.
 
 ## Saving and your work
 
@@ -88,13 +108,14 @@ the link stays.
 column as wide as the window's, the text and monospace fonts, and code coloured for the
 light or the dark style, whichever the browser asks for. Images from the document's folder
 are embedded in the page, web images are left as addresses, and any other image shows its
-alternative text. Raw HTML in the document is left out, and so are link addresses other
-than web and mail addresses and relative paths, so the page runs no script when a browser
-opens it.
+alternative text. Raw HTML in the document is left out, but for `<img>`, taken as a
+Markdown image, and so are link addresses other than web and mail addresses and relative
+paths, so the page runs no script when a browser opens it. Headings carry the names that
+links to `#a-heading` point at.
 
 "Export as PDF…" sets the document on A4 pages in the same fonts, with page numbers and code
 coloured as in the light style. The text can be selected and searched, web and mail links
-can be followed, and the headings make the outline. Code lines too long for the page wrap.
+and links to the document's headings can be followed, and the headings make the outline. Code lines too long for the page wrap.
 As in the preview, only images from the document's folder are shown.
 
 ## Keyboard shortcuts

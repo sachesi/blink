@@ -3,11 +3,11 @@
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gettextrs::ngettext;
+use gettextrs::{gettext, ngettext};
 use gtk::{gio, glib};
 use sourceview5::prelude::*;
 use std::cell::{Cell, RefCell};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::{BlinkDocument, ViewMode, buffer_text, saturating_u32};
@@ -30,6 +30,10 @@ pub struct State {
     pub surfaces: RefCell<Vec<markdown::Surface>>,
     /// The blocks the preview buffer holds, which the next render keeps if unchanged.
     pub rendered: RefCell<markdown::Rendered>,
+    /// The boxes of the task list items.
+    pub tasks: RefCell<Vec<markdown::Task>>,
+    /// Where the headings start in the preview buffer, by identifier.
+    pub headings: RefCell<Vec<(i32, String)>>,
 }
 
 impl BlinkDocument {
@@ -48,19 +52,15 @@ impl BlinkDocument {
         self.sync_scroll(&preview, &edit);
 
         // Links open on release, so the click neither takes the focus nor fights the
-        // selection. Only web and mail links are followed, since documents can come from
-        // anyone.
+        // selection. Documents can come from anyone, so only web and mail links are handed
+        // to the system; the rest go to a heading or open a Markdown file here.
         let click = gtk::GestureClick::new();
         click.connect_released(glib::clone!(
             #[weak(rename_to = document)]
             self,
             move |_, _, x, y| {
-                if let Some(url) = document.link_at(x, y) {
-                    gtk::UriLauncher::new(&url).launch(
-                        document.dialog_parent().as_ref(),
-                        gio::Cancellable::NONE,
-                        |_| {},
-                    );
+                if let Some(target) = document.link_at(x, y) {
+                    document.follow_link(target);
                 }
             }
         ));
@@ -230,21 +230,111 @@ impl BlinkDocument {
         imp.preview.syncing.set(false);
     }
 
-    /// The web or mail link under `(x, y)` in the preview.
-    fn link_at(&self, x: f64, y: f64) -> Option<String> {
+    /// Where the link under `(x, y)` in the preview goes, if it is followed.
+    fn link_at(&self, x: f64, y: f64) -> Option<markdown::LinkTarget> {
         let view = &self.imp().preview_view;
         let (bx, by) =
             view.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
         let offset = view.iter_at_location(bx, by)?.offset();
-        self.imp()
+        let links = self.imp().preview.links.borrow();
+        let (_, _, url) = links
+            .iter()
+            .find(|(start, end, _)| offset >= *start && offset < *end)?;
+        markdown::link_target(url, self.base_dir().as_deref())
+    }
+
+    fn follow_link(&self, target: markdown::LinkTarget) {
+        match target {
+            markdown::LinkTarget::Web(url) => {
+                gtk::UriLauncher::new(&url).launch(
+                    self.dialog_parent().as_ref(),
+                    gio::Cancellable::NONE,
+                    |_| {},
+                );
+            }
+            markdown::LinkTarget::Heading(id) => {
+                let imp = self.imp();
+                let offset = imp
+                    .preview
+                    .headings
+                    .borrow()
+                    .iter()
+                    .find(|(_, heading)| *heading == id)
+                    .map(|(offset, _)| *offset);
+                if let Some(offset) = offset {
+                    let view = &imp.preview_view;
+                    let iter = view.buffer().iter_at_offset(offset);
+                    let (y, _) = view.line_yrange(&iter);
+                    self.scroll_preview_to_y(y);
+                }
+            }
+            markdown::LinkTarget::Document(path) => {
+                if !path.is_file() {
+                    self.toast(&gettext("The linked file does not exist"));
+                    return;
+                }
+                let window = self.window();
+                if let Some(app) = window.as_ref().and_then(|window| {
+                    window
+                        .application()
+                        .and_downcast::<crate::application::BlinkApplication>()
+                }) {
+                    app.open_file(gio::File::for_path(path), window.as_ref());
+                }
+            }
+        }
+    }
+
+    /// Flip the task whose box `anchor` holds, in the source, which the preview follows.
+    fn toggle_task(&self, anchor: &gtk::TextChildAnchor) {
+        let imp = self.imp();
+        // Offsets from before a change that is not rendered yet no longer hold.
+        if imp.preview.render_timer.borrow().is_some() {
+            self.render_tick();
+        }
+        if anchor.is_deleted() {
+            return;
+        }
+        let Some(task) = imp
             .preview
-            .links
+            .tasks
             .borrow()
             .iter()
-            .find(|(start, end, _)| offset >= *start && offset < *end)
-            .map(|(_, _, url)| url.as_str())
-            .filter(|url| markdown::is_safe_link(url))
-            .map(str::to_owned)
+            .find(|task| task.anchor == *anchor)
+            .cloned()
+        else {
+            return;
+        };
+        let text = buffer_text(&*imp.edit_buffer);
+        let checked = match text.get(task.source..task.source + 3) {
+            Some("[ ]") => false,
+            Some("[x]" | "[X]") => true,
+            // The box shows what the source no longer says: show the source again.
+            _ => {
+                imp.preview.rendered.borrow_mut().clear(&imp.preview_view);
+                self.render_tick();
+                return;
+            }
+        };
+        let offset = i32::try_from(text[..task.source + 1].chars().count()).unwrap_or(i32::MAX);
+        let buffer = &imp.edit_buffer;
+        let mut start = buffer.iter_at_offset(offset);
+        let mut end = buffer.iter_at_offset(offset + 1);
+        buffer.begin_user_action();
+        buffer.delete(&mut start, &mut end);
+        buffer.insert(&mut start, if checked { " " } else { "x" });
+        buffer.end_user_action();
+    }
+
+    /// The folder of the document's file, which images and linked files are found from.
+    fn base_dir(&self) -> Option<PathBuf> {
+        self.imp()
+            .document
+            .borrow()
+            .file
+            .as_ref()
+            .and_then(|file| file.path())
+            .and_then(|path| path.parent().map(Path::to_path_buf))
     }
 
     fn preview_visible(&self) -> bool {
@@ -263,13 +353,7 @@ impl BlinkDocument {
         let text = buffer_text(&*imp.edit_buffer);
         self.update_status(&text);
         let hadj = imp.preview_scroll.hadjustment();
-        let base = imp
-            .document
-            .borrow()
-            .file
-            .as_ref()
-            .and_then(|file| file.path())
-            .and_then(|path| path.parent().map(Path::to_path_buf));
+        let base = self.base_dir();
         let result = markdown::render_markdown(
             &imp.preview_view,
             &text,
@@ -279,6 +363,17 @@ impl BlinkDocument {
         );
         imp.preview.links.replace(result.links);
         imp.preview.surfaces.replace(result.surfaces);
+        imp.preview.tasks.replace(result.tasks);
+        imp.preview.headings.replace(result.headings);
+        for task in &result.added_tasks {
+            task.check.connect_toggled(glib::clone!(
+                #[weak(rename_to = document)]
+                self,
+                #[weak(rename_to = anchor)]
+                task.anchor,
+                move |_| document.toggle_task(&anchor)
+            ));
+        }
         self.watch_surface_selections(&result.added);
         for surface in &result.added {
             if let markdown::Surface::Code { view, .. } = surface {

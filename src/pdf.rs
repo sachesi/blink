@@ -6,7 +6,8 @@
 use gtk::gdk::prelude::GdkCairoContextExt;
 use gtk::{cairo, gdk_pixbuf, pango};
 use pango::prelude::*;
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, Tag, TagEnd};
+use std::collections::HashSet;
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -89,6 +90,8 @@ enum Block {
         paragraph: Paragraph,
         /// The heading level, from 1.
         heading: Option<usize>,
+        /// The identifier of the heading, which links to it point at.
+        id: Option<String>,
         indent: f64,
         /// The length of the list marker that opens the text, which wrapped lines hang
         /// after.
@@ -131,8 +134,11 @@ struct Reader<'a> {
     /// Whether the prefix is a list marker, which wrapped lines hang after.
     hanging: bool,
     heading: Option<usize>,
+    heading_id: Option<String>,
     style: Inline,
     lists: Vec<Option<u64>>,
+    /// How many definitions of definition lists are open.
+    definitions: usize,
     quote: usize,
     links: Vec<(String, usize)>,
     /// Whether each open image is shown, which hides its alternative text.
@@ -152,8 +158,10 @@ impl<'a> Reader<'a> {
             prefix: 0,
             hanging: false,
             heading: None,
+            heading_id: None,
             style: Inline::default(),
             lists: Vec::new(),
+            definitions: 0,
             quote: 0,
             links: Vec::new(),
             images: Vec::new(),
@@ -164,7 +172,8 @@ impl<'a> Reader<'a> {
     }
 
     fn indent(&self) -> f64 {
-        self.lists.len() as f64 * LIST_INDENT + self.quote as f64 * QUOTE_INDENT
+        (self.lists.len() + self.definitions) as f64 * LIST_INDENT
+            + self.quote as f64 * QUOTE_INDENT
     }
 
     fn has_text(&self) -> bool {
@@ -190,6 +199,7 @@ impl<'a> Reader<'a> {
         self.blocks.push(Block::Text {
             paragraph,
             heading: self.heading,
+            id: self.heading.and(self.heading_id.clone()),
             indent,
             marker,
             quote: self.quote,
@@ -224,7 +234,7 @@ impl<'a> Reader<'a> {
     }
 
     fn read(mut self, text: &str) -> Vec<Block> {
-        for event in Parser::new_ext(text, markdown::parser_options()) {
+        for (event, _) in markdown::events(text) {
             self.event(event);
         }
         self.flush(PARAGRAPH_GAP);
@@ -282,8 +292,16 @@ impl<'a> Reader<'a> {
                     bold: true,
                     ..self.style
                 };
+                // The box takes the place of a bullet, as in the preview.
+                if self.hanging
+                    && self.lists.last() == Some(&None)
+                    && self.paragraph.text.len() == self.prefix
+                {
+                    self.paragraph = Paragraph::default();
+                }
                 self.paragraph
                     .push(if checked { "■ " } else { "□ " }, style);
+                self.prefix = self.paragraph.text.len();
             }
             Event::Rule => {
                 self.flush(PARAGRAPH_GAP);
@@ -300,9 +318,18 @@ impl<'a> Reader<'a> {
                     self.flush(PARAGRAPH_GAP);
                 }
             }
-            Tag::Heading { level, .. } => {
+            Tag::Heading { level, id, .. } => {
                 self.flush(PARAGRAPH_GAP);
                 self.heading = Some(level as usize);
+                self.heading_id = id.map(|id| id.to_string());
+            }
+            Tag::DefinitionListTitle => {
+                self.flush(PARAGRAPH_GAP);
+                self.style.bold = true;
+            }
+            Tag::DefinitionListDefinition => {
+                self.flush(ITEM_GAP);
+                self.definitions += 1;
             }
             Tag::BlockQuote(_) => {
                 self.flush(PARAGRAPH_GAP);
@@ -382,7 +409,17 @@ impl<'a> Reader<'a> {
             TagEnd::Heading(_) => {
                 self.flush(PARAGRAPH_GAP);
                 self.heading = None;
+                self.heading_id = None;
             }
+            TagEnd::DefinitionListTitle => {
+                self.flush(ITEM_GAP);
+                self.style.bold = false;
+            }
+            TagEnd::DefinitionListDefinition => {
+                self.flush(ITEM_GAP);
+                self.definitions = self.definitions.saturating_sub(1);
+            }
+            TagEnd::DefinitionList => self.widen_gap(PARAGRAPH_GAP),
             TagEnd::BlockQuote(_) => {
                 self.flush(PARAGRAPH_GAP);
                 self.quote = self.quote.saturating_sub(1);
@@ -423,7 +460,7 @@ impl<'a> Reader<'a> {
             TagEnd::Strikethrough => self.style.strikethrough = false,
             TagEnd::Link => {
                 if let Some((url, start)) = self.links.pop()
-                    && markdown::is_safe_link(&url)
+                    && (markdown::is_safe_link(&url) || url.starts_with('#'))
                 {
                     let end = self.paragraph.text.len();
                     self.paragraph.links.push((start..end, url));
@@ -489,6 +526,8 @@ struct Typesetter<'a> {
     page: u32,
     /// The open headings, by level, as outline entries.
     outline: Vec<(usize, i32)>,
+    /// The identifiers of the headings of the document.
+    headings: HashSet<String>,
 }
 
 impl<'a> Typesetter<'a> {
@@ -512,6 +551,7 @@ impl<'a> Typesetter<'a> {
             y: MARGIN,
             page: 1,
             outline: Vec::new(),
+            headings: HashSet::new(),
         })
     }
 
@@ -681,11 +721,13 @@ impl<'a> Typesetter<'a> {
             for [from, to] in bounds.as_chunks::<2>().0 {
                 let left = x + f64::from(*from) / scale;
                 let width = f64::from(to - from) / scale;
-                let uri = url.replace('\\', "\\\\").replace('\'', "\\'");
+                let Some(target) = link_attribute(url, &self.headings) else {
+                    continue;
+                };
                 self.cr.tag_begin(
                     LINK_TAG,
                     &format!(
-                        "rect=[{left:.2} {top:.2} {width:.2} {:.2}] uri='{uri}'",
+                        "rect=[{left:.2} {top:.2} {width:.2} {:.2}] {target}",
                         line.height
                     ),
                 );
@@ -735,16 +777,27 @@ impl<'a> Typesetter<'a> {
     }
 
     fn set(&mut self, blocks: &[Block]) -> Result<(), cairo::Error> {
+        self.headings = blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Text { id: Some(id), .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
         for block in blocks {
             match block {
                 Block::Text {
                     paragraph,
                     heading,
+                    id,
                     indent,
                     marker,
                     quote,
                     gap,
-                } => self.text(paragraph, *heading, *indent, *marker, *quote, *gap)?,
+                } => {
+                    let heading = heading.map(|level| (level, id.as_deref()));
+                    self.text(paragraph, heading, *indent, *marker, *quote, *gap)?;
+                }
                 Block::Code {
                     code,
                     runs,
@@ -772,12 +825,13 @@ impl<'a> Typesetter<'a> {
     fn text(
         &mut self,
         paragraph: &Paragraph,
-        heading: Option<usize>,
+        heading: Option<(usize, Option<&str>)>,
         indent: f64,
         marker: usize,
         quote: usize,
         gap: f64,
     ) -> Result<(), cairo::Error> {
+        let (heading, id) = heading.unzip();
         let scale = heading.map_or(1.0, |level| {
             HEADING_SCALES[level.clamp(1, HEADING_SCALES.len()) - 1]
         });
@@ -826,6 +880,13 @@ impl<'a> Typesetter<'a> {
             let height = lines.iter().map(|line| line.height).sum::<f64>();
             self.reserve(height + 3.0 * BODY_SIZE * f64::from(LINE_SPACING))?;
             self.add_outline(level, &paragraph.text)?;
+            if let Some(id) = id.flatten() {
+                self.cr.tag_begin(
+                    cairo::CAIRO_TAG_DEST,
+                    &format!("name='{}' x={MARGIN:.2} y={:.2}", tag_string(id), self.y),
+                );
+                self.cr.tag_end(cairo::CAIRO_TAG_DEST);
+            }
         }
 
         self.set_lines(
@@ -1261,6 +1322,24 @@ fn saturating_i32_points(points: f64) -> i32 {
     (points.max(1.0) * f64::from(pango::SCALE)) as i32
 }
 
+/// `text` as a string in the attributes of a cairo tag.
+fn tag_string(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+/// Where a cairo link to `url` goes, as a tag attribute: a web or mail address, or the
+/// destination of one of `headings`. Cairo makes a link to a destination the document lacks
+/// go to a page of its choosing, so such a link is left out.
+fn link_attribute(url: &str, headings: &HashSet<String>) -> Option<String> {
+    match markdown::link_target(url, None)? {
+        markdown::LinkTarget::Web(uri) => Some(format!("uri='{}'", tag_string(&uri))),
+        markdown::LinkTarget::Heading(id) if headings.contains(&id) => {
+            Some(format!("dest='{}'", tag_string(&id)))
+        }
+        _ => None,
+    }
+}
+
 /// The document as a PDF file.
 pub fn render_pdf(text: &str, options: &Options) -> Result<Vec<u8>, cairo::Error> {
     typeset(text, options).map(|(pdf, _)| pdf)
@@ -1344,6 +1423,34 @@ mod tests {
             panic!("a paragraph");
         };
         assert_eq!(paragraph.text, "a picture");
+    }
+
+    #[test]
+    fn task_boxes_take_the_place_of_bullets() {
+        let texts: Vec<String> = blocks("- [x] done\n- [ ] to do\n\n1. [ ] first\n")
+            .into_iter()
+            .filter_map(|block| match block {
+                Block::Text { paragraph, .. } => Some(paragraph.text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["■ done", "□ to do", "1. □ first"]);
+    }
+
+    #[test]
+    fn links_to_headings_that_exist_are_kept() {
+        let headings = HashSet::from([String::from("top")]);
+        assert_eq!(
+            link_attribute("#top", &headings).as_deref(),
+            Some("dest='top'")
+        );
+        assert_eq!(link_attribute("#missing", &headings), None);
+        assert_eq!(
+            link_attribute("https://a.example/it's", &headings).as_deref(),
+            Some("uri='https://a.example/it\\'s'")
+        );
+        let (pdf, _) = typeset("# Top\n\n[up](#top)\n", &options()).expect("a PDF");
+        assert!(pdf.starts_with(b"%PDF-"));
     }
 
     #[test]
