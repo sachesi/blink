@@ -6,7 +6,8 @@
 use gtk::gdk::prelude::GdkCairoContextExt;
 use gtk::{cairo, gdk_pixbuf, pango};
 use pango::prelude::*;
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, Tag, TagEnd};
+use pulldown_cmark::{Alignment, BlockQuoteKind, CodeBlockKind, Event, Tag, TagEnd};
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -57,6 +58,36 @@ const LINK_COLOR: Rgb = (0.11, 0.44, 0.85);
 const LINE_COLOR: Rgb = (0.82, 0.82, 0.84);
 const TINT_COLOR: Rgb = (0.955, 0.955, 0.96);
 
+/// The blockquotes a block is in: how many, and for each of them, from the outermost, which
+/// quote of the document it is and whether it is an alert of some kind.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Quote {
+    depth: usize,
+    numbers: [usize; 8],
+    alerts: [Option<BlockQuoteKind>; 8],
+}
+
+impl Quote {
+    /// Enter the quote numbered `number`, an alert of `kind` or not.
+    fn enter(&mut self, number: usize, kind: Option<BlockQuoteKind>) {
+        if let (Some(slot), Some(alert)) = (
+            self.numbers.get_mut(self.depth),
+            self.alerts.get_mut(self.depth),
+        ) {
+            *slot = number;
+            *alert = kind;
+        }
+        self.depth += 1;
+    }
+
+    fn leave(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
+        if let Some(alert) = self.alerts.get_mut(self.depth) {
+            *alert = None;
+        }
+    }
+}
+
 /// How a stretch of text looks.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Inline {
@@ -66,6 +97,8 @@ struct Inline {
     code: bool,
     link: bool,
     footnote: bool,
+    /// The kind of the alert whose title the text is.
+    alert: Option<BlockQuoteKind>,
 }
 
 /// Text with its styled stretches and links, as byte ranges of the text, and what is drawn
@@ -184,26 +217,26 @@ enum Block {
         /// The length of the list marker that opens the text, which wrapped lines hang
         /// after.
         marker: usize,
-        quote: usize,
+        quote: Quote,
         gap: f64,
     },
     Code {
         code: String,
         runs: Vec<CodeRun>,
         indent: f64,
-        quote: usize,
+        quote: Quote,
     },
     Table {
         rows: Vec<Vec<Paragraph>>,
         alignments: Vec<Alignment>,
         indent: f64,
-        quote: usize,
+        quote: Quote,
     },
     Image {
         path: PathBuf,
         alt: String,
         indent: f64,
-        quote: usize,
+        quote: Quote,
     },
     Rule,
 }
@@ -227,7 +260,9 @@ struct Reader<'a> {
     lists: Vec<Option<u64>>,
     /// How many definitions of definition lists are open.
     definitions: usize,
-    quote: usize,
+    quote: Quote,
+    /// How many blockquotes have started.
+    quotes: usize,
     links: Vec<(String, usize)>,
     /// Whether each open image is shown, which hides its alternative text.
     images: Vec<bool>,
@@ -254,7 +289,8 @@ impl<'a> Reader<'a> {
             style: Inline::default(),
             lists: Vec::new(),
             definitions: 0,
-            quote: 0,
+            quote: Quote::default(),
+            quotes: 0,
             links: Vec::new(),
             images: Vec::new(),
             footnotes: Vec::new(),
@@ -267,7 +303,7 @@ impl<'a> Reader<'a> {
 
     fn indent(&self) -> f64 {
         (self.lists.len() + self.definitions) as f64 * LIST_INDENT
-            + self.quote as f64 * QUOTE_INDENT
+            + self.quote.depth as f64 * QUOTE_INDENT
     }
 
     fn has_text(&self) -> bool {
@@ -276,7 +312,16 @@ impl<'a> Reader<'a> {
 
     /// Set the paragraph read so far, if it has more than its prefix, followed by `gap`.
     fn flush(&mut self, gap: f64) {
-        let paragraph = std::mem::take(&mut self.paragraph);
+        let mut paragraph = std::mem::take(&mut self.paragraph);
+        // Line breaks at the end, as raw HTML leaves, would set empty lines.
+        let end = paragraph.text.trim_end_matches('\n').len();
+        if paragraph.styles.iter().all(|(range, _)| range.end <= end)
+            && paragraph.links.iter().all(|(range, _)| range.end <= end)
+            && paragraph.objects.iter().all(|(index, _)| *index < end)
+            && paragraph.anchors.iter().all(|(index, _)| *index <= end)
+        {
+            paragraph.text.truncate(end);
+        }
         let marker = if self.hanging { self.prefix } else { 0 };
         let has_text = !paragraph.text[self.prefix..].trim().is_empty();
         self.prefix = 0;
@@ -369,11 +414,36 @@ impl<'a> Reader<'a> {
                 self.push_text(&code);
                 self.style = style;
             }
-            // A `<details>` element is set open, its summary as text.
+            // A `<details>` element is set open, its summary in bold on a line of its own.
             Event::Html(html) | Event::InlineHtml(html) => {
                 for part in markdown::html_parts_with_emoji(&html, markdown::font_has_emoji) {
-                    if let markdown::HtmlPart::Text(text) = part {
-                        self.push_text(&text);
+                    match part {
+                        markdown::HtmlPart::Text(text) => {
+                            // A line break is not set at the start of a line, nor twice.
+                            let mut text = text.as_str();
+                            if !self.has_text() || self.paragraph.text.ends_with('\n') {
+                                text = text.trim_start_matches('\n');
+                            }
+                            let mut collapsed = String::with_capacity(text.len());
+                            for c in text.chars() {
+                                if !(c == '\n' && collapsed.ends_with('\n')) {
+                                    collapsed.push(c);
+                                }
+                            }
+                            self.push_text(&collapsed);
+                        }
+                        markdown::HtmlPart::SummaryStart => {
+                            self.flush(PARAGRAPH_GAP);
+                            self.style.bold = true;
+                        }
+                        markdown::HtmlPart::SummaryEnd => {
+                            self.flush(ITEM_GAP);
+                            self.style.bold = false;
+                        }
+                        markdown::HtmlPart::DetailsStart { .. }
+                        | markdown::HtmlPart::DetailsEnd => {
+                            self.flush(PARAGRAPH_GAP);
+                        }
                     }
                 }
             }
@@ -453,9 +523,12 @@ impl<'a> Reader<'a> {
                 self.flush(ITEM_GAP);
                 self.definitions += 1;
             }
-            Tag::BlockQuote(_) => {
+            Tag::BlockQuote(kind) => {
                 self.flush(PARAGRAPH_GAP);
-                self.quote += 1;
+                self.quotes += 1;
+                self.quote.enter(self.quotes, kind);
+                // The title of an alert is in its colour.
+                self.style.alert = kind;
             }
             Tag::CodeBlock(kind) => {
                 self.flush(PARAGRAPH_GAP);
@@ -531,6 +604,11 @@ impl<'a> Reader<'a> {
 
     fn end(&mut self, tag: TagEnd) {
         match tag {
+            // The title of an alert sits right over its text, as in the preview.
+            TagEnd::Paragraph if self.style.alert.is_some() => {
+                self.style.alert = None;
+                self.flush(ITEM_GAP);
+            }
             TagEnd::Paragraph => self.flush(PARAGRAPH_GAP),
             TagEnd::Heading(_) => {
                 self.flush(PARAGRAPH_GAP);
@@ -548,7 +626,7 @@ impl<'a> Reader<'a> {
             TagEnd::DefinitionList => self.widen_gap(PARAGRAPH_GAP),
             TagEnd::BlockQuote(_) => {
                 self.flush(PARAGRAPH_GAP);
-                self.quote = self.quote.saturating_sub(1);
+                self.quote.leave();
                 self.widen_gap(PARAGRAPH_GAP);
             }
             TagEnd::List(_) => {
@@ -672,6 +750,9 @@ struct Typesetter<'a> {
     outline: Vec<(usize, i32)>,
     /// The identifiers of the headings of the document.
     headings: HashSet<String>,
+    /// Where the bar of each level of blockquote last ended: the quote's number, the page and
+    /// the bottom.
+    bars: RefCell<Vec<(usize, u32, f64)>>,
 }
 
 impl<'a> Typesetter<'a> {
@@ -696,6 +777,7 @@ impl<'a> Typesetter<'a> {
             page: 1,
             outline: Vec::new(),
             headings: HashSet::new(),
+            bars: RefCell::new(Vec::new()),
         })
     }
 
@@ -802,6 +884,13 @@ impl<'a> Typesetter<'a> {
                         .upcast(),
                 );
                 attributes.push(pango::AttrInt::new_underline(pango::Underline::Single).upcast());
+            }
+            if let Some(kind) = style.alert {
+                let (red, green, blue) = alert_color(kind);
+                attributes.push(
+                    pango::AttrColor::new_foreground(channel(red), channel(green), channel(blue))
+                        .upcast(),
+                );
             }
             if style.footnote {
                 attributes.push(pango::AttrInt::new_rise(4 * pango::SCALE).upcast());
@@ -929,12 +1018,35 @@ impl<'a> Typesetter<'a> {
     }
 
     /// Paint the bars of `quote` levels of blockquote from `top` to `bottom`.
-    fn quote_bars(&self, quote: usize, top: f64, bottom: f64) {
-        self.set_color(LINE_COLOR);
-        for level in 0..quote {
+    /// The bar of an alert is in its colour. A bar goes on from the last one of its level on
+    /// the page, so that the bar of a quote runs past the gaps between its blocks.
+    fn quote_bars(&self, quote: Quote, top: f64, bottom: f64) {
+        let mut bars = self.bars.borrow_mut();
+        bars.truncate(quote.depth);
+        for level in 0..quote.depth {
             let x = MARGIN + level as f64 * QUOTE_INDENT + (QUOTE_INDENT - QUOTE_BAR_WIDTH) / 2.0;
-            self.cr.rectangle(x, top, QUOTE_BAR_WIDTH, bottom - top);
+            let number = quote.numbers.get(level).copied().unwrap_or_default();
+            let from = match bars.get(level) {
+                Some((last, page, end)) if *last == number && *page == self.page && *end <= top => {
+                    *end
+                }
+                _ => top,
+            };
+            self.set_color(
+                quote
+                    .alerts
+                    .get(level)
+                    .copied()
+                    .flatten()
+                    .map_or(LINE_COLOR, alert_color),
+            );
+            self.cr.rectangle(x, from, QUOTE_BAR_WIDTH, bottom - from);
             let _ = self.cr.fill();
+            if let Some(bar) = bars.get_mut(level) {
+                *bar = (number, self.page, bottom);
+            } else {
+                bars.push((number, self.page, bottom));
+            }
         }
     }
 
@@ -1000,7 +1112,7 @@ impl<'a> Typesetter<'a> {
         heading: Option<(usize, Option<&str>)>,
         indent: f64,
         marker: usize,
-        quote: usize,
+        quote: Quote,
         gap: f64,
     ) -> Result<(), cairo::Error> {
         let (heading, id) = heading.unzip();
@@ -1029,7 +1141,7 @@ impl<'a> Typesetter<'a> {
             bold.set_end_index(saturating_u32(paragraph.text.len()));
             attributes.insert(bold);
         }
-        if quote > 0 {
+        if quote.depth > 0 {
             // Dim and italic as in the preview; a link or a style inside keeps its own.
             let channel = |value: f64| (value * 65535.0).round() as u16;
             let (red, green, blue) = DIM_COLOR;
@@ -1105,7 +1217,7 @@ impl<'a> Typesetter<'a> {
         code: &str,
         runs: &[CodeRun],
         indent: f64,
-        quote: usize,
+        quote: Quote,
     ) -> Result<(), cairo::Error> {
         let width = COLUMN_WIDTH - indent;
         let layout = self.layout(&self.options.monospace_font, CODE_SIZE);
@@ -1166,7 +1278,7 @@ impl<'a> Typesetter<'a> {
         rows: &[Vec<Paragraph>],
         alignments: &[Alignment],
         indent: f64,
-        quote: usize,
+        quote: Quote,
     ) -> Result<(), cairo::Error> {
         let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
         if columns == 0 {
@@ -1319,7 +1431,7 @@ impl<'a> Typesetter<'a> {
         height: f64,
         x: f64,
         rows: &[Vec<Paragraph>],
-        quote: usize,
+        quote: Quote,
     ) -> Result<(), cairo::Error> {
         let top = self.y;
         self.quote_bars(quote, top, top + height);
@@ -1382,7 +1494,7 @@ impl<'a> Typesetter<'a> {
         path: &std::path::Path,
         alt: &str,
         indent: f64,
-        quote: usize,
+        quote: Quote,
     ) -> Result<(), cairo::Error> {
         let available = COLUMN_WIDTH - indent;
         let Some((_, pixel_width, pixel_height)) = gdk_pixbuf::Pixbuf::file_info(path) else {
@@ -1427,7 +1539,7 @@ impl<'a> Typesetter<'a> {
     }
 
     /// The alternative text of an image that could not be decoded.
-    fn image_alt(&mut self, alt: &str, indent: f64, quote: usize) -> Result<(), cairo::Error> {
+    fn image_alt(&mut self, alt: &str, indent: f64, quote: Quote) -> Result<(), cairo::Error> {
         if alt.is_empty() {
             return Ok(());
         }
@@ -1503,6 +1615,21 @@ fn saturating_i32(value: usize) -> i32 {
 /// A length in points as Pango units.
 fn saturating_i32_points(points: f64) -> i32 {
     (points.max(1.0) * f64::from(pango::SCALE)) as i32
+}
+
+/// The colour of the title and the bar of an alert of `kind`, as in the light style of the HTML
+/// export. Not libadwaita's accent colours, which cannot be asked for off the main thread
+/// the PDF is set on.
+fn alert_color(kind: BlockQuoteKind) -> Rgb {
+    let (red, green, blue) = match kind {
+        BlockQuoteKind::Note => (0x04, 0x61, 0xbe),
+        BlockQuoteKind::Tip => (0x15, 0x77, 0x2e),
+        BlockQuoteKind::Important => (0x89, 0x39, 0xa4),
+        BlockQuoteKind::Warning => (0x90, 0x53, 0x00),
+        BlockQuoteKind::Caution => (0xc0, 0x00, 0x23),
+    };
+    let channel = |value: u8| f64::from(value) / 255.0;
+    (channel(red), channel(green), channel(blue))
 }
 
 /// Add a rectangle with corners rounded by `radius`, or less for a small one, to the path of
@@ -1637,6 +1764,27 @@ mod tests {
             panic!("a paragraph");
         };
         assert_eq!(paragraph.text, "a picture");
+    }
+
+    #[test]
+    fn alerts_are_set_off_the_main_thread() {
+        // Tests run on threads of their own, as the export sets a PDF on one.
+        let (pdf, _) = typeset("> [!WARNING]\n> Careful\n", &options()).expect("a PDF");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn raw_html_sets_no_empty_lines() {
+        let texts: Vec<String> = blocks(
+            "<div>\n  <b>Bold</b><br>\n  next\n</div>\n\n<details>\n<summary>More</summary>\n\nInside\n\n</details>\n",
+        )
+        .into_iter()
+        .filter_map(|block| match block {
+            Block::Text { paragraph, .. } => Some(paragraph.text),
+            _ => None,
+        })
+        .collect();
+        assert_eq!(texts, ["Bold\nnext", "More", "Inside"]);
     }
 
     #[test]
