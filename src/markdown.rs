@@ -548,7 +548,7 @@ pub fn font_has_emoji(emoji: &str) -> bool {
     COVERED.with_borrow_mut(|covered| {
         *covered.entry(emoji.to_owned()).or_insert_with(|| {
             let context = pangocairo::FontMap::default().create_context();
-            let description = gtk::pango::FontDescription::from_string("sans");
+            let description = gtk::pango::FontDescription::from_string("sans 12");
             let Some(fontset) =
                 context.load_fontset(&description, &gtk::pango::Language::default())
             else {
