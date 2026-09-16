@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::export::Options;
-use crate::markdown::{self, CodeRun, HtmlStyle};
+use crate::markdown::{self, CodeRun, HtmlAlign, HtmlStyle};
 use crate::math;
 
 /// A4, in points.
@@ -117,6 +117,8 @@ struct Paragraph {
     objects: Vec<(usize, Object)>,
     /// The destinations of links in the paragraph, by name.
     anchors: Vec<(usize, String)>,
+    /// How the block of raw HTML the paragraph is in aligns it.
+    align: Option<HtmlAlign>,
 }
 
 impl Paragraph {
@@ -243,6 +245,8 @@ enum Block {
         alt: String,
         /// The width in pixels an `<img>` tag gave the image.
         width: Option<i32>,
+        /// How the block of raw HTML the image is in aligns it, if not centred.
+        align: Option<HtmlAlign>,
         indent: f64,
         quote: Quote,
     },
@@ -265,8 +269,10 @@ struct Reader<'a> {
     heading: Option<usize>,
     heading_id: Option<String>,
     style: Inline,
-    /// The styles raw HTML opened, which it may never close.
+    /// The styles raw HTML opened, which it may never close, and the blocks it opened, with
+    /// how each aligns its content.
     html_styles: Vec<HtmlStyle>,
+    html_blocks: Vec<Option<HtmlAlign>>,
     lists: Vec<Option<u64>>,
     /// How many definitions of definition lists are open.
     definitions: usize,
@@ -298,6 +304,7 @@ impl<'a> Reader<'a> {
             heading_id: None,
             style: Inline::default(),
             html_styles: Vec::new(),
+            html_blocks: Vec::new(),
             lists: Vec::new(),
             definitions: 0,
             quote: Quote::default(),
@@ -333,6 +340,7 @@ impl<'a> Reader<'a> {
         {
             paragraph.text.truncate(end);
         }
+        paragraph.align = self.html_align();
         let marker = if self.hanging { self.prefix } else { 0 };
         let has_text = !paragraph.text[self.prefix..].trim().is_empty();
         self.prefix = 0;
@@ -355,6 +363,11 @@ impl<'a> Reader<'a> {
             quote: self.quote,
             gap,
         });
+    }
+
+    /// How the innermost block of raw HTML that aligns its content aligns it.
+    fn html_align(&self) -> Option<HtmlAlign> {
+        self.html_blocks.iter().rev().flatten().next().copied()
     }
 
     /// Leave at least `gap` after the last block.
@@ -473,6 +486,19 @@ impl<'a> Reader<'a> {
                         | markdown::HtmlPart::DetailsEnd => {
                             self.flush(PARAGRAPH_GAP);
                         }
+                        // A block is a paragraph of its own; blocks inside text are not laid
+                        // out.
+                        markdown::HtmlPart::BlockStart(align)
+                            if matches!(event, Event::Html(_)) =>
+                        {
+                            self.flush(PARAGRAPH_GAP);
+                            self.html_blocks.push(align);
+                        }
+                        markdown::HtmlPart::BlockEnd if matches!(event, Event::Html(_)) => {
+                            self.flush(PARAGRAPH_GAP);
+                            self.html_blocks.pop();
+                        }
+                        markdown::HtmlPart::BlockStart(_) | markdown::HtmlPart::BlockEnd => {}
                         markdown::HtmlPart::StyleStart(style) => self.html_styles.push(style),
                         markdown::HtmlPart::StyleEnd(style) => {
                             if let Some(index) = self.html_styles.iter().rposition(|s| *s == style)
@@ -639,6 +665,7 @@ impl<'a> Reader<'a> {
                         path,
                         alt: String::new(),
                         width: markdown::image_width(link_type, &id),
+                        align: self.html_align(),
                         indent: self.indent(),
                         quote: self.quote,
                     });
@@ -706,6 +733,11 @@ impl<'a> Reader<'a> {
                     ));
                     paragraph.links.push((start..end, url));
                 }
+            }
+            // The blocks of raw HTML it leaves open end with it.
+            TagEnd::HtmlBlock if !self.html_blocks.is_empty() => {
+                self.flush(PARAGRAPH_GAP);
+                self.html_blocks.clear();
             }
             TagEnd::TableCell => {
                 self.html_styles.clear();
@@ -1168,9 +1200,10 @@ impl<'a> Typesetter<'a> {
                     path,
                     alt,
                     width,
+                    align,
                     indent,
                     quote,
-                } => self.image(path, alt, *width, *indent, *quote)?,
+                } => self.image(path, alt, (*width, *align), *indent, *quote)?,
                 Block::Rule => self.rule()?,
             }
         }
@@ -1203,6 +1236,11 @@ impl<'a> Typesetter<'a> {
             )
         {
             layout.set_alignment(pango::Alignment::Center);
+        }
+        match paragraph.align {
+            Some(HtmlAlign::Center) => layout.set_alignment(pango::Alignment::Center),
+            Some(HtmlAlign::Right) => layout.set_alignment(pango::Alignment::Right),
+            None => {}
         }
         let attributes = self.attributes(paragraph, BODY_SIZE * scale);
         if heading.is_some() {
@@ -1586,7 +1624,7 @@ impl<'a> Typesetter<'a> {
         &mut self,
         path: &std::path::Path,
         alt: &str,
-        shown_width: Option<i32>,
+        (shown_width, align): (Option<i32>, Option<HtmlAlign>),
         indent: f64,
         quote: Quote,
     ) -> Result<(), cairo::Error> {
@@ -1619,7 +1657,12 @@ impl<'a> Typesetter<'a> {
 
         self.y += 4.0;
         self.reserve(height)?;
-        let x = MARGIN + indent + (available - width) / 2.0;
+        let x = MARGIN
+            + indent
+            + match align {
+                Some(HtmlAlign::Right) => available - width,
+                _ => (available - width) / 2.0,
+            };
         self.quote_bars(quote, self.y, self.y + height);
         self.cr.save()?;
         self.cr.translate(x, self.y);
@@ -1916,6 +1959,26 @@ mod tests {
         })
         .collect();
         assert_eq!(texts, ["Bold\nnext", "More", "Inside"]);
+    }
+
+    #[test]
+    fn blocks_of_raw_html_are_paragraphs_aligned_as_they_say() {
+        let texts: Vec<(String, Option<HtmlAlign>)> =
+            blocks("<p align=\"center\">One</p><p>Two</p>\n\n<div align=\"right\">\nThree\n")
+                .into_iter()
+                .filter_map(|block| match block {
+                    Block::Text { paragraph, .. } => Some((paragraph.text, paragraph.align)),
+                    _ => None,
+                })
+                .collect();
+        assert_eq!(
+            texts,
+            [
+                (String::from("One"), Some(HtmlAlign::Center)),
+                (String::from("Two"), None),
+                (String::from("Three"), Some(HtmlAlign::Right)),
+            ]
+        );
     }
 
     #[test]

@@ -439,6 +439,14 @@ pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("image-alt"), &[("style", &gtk::pango::Style::Italic)]);
     // A displayed formula that is a paragraph of its own.
     buffer.create_tag(
+        Some("align-center"),
+        &[("justification", &gtk::Justification::Center)],
+    );
+    buffer.create_tag(
+        Some("align-right"),
+        &[("justification", &gtk::Justification::Right)],
+    );
+    buffer.create_tag(
         Some("math-display"),
         &[("justification", &gtk::Justification::Center)],
     );
@@ -1182,6 +1190,35 @@ pub enum HtmlPart {
     SummaryEnd,
     StyleStart(HtmlStyle),
     StyleEnd(HtmlStyle),
+    /// A `<p>`, `<div>` or `<center>` element starts, which may align its content.
+    BlockStart(Option<HtmlAlign>),
+    BlockEnd,
+}
+
+/// How a block of raw HTML aligns its content, other than to the start of its lines.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HtmlAlign {
+    Center,
+    Right,
+}
+
+impl HtmlAlign {
+    /// The alignment an `align` attribute of `value` gives.
+    fn from_attribute(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "center" | "middle" => Some(Self::Center),
+            "right" => Some(Self::Right),
+            _ => None,
+        }
+    }
+
+    /// The text tag of the preview the alignment is shown with.
+    fn text_tag(self) -> &'static str {
+        match self {
+            Self::Center => "align-center",
+            Self::Right => "align-right",
+        }
+    }
 }
 
 /// A style that raw HTML gives its text, which the preview and the exports show.
@@ -1493,6 +1530,18 @@ fn tag_text(chunk: &str, tags: &mut Vec<HtmlPart>) -> String {
             ("details", false) => Some(HtmlPart::DetailsEnd),
             ("summary", true) => Some(HtmlPart::SummaryStart),
             ("summary", false) => Some(HtmlPart::SummaryEnd),
+            ("p" | "div", true) => Some(HtmlPart::BlockStart(
+                html_tags(tag, name)
+                    .first()
+                    .and_then(|(_, attributes)| {
+                        attributes
+                            .iter()
+                            .find(|(attribute, _)| attribute == "align")
+                    })
+                    .and_then(|(_, value)| HtmlAlign::from_attribute(value)),
+            )),
+            ("center", true) => Some(HtmlPart::BlockStart(Some(HtmlAlign::Center))),
+            ("p" | "div" | "center", false) => Some(HtmlPart::BlockEnd),
             (name, true) => HtmlStyle::named(name).map(HtmlPart::StyleStart),
             (name, false) => HtmlStyle::named(name).map(HtmlPart::StyleEnd),
         };
@@ -2332,8 +2381,10 @@ pub fn render_markdown(
     let mut added_tasks = Vec::new();
 
     let mut current_tags: Vec<String> = Vec::new();
-    // The tags of the styles raw HTML opened, which it may never close.
+    // The tags of the styles raw HTML opened, which it may never close, and the blocks it
+    // opened, with how each aligns its content.
     let mut html_styles: Vec<&'static str> = Vec::new();
+    let mut html_blocks: Vec<Option<HtmlAlign>> = Vec::new();
 
     // One entry per open list. `Some(n)` is an ordered list whose next item
     // number is `n`; `None` is a bullet list. Length doubles as nesting depth.
@@ -2724,8 +2775,14 @@ pub fn render_markdown(
                             picture.set_hexpand(false);
                             picture.set_halign(gtk::Align::Center);
 
+                            let anchor_offset = iter.offset();
                             let anchor = buffer.create_child_anchor(&mut iter);
                             view.add_child_at_anchor(&picture, &anchor);
+                            // Aligned as the block of raw HTML it is in aligns it.
+                            if let Some(align) = html_blocks.iter().rev().flatten().next() {
+                                let start = buffer.iter_at_offset(anchor_offset);
+                                buffer.apply_tag_by_name(align.text_tag(), &start, &iter);
+                            }
                         }
                     }
                     Tag::BlockQuote(kind) => {
@@ -2833,6 +2890,12 @@ pub fn render_markdown(
                         start_line(&buffer, &mut iter);
                     }
                     TagEnd::DefinitionList => end_block(&buffer, &mut iter),
+                    // The blocks of raw HTML it leaves open end with it.
+                    TagEnd::HtmlBlock => {
+                        for align in html_blocks.drain(..).rev().flatten() {
+                            close_tag(&mut current_tags, align.text_tag());
+                        }
+                    }
                     // The note ends with a link back to where it is referred to, after its
                     // last word rather than on a line of its own.
                     TagEnd::FootnoteDefinition => {
@@ -3051,6 +3114,22 @@ pub fn render_markdown(
                                     open.key.push_str(text);
                                 }
                             }
+                            // A block starts and ends a line; blocks inside text are not laid
+                            // out.
+                            HtmlPart::BlockStart(align) if matches!(event, Event::Html(_)) => {
+                                start_line(&buffer, &mut iter);
+                                if let Some(align) = align {
+                                    current_tags.push(align.text_tag().to_owned());
+                                }
+                                html_blocks.push(align);
+                            }
+                            HtmlPart::BlockEnd if matches!(event, Event::Html(_)) => {
+                                start_line(&buffer, &mut iter);
+                                if let Some(Some(align)) = html_blocks.pop() {
+                                    close_tag(&mut current_tags, align.text_tag());
+                                }
+                            }
+                            HtmlPart::BlockStart(_) | HtmlPart::BlockEnd => {}
                             HtmlPart::DetailsEnd => {
                                 if in_summary {
                                     in_summary = false;
@@ -3283,9 +3362,9 @@ pub fn render_markdown(
 #[cfg(test)]
 mod tests {
     use super::{
-        HtmlPart, HtmlStyle, LinkTarget, bare_links, close_tag, definitions, events, heading_slug,
-        html_images, html_parts, image_width, is_safe_link, lang_candidates, link_target,
-        list_marker, local_image_path, replace_shortcodes, shown_size, strip_html,
+        HtmlAlign, HtmlPart, HtmlStyle, LinkTarget, bare_links, close_tag, definitions, events,
+        heading_slug, html_images, html_parts, image_width, is_safe_link, lang_candidates,
+        link_target, list_marker, local_image_path, replace_shortcodes, shown_size, strip_html,
         top_level_blocks, unchanged_ends, wiki_destination, word_count,
     };
     use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
@@ -3749,6 +3828,19 @@ mod tests {
                 HtmlPart::Text("y".into()),
                 HtmlPart::StyleEnd(HtmlStyle::Keyboard),
                 HtmlPart::Text("z".into()),
+            ]
+        );
+        assert_eq!(
+            html_parts("<p align=\"CENTER\">a</p><div align=right><center></center></div><div>"),
+            [
+                HtmlPart::BlockStart(Some(HtmlAlign::Center)),
+                HtmlPart::Text("a".into()),
+                HtmlPart::BlockEnd,
+                HtmlPart::BlockStart(Some(HtmlAlign::Right)),
+                HtmlPart::BlockStart(Some(HtmlAlign::Center)),
+                HtmlPart::BlockEnd,
+                HtmlPart::BlockEnd,
+                HtmlPart::BlockStart(None),
             ]
         );
         // A tag in a comment or a script is not one, and the marks of the tags cannot be

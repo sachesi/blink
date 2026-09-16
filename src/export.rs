@@ -7,7 +7,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::markdown::{self, CodeRun, CodeStyle, HtmlPart, HtmlStyle};
+use crate::markdown::{self, CodeRun, CodeStyle, HtmlAlign, HtmlPart, HtmlStyle};
 use crate::math;
 
 /// True when `url` carries an explicit URI scheme (`scheme:`), per the RFC 3986
@@ -173,8 +173,9 @@ pub fn render_html(text: &str, options: &Options) -> String {
     let mut footnote_numbers: HashMap<String, usize> = HashMap::new();
     let mut referenced: HashSet<String> = HashSet::new();
     let mut footnotes: Vec<String> = Vec::new();
-    // The styles raw HTML opened and has not closed.
+    // The styles raw HTML opened and has not closed, and how many blocks.
     let mut html_styles: Vec<HtmlStyle> = Vec::new();
+    let mut html_blocks = 0usize;
     // An image an `<img>` tag gave a width: its address, its width and its alternative text.
     let mut sized_image: Option<(String, i32, String)> = None;
     for (event, _) in markdown::events(text) {
@@ -223,8 +224,9 @@ pub fn render_html(text: &str, options: &Options) -> String {
             // browser. Raw HTML is not passed through (no `<script>`/`onerror=`), and link and
             // image URLs are scheme-filtered, mirroring the in-app preview's own allow-list.
             // pulldown-cmark performs no sanitization of its own. The text of raw HTML is
-            // written escaped, and only `<details>`, `<summary>` and the elements of text
-            // styles are written again, without their attributes but `open`.
+            // written escaped, and only `<details>`, `<summary>`, the elements of text styles
+            // and blocks, as `<div>`, are written again, without their attributes but `open`
+            // and alignment, which is written as a class.
             Event::Html(ref chunk) | Event::InlineHtml(ref chunk) => {
                 let block = matches!(event, Event::Html(_));
                 let parts = markdown::html_parts(chunk);
@@ -239,6 +241,22 @@ pub fn render_html(text: &str, options: &Options) -> String {
                         HtmlPart::DetailsEnd => html.push_str("</details>"),
                         HtmlPart::SummaryStart => html.push_str("<summary>"),
                         HtmlPart::SummaryEnd => html.push_str("</summary>"),
+                        // A block written inside the text of a paragraph would end the paragraph.
+                        HtmlPart::BlockStart(align) if block => {
+                            html.push_str(&close_styles(&mut html_styles));
+                            html.push_str(match align {
+                                Some(HtmlAlign::Center) => "<div class=\"align-center\">",
+                                Some(HtmlAlign::Right) => "<div class=\"align-right\">",
+                                None => "<div>",
+                            });
+                            html_blocks += 1;
+                        }
+                        HtmlPart::BlockEnd if block && html_blocks > 0 => {
+                            html.push_str(&close_styles(&mut html_styles));
+                            html.push_str("</div>");
+                            html_blocks -= 1;
+                        }
+                        HtmlPart::BlockStart(_) | HtmlPart::BlockEnd => {}
                         HtmlPart::StyleStart(style) => {
                             html.push_str(&format!("<{}>", style.element()));
                             html_styles.push(*style);
@@ -283,6 +301,12 @@ pub fn render_html(text: &str, options: &Options) -> String {
                         Event::InlineHtml(html.into())
                     });
                 }
+            }
+            // The blocks of raw HTML it leaves open end with it.
+            Event::End(TagEnd::HtmlBlock) if html_blocks > 0 => {
+                let close = close_styles(&mut html_styles) + &"</div>".repeat(html_blocks);
+                html_blocks = 0;
+                events.push(Event::Html(format!("{close}\n").into()));
             }
             // As the end of a paragraph closes them in a browser.
             Event::End(
@@ -445,6 +469,9 @@ th, td {{ padding: 10px 12px; border-top: 1px solid rgba(128, 128, 128, 0.25); b
 thead th {{ border-top: none; background: rgba(128, 128, 128, 0.08); }}
 th:first-child, td:first-child {{ border-left: none; }}
 img {{ display: block; max-width: 100%; height: auto; margin: 12px auto; }}
+.align-center {{ text-align: center; }}
+.align-right {{ text-align: right; }}
+.align-right img {{ margin-right: 0; }}
 hr {{ margin: 1.5em 0; border: none; border-top: 1px solid rgba(128, 128, 128, 0.3); }}
 li > input[type="checkbox"], li > p > input[type="checkbox"] {{ margin: 0 0.4em 0 0; }}
 ul > li:has(> input[type="checkbox"]), ul > li:has(> p > input[type="checkbox"]) {{ list-style: none; }}
@@ -630,12 +657,17 @@ mod tests {
         let html = render(
             "<div align=\"center\" onclick=\"x()\">\n  <b>Bold <i>both</b> italic</i><br>\n  next\n</div>\n\nA <sup>b</sup> <mark>c\n\n<img src=\"https://example.com/a.png\" alt=\"A\" width=\"40px\">\n",
         );
-        assert!(
-            html.contains("<p><strong>Bold <em>both</em></strong><em> italic</em><br>\nnext</p>")
-        );
+        assert!(html.contains(
+            "<div class=\"align-center\"><strong>Bold <em>both</em></strong><em> italic</em><br>\nnext</div>"
+        ));
         assert!(html.contains("<p>A <sup>b</sup> <mark>c</mark></p>"));
         assert!(html.contains("<img src=\"https://example.com/a.png\" alt=\"A\" width=\"40\" />"));
-        assert!(!html.contains("onclick") && !html.contains("<div"));
+        assert!(!html.contains("onclick"));
+        // A block left open ends with the HTML block, and one in a paragraph is not written.
+        let html =
+            render("<center>\n<img src=\"https://example.com/a.png\">\n\nText <div>x</div>\n");
+        assert!(html.contains("<div class=\"align-center\">"));
+        assert!(html.contains("</div>\n<p>Text x</p>"));
     }
 
     #[test]
