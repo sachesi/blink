@@ -382,6 +382,35 @@ fn block_indent(list_stack: &[Option<u64>], blockquote_depth: i32) -> i32 {
     i32::try_from(list_stack.len()).unwrap_or(0) * LIST_INDENT + blockquote_depth * QUOTE_INDENT
 }
 
+/// Keep presses in the padding of a code block or table to the block. Passed on to the
+/// preview, such a press starts a selection at the block's anchor, and the preview scrolls
+/// to the top of the block. Presses on the block's text or buttons go on as usual, and the
+/// preview still takes the focus, so that copying finds a selection made in the block.
+fn keep_presses(block: &impl IsA<gtk::Widget>, view: &TextView) {
+    let click = gtk::GestureClick::new();
+    click.connect_pressed(glib::clone!(
+        #[weak]
+        view,
+        move |gesture, _, x, y| {
+            let Some(block) = gesture.widget() else {
+                return;
+            };
+            let on_content = block
+                .pick(x, y, gtk::PickFlags::DEFAULT)
+                .is_some_and(|target| {
+                    target.is::<gtk::Label>()
+                        || target.is::<gtk::TextView>()
+                        || target.ancestor(gtk::Button::static_type()).is_some()
+                });
+            if !on_content {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+            }
+            view.grab_focus();
+        }
+    ));
+    block.add_controller(click);
+}
+
 /// Whether a link may be handed to the system URI launcher. Documents can come
 /// from untrusted sources, so only web and mail links are ever followed.
 pub fn is_safe_link(url: &str) -> bool {
@@ -853,6 +882,7 @@ pub fn render_markdown(
                         let anchor_offset = iter.offset();
                         let anchor = buffer.create_child_anchor(&mut iter);
                         view.add_child_at_anchor(&scroll, &anchor);
+                        keep_presses(&scroll, view);
                         surfaces.push(Surface::Code {
                             anchor_offset,
                             buffer: code_buffer,
@@ -1006,6 +1036,7 @@ pub fn render_markdown(
                         let anchor_offset = iter.offset();
                         let anchor = buffer.create_child_anchor(&mut iter);
                         view.add_child_at_anchor(&scroll, &anchor);
+                        keep_presses(&scroll, view);
                         for label in cell_labels {
                             surfaces.push(Surface::Cell {
                                 anchor_offset,
