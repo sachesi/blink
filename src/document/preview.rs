@@ -338,9 +338,18 @@ impl BlinkDocument {
         self.imp().status_label.set_label(&status);
     }
 
+    /// The document became the selected tab: render what its preview missed meanwhile.
+    pub fn selected(&self) {
+        if self.imp().preview.dirty.get() && self.preview_visible() {
+            self.render_tick();
+        }
+    }
+
+    /// Render the preview, or leave it for later while it is out of sight: in the source,
+    /// or in a tab that is not selected.
     pub(super) fn render_tick(&self) {
         let imp = self.imp();
-        if self.preview_visible() {
+        if self.preview_visible() && self.is_selected() {
             // Rendering replaces the whole buffer, so the preview is briefly much shorter
             // and its position is clamped. The editor must not follow that, and the preview
             // goes back to where the reader was, or in the split view to the editor's place.
@@ -371,7 +380,7 @@ impl BlinkDocument {
             // Cleared by the scroll below, once a render here has been laid out.
             imp.preview.syncing.set(true);
         }
-        if mode != ViewMode::Edit {
+        if mode != ViewMode::Edit && self.is_selected() {
             self.flush_preview();
         }
         imp.edit_scroll.set_visible(mode != ViewMode::Preview);

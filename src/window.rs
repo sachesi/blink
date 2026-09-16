@@ -343,6 +343,7 @@ mod imp {
                 if self.narrow.get() {
                     document.leave_split();
                 }
+                document.selected();
             }
             obj.sync_header();
         }

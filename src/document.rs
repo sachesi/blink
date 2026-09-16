@@ -271,6 +271,14 @@ impl BlinkDocument {
         self.root().and_downcast()
     }
 
+    /// Whether the document is the selected tab of its window.
+    fn is_selected(&self) -> bool {
+        self.window()
+            .and_then(|window| window.selected_document())
+            .as_ref()
+            == Some(self)
+    }
+
     /// Bring the document to the front, before it asks the user something.
     pub fn present(&self) {
         if let Some(window) = self.window() {
