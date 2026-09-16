@@ -38,6 +38,9 @@ fn cached_texture(path: &Path) -> Option<gtk::gdk::Texture> {
 /// it), so indenting tags have to start from this value.
 pub const TEXT_MARGIN: i32 = 32;
 
+/// Characters after which the text of a table cell wraps.
+const CELL_WRAP_CHARS: i32 = 40;
+
 /// Width available to a block widget at the given viewport width.
 fn column_width(page_size: f64, indent: i32) -> f64 {
     let max_width = page_size.min(700.0);
@@ -621,14 +624,22 @@ pub fn render_markdown(
                 Event::End(TagEnd::Table) => {
                     in_table = false;
                     let indent = list_stack.len() as i32 * 16 + blockquote_depth * 24;
-                    let grid = Grid::builder()
+                    let grid = Grid::builder().hexpand(true).build();
+                    // A table wider than the column scrolls sideways, like a code block,
+                    // rather than squeezing its columns until the words break apart.
+                    let scroll = gtk::ScrolledWindow::builder()
                         .margin_top(12)
                         .margin_bottom(12)
                         .margin_start(indent)
                         .hexpand(true)
+                        .propagate_natural_height(true)
+                        .hscrollbar_policy(gtk::PolicyType::Automatic)
+                        .vscrollbar_policy(gtk::PolicyType::Never)
+                        .focusable(false)
+                        .child(&grid)
                         .build();
-                    grid.add_css_class("card");
-                    bind_width_to_page(&grid, hadj, indent);
+                    scroll.add_css_class("card");
+                    bind_width_to_page(&scroll, hadj, indent);
 
                     let num_cols = table_rows.first().map_or(1, |r| r.len());
                     let grid_cols = (num_cols * 2).saturating_sub(1) as i32;
@@ -660,16 +671,22 @@ pub fn render_markdown(
                                 .margin_start(12)
                                 .margin_end(12)
                                 .wrap(true)
-                                // Break inside long tokens (paths, identifiers)
-                                // so one cell cannot force the whole window
-                                // wider than the screen.
-                                .wrap_mode(gtk::pango::WrapMode::WordChar)
+                                .wrap_mode(gtk::pango::WrapMode::Word)
+                                .max_width_chars(CELL_WRAP_CHARS)
                                 .xalign(xalign)
                                 .hexpand(true)
                                 // Selectable so table text can be copied.
                                 .selectable(true)
                                 .build();
                             label.set_markup(cell_text);
+                            // A cell is only as narrow as its text up to the wrapping width,
+                            // so short cells never wrap and long ones wrap at that width.
+                            let chars = label.text().chars().count();
+                            label.set_width_chars(
+                                i32::try_from(chars)
+                                    .unwrap_or(CELL_WRAP_CHARS)
+                                    .min(CELL_WRAP_CHARS),
+                            );
                             // Selectable labels take focus by default; keep
                             // them out of the focus chain so a click never
                             // makes the preview scroll the table into view.
@@ -691,7 +708,7 @@ pub fn render_markdown(
                     }
                     let anchor_offset = iter.offset();
                     let anchor = buffer.create_child_anchor(&mut iter);
-                    view.add_child_at_anchor(&grid, &anchor);
+                    view.add_child_at_anchor(&scroll, &anchor);
                     for label in cell_labels {
                         surfaces.push(Surface::Cell {
                             anchor_offset,
