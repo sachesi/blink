@@ -856,7 +856,7 @@ impl<'a> Typesetter<'a> {
     fn anchor_line(&self, line: &Line, x: f64, top: f64, paragraph: &Paragraph) {
         let scale = f64::from(pango::SCALE);
         for (index, name) in &paragraph.anchors {
-            if !line.range.contains(index) && !(*index == 0 && line.range.start == 0) {
+            if !line.range.contains(index) {
                 continue;
             }
             let left =
