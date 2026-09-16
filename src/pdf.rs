@@ -34,8 +34,9 @@ const LIST_INDENT: f64 = 16.0;
 const QUOTE_INDENT: f64 = 16.0;
 const QUOTE_BAR_WIDTH: f64 = 2.5;
 const CODE_PADDING: f64 = 10.0;
-const CELL_PADDING_X: f64 = 6.0;
-const CELL_PADDING_Y: f64 = 5.0;
+/// Padding of a table cell, as in the preview.
+const CELL_PADDING_X: f64 = 9.0;
+const CELL_PADDING_Y: f64 = 7.5;
 const CORNER_RADIUS: f64 = 6.0;
 /// Pixels are shown at 96 per inch, as on screen.
 const POINTS_PER_PIXEL: f64 = 0.75;
@@ -979,11 +980,34 @@ impl<'a> Typesetter<'a> {
                     .collect()
             })
             .collect();
-        let heights: Vec<f64> = layouts
+        // The lines of each cell, moved down so that the first lines of a row share a
+        // baseline, and the height of each row.
+        let cells: Vec<Vec<(f64, Vec<Line>)>> = layouts
+            .iter()
+            .map(|row| {
+                let lines: Vec<Vec<Line>> = row.iter().map(lines).collect();
+                let first_baseline =
+                    |lines: &[Line]| lines.first().map_or(0.0, |line| line.baseline - line.top);
+                let baseline = lines
+                    .iter()
+                    .map(|lines| first_baseline(lines))
+                    .fold(0.0, f64::max);
+                lines
+                    .into_iter()
+                    .map(|lines| (baseline - first_baseline(&lines), lines))
+                    .collect()
+            })
+            .collect();
+        let heights: Vec<f64> = cells
             .iter()
             .map(|row| {
                 row.iter()
-                    .map(|layout| f64::from(layout.pixel_extents().1.height()))
+                    .map(|(shift, lines)| {
+                        let (Some(first), Some(last)) = (lines.first(), lines.last()) else {
+                            return 0.0;
+                        };
+                        shift + last.top + last.height - first.top
+                    })
                     .fold(0.0, f64::max)
                     + 2.0 * CELL_PADDING_Y
             })
@@ -996,7 +1020,7 @@ impl<'a> Typesetter<'a> {
         while row < rows.len() {
             let repeat_header = row > 0 && self.y == top && top <= MARGIN && rows.len() > 1;
             if repeat_header {
-                self.table_row(0, &layouts[0], &widths, heights[0], x, rows, quote)?;
+                self.table_row(0, &cells[0], &widths, heights[0], x, rows, quote)?;
             }
             if self.y + heights[row] > Self::bottom() && self.y > top {
                 self.table_frame(x, top, &widths);
@@ -1004,7 +1028,7 @@ impl<'a> Typesetter<'a> {
                 top = self.y;
                 continue;
             }
-            self.table_row(row, &layouts[row], &widths, heights[row], x, rows, quote)?;
+            self.table_row(row, &cells[row], &widths, heights[row], x, rows, quote)?;
             row += 1;
         }
         self.table_frame(x, top, &widths);
@@ -1016,7 +1040,7 @@ impl<'a> Typesetter<'a> {
     fn table_row(
         &mut self,
         row: usize,
-        layouts: &[pango::Layout],
+        cells: &[(f64, Vec<Line>)],
         widths: &[f64],
         height: f64,
         x: f64,
@@ -1037,17 +1061,18 @@ impl<'a> Typesetter<'a> {
             self.cr.stroke()?;
         }
         let mut left = x;
-        for (column, layout) in layouts.iter().enumerate() {
+        for (column, (shift, lines)) in cells.iter().enumerate() {
             let cell_x = left + CELL_PADDING_X;
-            let cell_top = top + CELL_PADDING_Y;
+            let cell_top =
+                top + CELL_PADDING_Y + shift - lines.first().map_or(0.0, |line| line.top);
             let links = rows[row]
                 .get(column)
                 .map_or(&[][..], |paragraph| paragraph.links.as_slice());
-            for line in lines(layout) {
+            for line in lines {
                 self.set_color(TEXT_COLOR);
                 self.cr.move_to(cell_x + line.x, cell_top + line.baseline);
                 pangocairo::functions::show_layout_line(&self.cr, &line.line);
-                self.link_line(&line, cell_x, cell_top + line.top, links);
+                self.link_line(line, cell_x, cell_top + line.top, links);
             }
             left += widths[column];
         }
