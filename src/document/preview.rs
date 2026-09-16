@@ -192,14 +192,15 @@ impl BlinkDocument {
                 .button(gtk::gdk::BUTTON_SECONDARY)
                 .propagation_phase(gtk::PropagationPhase::Capture)
                 .build();
+            // The block is the gesture's own widget, which the handler must not hold.
             menu_click.connect_pressed(glib::clone!(
                 #[weak(rename_to = document)]
                 self,
-                #[strong]
-                surface,
                 move |gesture, _, x, y| {
                     gesture.set_state(gtk::EventSequenceState::Claimed);
-                    document.popup_surface_menu(&surface, x, y);
+                    if let Some(widget) = gesture.widget() {
+                        document.popup_surface_menu(&widget, x, y);
+                    }
                 }
             ));
             widget.add_controller(menu_click);
@@ -222,17 +223,16 @@ impl BlinkDocument {
         }
     }
 
-    /// Show the menu of a code block or table cell at `(x, y)` in it: copying its selection,
-    /// and selecting all of it. Its entries are named as GTK names them in its own menus.
-    fn popup_surface_menu(&self, surface: &markdown::Surface, x: f64, y: f64) {
+    /// Show the menu of the text view of a code block or the label of a table cell, `widget`,
+    /// at `(x, y)` in it: copying its selection, and selecting all of it. Its entries are
+    /// named as GTK names them in its own menus.
+    fn popup_surface_menu(&self, widget: &gtk::Widget, x: f64, y: f64) {
         let view = &self.imp().preview_view;
-        let (widget, selected): (gtk::Widget, bool) = match surface {
-            markdown::Surface::Code { buffer, view, .. } => {
-                (view.clone().upcast(), buffer.has_selection())
-            }
-            markdown::Surface::Cell { label, .. } => {
-                (label.clone().upcast(), label.selection_bounds().is_some())
-            }
+        let selected = match widget.downcast_ref::<gtk::Label>() {
+            Some(label) => label.selection_bounds().is_some(),
+            None => widget
+                .downcast_ref::<gtk::TextView>()
+                .is_some_and(|text| text.buffer().has_selection()),
         };
         let Some(point) =
             widget.compute_point(&**view, &gtk::graphene::Point::new(x as f32, y as f32))
@@ -248,14 +248,16 @@ impl BlinkDocument {
         ));
         let select_all = gio::SimpleAction::new("select-all", None);
         select_all.connect_activate(glib::clone!(
-            #[strong]
-            surface,
-            move |_, _| match &surface {
-                markdown::Surface::Code { buffer, .. } => {
+            #[weak]
+            widget,
+            move |_, _| {
+                if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+                    label.select_region(0, -1);
+                } else if let Some(text) = widget.downcast_ref::<gtk::TextView>() {
+                    let buffer = text.buffer();
                     let (start, end) = buffer.bounds();
                     buffer.select_range(&start, &end);
                 }
-                markdown::Surface::Cell { label, .. } => label.select_region(0, -1),
             }
         ));
         let actions = gio::SimpleActionGroup::new();
