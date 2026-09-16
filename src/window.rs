@@ -76,7 +76,12 @@ mod imp {
             klass.bind_template_callbacks();
 
             klass.install_action("win.new", None, |win, _, _| {
-                win.app().new_document(Some(win));
+                // A new document starts in the source, whatever view the window was
+                // showing. Not so a tab opened for a file, which would change the view
+                // of the window even when the file fails to open.
+                win.app()
+                    .new_document(Some(win))
+                    .set_view_mode(ViewMode::Edit);
             });
             klass.install_action_async("win.open", None, |win, _, _| async move {
                 win.open().await;

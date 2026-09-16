@@ -9,7 +9,7 @@ use std::cell::{Cell, OnceCell};
 
 use crate::backup::{self, BackupRecord};
 use crate::config;
-use crate::document::{BlinkDocument, ViewMode};
+use crate::document::BlinkDocument;
 use crate::preferences::BlinkPreferencesDialog;
 use crate::window::BlinkWindow;
 
@@ -143,8 +143,6 @@ impl BlinkApplication {
             _ => BlinkWindow::new(self),
         };
         window.add_document(&document);
-        // A new document starts in the source, whatever view the window was showing.
-        document.set_view_mode(ViewMode::Edit);
         window.present();
         document
     }
