@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.5.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 13:33+0300\n"
+"POT-Creation-Date: 2026-09-16 13:34+0300\n"
 "PO-Revision-Date: 2026-09-13 23:50+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -133,8 +133,8 @@ msgid "Focus mode, full screen with nothing but the text"
 msgstr "Режим фокусування: повний екран і нічого, крім тексту"
 
 #: data/io.github.sachesi.blink.metainfo.xml:14
-msgid "Export to a standalone HTML file"
-msgstr "Експорт в окремий файл HTML"
+msgid "Export to a standalone HTML file or to PDF"
+msgstr "Експорт в окремий файл HTML або в PDF"
 
 #: data/io.github.sachesi.blink.metainfo.xml:43
 msgid ""

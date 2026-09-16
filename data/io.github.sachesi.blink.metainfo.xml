@@ -11,7 +11,7 @@
       <li>Rendered preview with tables, task lists, footnotes, images from the document's folder and syntax-coloured code blocks</li>
       <li>Find and replace in the source, and find in the rendered text</li>
       <li>Focus mode, full screen with nothing but the text</li>
-      <li>Export to a standalone HTML file</li>
+      <li>Export to a standalone HTML file or to PDF</li>
     </ul>
   </description>
   <launchable type="desktop-id">io.github.sachesi.blink.desktop</launchable>
