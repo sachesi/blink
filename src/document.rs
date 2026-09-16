@@ -304,6 +304,18 @@ impl BlinkDocument {
         holds(&imp.claimed.borrow()) || holds(&imp.document.borrow().file)
     }
 
+    /// Whether the document holds `file`, or the file at the resolved path `canonical`.
+    pub fn holds_either(
+        &self,
+        file: Option<&gio::File>,
+        canonical: Option<&std::path::Path>,
+    ) -> bool {
+        file.is_some_and(|file| self.holds(file))
+            || canonical.is_some_and(|canonical| {
+                self.imp().document.borrow().canonical.as_deref() == Some(canonical)
+            })
+    }
+
     /// Open `file` in the document, which should be blank.
     pub fn load(&self, file: gio::File) {
         let imp = self.imp();

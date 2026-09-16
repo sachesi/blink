@@ -330,10 +330,17 @@ impl BlinkApplication {
             "restore" => {
                 // Into the document of the file when it is open already, so the file is not
                 // open twice.
-                let open = record.original_path.as_deref().and_then(|path| {
-                    let file = gio::File::for_path(path);
-                    self.documents().find(|document| document.holds(&file))
-                });
+                let path = record.original_path.clone();
+                let canonical = gio::spawn_blocking(move || {
+                    path.and_then(|path| std::fs::canonicalize(path).ok())
+                })
+                .await
+                .ok()
+                .flatten();
+                let file = record.original_path.as_deref().map(gio::File::for_path);
+                let open = self
+                    .documents()
+                    .find(|document| document.holds_either(file.as_ref(), canonical.as_deref()));
                 let document = open.unwrap_or_else(|| self.blank_document(window.as_ref()));
                 document.restore(record);
                 document.present();

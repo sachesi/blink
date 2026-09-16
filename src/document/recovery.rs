@@ -162,8 +162,9 @@ impl BlinkDocument {
             backup::read_content(&read_dir, &backup_id).map(|content| {
                 let original = original_path.filter(|path| path.exists()).map(|path| {
                     let fingerprint = FileFingerprint::read_from_path(&path).ok();
+                    let canonical = std::fs::canonicalize(&path).ok();
                     let backup_id = backup::backup_id_for_path(&path);
-                    (path, fingerprint, backup_id)
+                    (path, fingerprint, canonical, backup_id)
                 });
                 (content, original)
             })
@@ -187,10 +188,11 @@ impl BlinkDocument {
         imp.edit_buffer.set_modified(true);
 
         match original {
-            Some((path, fingerprint, backup_id)) => {
+            Some((path, fingerprint, canonical, backup_id)) => {
                 {
                     let mut document = imp.document.borrow_mut();
                     document.fingerprint = fingerprint;
+                    document.canonical = canonical;
                     document.file = Some(gio::File::for_path(&path));
                 }
                 imp.recovery.borrow_mut().backup_id = backup_id;
@@ -201,6 +203,7 @@ impl BlinkDocument {
                     let mut document = imp.document.borrow_mut();
                     document.file = None;
                     document.fingerprint = None;
+                    document.canonical = None;
                 }
                 self.use_untitled_backup();
             }

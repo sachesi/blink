@@ -50,6 +50,9 @@ pub struct State {
     pub file: Option<gio::File>,
     /// The file as it was when last read or written, to tell other programs' changes.
     pub fingerprint: Option<FileFingerprint>,
+    /// The file's path with symbolic links resolved, which tells it apart from the other
+    /// names the same file can be opened by.
+    pub canonical: Option<PathBuf>,
     pub monitor: Option<gio::FileMonitor>,
     /// A change on disk is waiting for the user's decision; autosave holds off until then.
     pub in_conflict: bool,
@@ -156,18 +159,30 @@ impl BlinkDocument {
         // The fingerprint is taken right after the read, so a change made in between is
         // not taken for the text that was read.
         let read = blocking(move || {
-            std::fs::read_to_string(&read_path)
-                .map(|text| (text, FileFingerprint::read_from_path(&read_path).ok()))
+            std::fs::read_to_string(&read_path).map(|text| {
+                let fingerprint = FileFingerprint::read_from_path(&read_path).ok();
+                (text, fingerprint, std::fs::canonicalize(&read_path).ok())
+            })
         })
         .await;
         match read {
-            Ok((text, fingerprint)) => {
+            Ok((text, fingerprint, canonical)) => {
+                // Opened by another name, through a symbolic link, the file can be open
+                // already.
+                if let Some(other) = canonical
+                    .as_deref()
+                    .and_then(|path| self.document_elsewhere(None, Some(path)))
+                {
+                    other.present();
+                    return false;
+                }
                 let imp = self.imp();
                 imp.edit_buffer.set_text(&text);
                 imp.edit_buffer.set_modified(false);
                 {
                     let mut document = imp.document.borrow_mut();
                     document.fingerprint = fingerprint;
+                    document.canonical = canonical;
                     document.file = Some(file);
                 }
                 self.update_title();
@@ -214,12 +229,16 @@ impl BlinkDocument {
         let text = buffer_text(&*imp.edit_buffer);
         let (write_path, write_text) = (path.clone(), text.clone());
         let written = blocking(move || {
-            conflict::write_text_atomically(&write_path, &write_text)
-                .map(|()| FileFingerprint::read_from_path(&write_path).ok())
+            conflict::write_text_atomically(&write_path, &write_text).map(|()| {
+                (
+                    FileFingerprint::read_from_path(&write_path).ok(),
+                    std::fs::canonicalize(&write_path).ok(),
+                )
+            })
         })
         .await;
         match written {
-            Ok(fingerprint) => {
+            Ok((fingerprint, canonical)) => {
                 // Typing goes on while the write runs; the document is only saved if what
                 // reached the disk is still what it holds.
                 if buffer_text(&*imp.edit_buffer) == text {
@@ -228,6 +247,7 @@ impl BlinkDocument {
                 {
                     let mut document = imp.document.borrow_mut();
                     document.fingerprint = fingerprint;
+                    document.canonical = canonical;
                     document.file = Some(file);
                 }
                 self.update_title();
@@ -270,7 +290,13 @@ impl BlinkDocument {
         };
         // Two documents saving to one file would each take the other's writes for a change
         // made by another program, and share one backup.
-        if self.open_elsewhere(&file) {
+        let path = file.path();
+        let canonical =
+            blocking(move || path.and_then(|path| std::fs::canonicalize(path).ok())).await;
+        if self
+            .document_elsewhere(Some(&file), canonical.as_deref())
+            .is_some()
+        {
             self.present_error(
                 gettext("Error Saving File"),
                 gettext("\"{}\" is open in another tab or window. Close it there first, or save under another name.")
@@ -281,14 +307,17 @@ impl BlinkDocument {
         self.save_to(file).await
     }
 
-    /// Whether `file` is open in a document other than this one.
-    fn open_elsewhere(&self, file: &gio::File) -> bool {
+    /// The document other than this one that holds `file`, or the file at the resolved
+    /// path `canonical`.
+    fn document_elsewhere(
+        &self,
+        file: Option<&gio::File>,
+        canonical: Option<&Path>,
+    ) -> Option<BlinkDocument> {
         gio::Application::default()
-            .and_downcast::<BlinkApplication>()
-            .is_some_and(|app| {
-                app.documents()
-                    .any(|document| document != *self && document.holds(file))
-            })
+            .and_downcast::<BlinkApplication>()?
+            .documents()
+            .find(|document| document != self && document.holds_either(file, canonical))
     }
 
     /// Ask where to export to, as a file of `mime_type` ending in `.suffix`.
