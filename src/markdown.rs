@@ -917,7 +917,19 @@ pub fn render_markdown(
                     alt.push(' ');
                     continue;
                 }
-                buffer.insert(&mut iter, "\n");
+                // A single line break in the source only wraps the source; the paragraph
+                // reflows to the width of the preview, as it does in the HTML export.
+                let separator = if matches!(event, Event::SoftBreak) {
+                    " "
+                } else {
+                    "\n"
+                };
+                let start_offset = iter.offset();
+                buffer.insert(&mut iter, separator);
+                let start_iter = buffer.iter_at_offset(start_offset);
+                for tag in &current_tags {
+                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                }
             }
             _ => {}
         }
