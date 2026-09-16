@@ -128,7 +128,9 @@ links to `#a-heading` point at.
 coloured as in the light style. The text can be selected and searched, web and mail links,
 links to the document's headings and footnote references and their arrows back can be
 followed, and the headings make the outline.
-The content of `<details>` elements is set open. Code lines too long for the page wrap.
+The content of `<details>` elements is set open. Code lines too long for the page wrap, and
+a table too wide for its words is set in smaller text, down to 8 points, before its words
+break.
 As in the preview, only images from the document's folder are shown.
 
 ## Keyboard shortcuts

@@ -44,6 +44,8 @@ const CELL_PADDING_Y: f64 = 7.5;
 const CORNER_RADIUS: f64 = 6.0;
 /// Characters after which the text of a table cell wraps, as in the preview.
 const CELL_WRAP_CHARS: f64 = 40.0;
+/// The smallest size the text of a table too wide for the page is set at.
+const MIN_TABLE_SIZE: f64 = 8.0;
 /// Pixels are shown at 96 per inch, as on screen.
 const POINTS_PER_PIXEL: f64 = 0.75;
 /// Images are decoded at up to 192 pixels per inch, for print.
@@ -988,8 +990,14 @@ impl<'a> Typesetter<'a> {
             while end < lines.len() && lines[end].top + lines[end].height - offset <= room {
                 end += 1;
             }
+            // A part of a paragraph or a code block is not one line alone at the end or the start
+            // of a page, where it reads as a line of something else.
+            if end < lines.len() && lines.len() - end == 1 && end - start > 2 {
+                end -= 1;
+            }
             let first_fits = lines[start].height <= room;
-            if !first_fits && !self.at_top() {
+            let orphan = end < lines.len() && end - start < 2;
+            if (!first_fits || orphan) && !self.at_top() {
                 self.new_page()?;
                 continue;
             }
@@ -1232,9 +1240,10 @@ impl<'a> Typesetter<'a> {
             if !self.at_top() {
                 self.y += before;
             }
-            // A heading does not end a page: it keeps a few lines of what follows with it.
+            // A heading does not end a page: it keeps a few lines of what follows with it, as
+            // many as the first part of a code block is at least.
             let height = lines.iter().map(|line| line.height).sum::<f64>();
-            self.reserve(height + 3.0 * BODY_SIZE * f64::from(LINE_SPACING))?;
+            self.reserve(height + 4.0 * BODY_SIZE * f64::from(LINE_SPACING))?;
             self.add_outline(level, &paragraph.text)?;
             if let Some(id) = id.flatten() {
                 self.cr.tag_begin(
@@ -1348,14 +1357,14 @@ impl<'a> Typesetter<'a> {
             return Ok(());
         }
         let available = COLUMN_WIDTH - indent;
-        let cell_layout = |row: usize, column: usize| {
-            let layout = self.layout(&self.options.text_font, BODY_SIZE);
+        let cell_layout = |row: usize, column: usize, size: f64| {
+            let layout = self.layout(&self.options.text_font, size);
             layout.set_wrap(pango::WrapMode::WordChar);
             layout.set_line_spacing(LINE_SPACING);
             let paragraph = rows[row].get(column);
             layout.set_text(paragraph.map_or("", |paragraph| paragraph.text.as_str()));
             if let Some(paragraph) = paragraph {
-                let attributes = self.attributes(paragraph, BODY_SIZE);
+                let attributes = self.attributes(paragraph, size);
                 // The first row is the header, bold as in the preview.
                 if row == 0 {
                     let mut bold: pango::Attribute =
@@ -1378,41 +1387,50 @@ impl<'a> Typesetter<'a> {
         // as its widest cell, a cell wrapping, as in the preview, after about forty
         // characters.
         let scale = f64::from(pango::SCALE);
-        let wrap_width = {
-            let layout = cell_layout(0, 0);
-            let metrics = layout
-                .context()
-                .metrics(layout.font_description().as_ref(), None);
-            f64::from(metrics.approximate_char_width()) / scale * CELL_WRAP_CHARS
-        };
-        let (minimum, natural): (Vec<f64>, Vec<f64>) = (0..columns)
-            .map(|column| {
-                (0..rows.len())
-                    .map(|row| {
-                        let layout = cell_layout(row, column);
-                        let natural = f64::from(layout.extents().1.width()) / scale;
-                        layout.set_wrap(pango::WrapMode::Word);
-                        layout.set_width(1);
-                        let minimum = f64::from(layout.extents().1.width()) / scale;
-                        (minimum, natural.min(wrap_width).max(minimum))
-                    })
-                    .fold(
-                        (0.0, 0.0),
-                        |(minimum, natural), (cell_minimum, cell_natural)| {
-                            (
-                                f64::max(minimum, cell_minimum),
-                                f64::max(natural, cell_natural),
-                            )
-                        },
+        let measure = |size: f64| -> (Vec<f64>, Vec<f64>) {
+            let wrap_width = {
+                let layout = cell_layout(0, 0, size);
+                let metrics = layout
+                    .context()
+                    .metrics(layout.font_description().as_ref(), None);
+                f64::from(metrics.approximate_char_width()) / scale * CELL_WRAP_CHARS
+            };
+            (0..columns)
+                .map(|column| {
+                    (0..rows.len())
+                        .map(|row| {
+                            let layout = cell_layout(row, column, size);
+                            let natural = f64::from(layout.extents().1.width()) / scale;
+                            // And a point more, for the rounding of the widths of glyphs.
+                            let minimum = longest_word(&layout) + 1.0;
+                            (minimum, natural.min(wrap_width).max(minimum))
+                        })
+                        .fold(
+                            (0.0, 0.0),
+                            |(minimum, natural), (cell_minimum, cell_natural)| {
+                                (
+                                    f64::max(minimum, cell_minimum),
+                                    f64::max(natural, cell_natural),
+                                )
+                            },
+                        )
+                })
+                .map(|(minimum, natural)| {
+                    (
+                        minimum + 2.0 * cell_padding(size),
+                        natural + 2.0 * cell_padding(size),
                     )
-            })
-            .map(|(minimum, natural)| {
-                (
-                    minimum + 2.0 * CELL_PADDING_X,
-                    natural + 2.0 * CELL_PADDING_X,
-                )
-            })
-            .unzip();
+                })
+                .unzip()
+        };
+        // A table too wide for its longest words is set smaller, and its cells padded less,
+        // down to a size still easy to read, before words break.
+        let mut size = BODY_SIZE;
+        let (mut minimum, mut natural) = measure(size);
+        while minimum.iter().sum::<f64>() > available && size > MIN_TABLE_SIZE {
+            size = (size - 0.5).max(MIN_TABLE_SIZE);
+            (minimum, natural) = measure(size);
+        }
         let widths = column_widths(&minimum, &natural, available);
 
         let x = MARGIN + indent;
@@ -1420,9 +1438,9 @@ impl<'a> Typesetter<'a> {
             .map(|row| {
                 (0..columns)
                     .map(|column| {
-                        let layout = cell_layout(row, column);
+                        let layout = cell_layout(row, column, size);
                         layout.set_width(saturating_i32_points(
-                            widths[column] - 2.0 * CELL_PADDING_X,
+                            widths[column] - 2.0 * cell_padding(size),
                         ));
                         layout
                     })
@@ -1469,7 +1487,7 @@ impl<'a> Typesetter<'a> {
         while row < rows.len() {
             let repeat_header = row > 0 && self.y == top && top <= MARGIN && rows.len() > 1;
             if repeat_header {
-                self.table_row(0, &cells[0], &widths, heights[0], x, rows, quote)?;
+                self.table_row(0, &cells[0], &widths, heights[0], x, rows, size, quote)?;
             }
             if self.y + heights[row] > Self::bottom() && self.y > top {
                 self.table_frame(x, top, &widths);
@@ -1477,7 +1495,16 @@ impl<'a> Typesetter<'a> {
                 top = self.y;
                 continue;
             }
-            self.table_row(row, &cells[row], &widths, heights[row], x, rows, quote)?;
+            self.table_row(
+                row,
+                &cells[row],
+                &widths,
+                heights[row],
+                x,
+                rows,
+                size,
+                quote,
+            )?;
             row += 1;
         }
         self.table_frame(x, top, &widths);
@@ -1494,6 +1521,7 @@ impl<'a> Typesetter<'a> {
         height: f64,
         x: f64,
         rows: &[Vec<Paragraph>],
+        size: f64,
         quote: Quote,
     ) -> Result<(), cairo::Error> {
         let top = self.y;
@@ -1518,16 +1546,18 @@ impl<'a> Typesetter<'a> {
         }
         let mut left = x;
         for (column, (shift, lines)) in cells.iter().enumerate() {
-            let cell_x = left + CELL_PADDING_X;
+            let cell_x = left + cell_padding(size);
             let cell_top =
                 top + CELL_PADDING_Y + shift - lines.first().map_or(0.0, |line| line.top);
-            let links = rows[row]
-                .get(column)
-                .map_or(&[][..], |paragraph| paragraph.links.as_slice());
+            let paragraph = rows[row].get(column);
+            let links = paragraph.map_or(&[][..], |paragraph| paragraph.links.as_slice());
             for line in lines {
                 self.set_color(TEXT_COLOR);
                 self.cr.move_to(cell_x + line.x, cell_top + line.baseline);
                 pangocairo::functions::show_layout_line(&self.cr, &line.line);
+                if let Some(paragraph) = paragraph {
+                    self.draw_objects(line, cell_x, cell_top + line.top, paragraph, size);
+                }
                 self.link_line(line, cell_x, cell_top + line.top, links);
             }
             left += widths[column];
@@ -1639,6 +1669,41 @@ fn no_hyphens() -> pango::AttrList {
     let list = pango::AttrList::new();
     list.insert(pango::AttrInt::new_insert_hyphens(false));
     list
+}
+
+/// The space at either side of the text of a table cell whose text is `size` points.
+fn cell_padding(size: f64) -> f64 {
+    CELL_PADDING_X * size / BODY_SIZE
+}
+
+/// The width of the widest word of the text of `layout`, which is not wrapped, in points.
+/// Words are what lies between spaces, where lines of a table cell mostly break.
+fn longest_word(layout: &pango::Layout) -> f64 {
+    let text = layout.text();
+    // The left and the right edge of the character at `index`.
+    let edges = |index: usize| {
+        let position = layout.index_to_pos(saturating_i32(index));
+        let scale = f64::from(pango::SCALE);
+        let (x, width) = (f64::from(position.x()), f64::from(position.width()));
+        ((x + width.min(0.0)) / scale, (x + width.max(0.0)) / scale)
+    };
+    let mut widest = 0.0_f64;
+    // The first and the last character of the word read so far.
+    let mut word: Option<(usize, usize)> = None;
+    for (index, c) in text.char_indices().chain([(text.len(), ' ')]) {
+        match (c.is_whitespace(), word) {
+            (false, None) => word = Some((index, index)),
+            (false, Some((first, _))) => word = Some((first, index)),
+            (true, Some((first, last))) => {
+                let ((first_left, first_right), (last_left, last_right)) =
+                    (edges(first), edges(last));
+                widest = widest.max(last_right.max(first_right) - first_left.min(last_left));
+                word = None;
+            }
+            (true, None) => {}
+        }
+    }
+    widest
 }
 
 /// Widths of columns that need at least `minimum` points and would like `natural`, to fill
