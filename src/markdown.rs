@@ -1521,10 +1521,18 @@ struct RenderedBlock {
 }
 
 impl RenderedBlock {
-    /// Let go of what the block's output leaves in `buffer` once the output is deleted.
-    fn release(self, buffer: &TextBuffer) {
+    /// Let go of what the block's output leaves in `buffer` once the output is deleted, and
+    /// keep in `released` whether its `<details>` elements were opened or closed in the
+    /// preview, as `details_open` has it.
+    fn release(
+        self,
+        buffer: &TextBuffer,
+        details_open: &HashMap<String, bool>,
+        released: &mut Vec<Option<bool>>,
+    ) {
         buffer.delete_mark(&self.start);
         for details in self.details {
+            released.push(details_open.get(&details.key).copied());
             buffer.tag_table().remove(&details.tag);
         }
     }
@@ -1566,6 +1574,10 @@ pub struct Rendered {
     definitions: Vec<String>,
     /// Whether each `<details>` element was opened or closed in the preview, by its summary.
     details_open: HashMap<String, bool>,
+    /// Whether the `<details>` elements of the output deleted since the last render were
+    /// opened or closed in the preview, in order. A rebuilt element whose summary changed is
+    /// known by its place among them.
+    released_details: Vec<Option<bool>>,
 }
 
 impl Rendered {
@@ -1575,7 +1587,7 @@ impl Rendered {
         let (mut start, mut end) = buffer.bounds();
         delete_output(view, &mut start, &mut end);
         for block in self.blocks.drain(..) {
-            block.release(&buffer);
+            block.release(&buffer, &self.details_open, &mut self.released_details);
         }
     }
 
@@ -1665,11 +1677,15 @@ fn end_summary(buffer: &TextBuffer, iter: &mut gtk::TextIter, open_details: &mut
 }
 
 /// End the innermost of `open_details` at `iter`, open or closed as `rendered` last had it.
+/// `released` holds whether the elements of the output this render replaces were opened or
+/// closed in the preview, and `ended` counts the elements this render has ended.
 fn end_details(
     buffer: &TextBuffer,
     iter: &mut gtk::TextIter,
     open_details: &mut Vec<Details>,
-    rendered: &Rendered,
+    details_open: &mut HashMap<String, bool>,
+    released: &[Option<bool>],
+    ended: &mut usize,
 ) -> Option<Details> {
     let mut element = open_details.pop()?;
     // The content is hidden with the newline that ends it, as a line whose newline shows
@@ -1690,11 +1706,15 @@ fn end_details(
     let start = buffer.iter_at_offset(element.content.start);
     buffer.tag_table().add(&element.tag);
     buffer.apply_tag(&element.tag, &start, &end);
-    let open = rendered
-        .details_open
+    let chosen = details_open
         .get(&element.key)
         .copied()
-        .unwrap_or(element.open);
+        .or(released.get(*ended).copied().flatten());
+    *ended += 1;
+    if let Some(chosen) = chosen {
+        details_open.insert(element.key.clone(), chosen);
+    }
+    let open = chosen.unwrap_or(element.open);
     element.tag.set_invisible(!open);
     // Applying the tag left the iterators behind.
     let start = buffer.iter_at_offset(element.content.start);
@@ -1825,8 +1845,14 @@ pub fn render_markdown(
     let mut removed_end = block_start(removed.end);
     delete_output(view, &mut iter, &mut removed_end);
     for block in rendered.blocks.drain(removed) {
-        block.release(&buffer);
+        block.release(
+            &buffer,
+            &rendered.details_open,
+            &mut rendered.released_details,
+        );
     }
+    let released_details = std::mem::take(&mut rendered.released_details);
+    let mut ended_details = 0;
     let insert_offset = iter.offset();
     // Text inserted where a tag starts takes the tag, so the output of the blocks after the
     // rebuilt ones sheds its tags until the rebuilt output is in, and then takes them back.
@@ -2376,9 +2402,14 @@ pub fn render_markdown(
                                     in_summary = false;
                                     end_summary(&buffer, &mut iter, &mut open_details);
                                 }
-                                if let Some(element) =
-                                    end_details(&buffer, &mut iter, &mut open_details, rendered)
-                                {
+                                if let Some(element) = end_details(
+                                    &buffer,
+                                    &mut iter,
+                                    &mut open_details,
+                                    &mut rendered.details_open,
+                                    &released_details,
+                                    &mut ended_details,
+                                ) {
                                     details.push(element.shifted(-start_offset));
                                 }
                             }
