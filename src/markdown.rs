@@ -2303,8 +2303,9 @@ pub fn render_markdown(
     let mut table_alignments: Vec<Alignment> = Vec::new();
     let mut current_row: Vec<String> = Vec::new();
     let mut current_cell = String::new();
-    // The markup open in the current cell.
+    // The markup open in the current cell, and whether the cell has text that is not code.
     let mut cell_markup: Vec<CellMarkup> = Vec::new();
+    let mut cell_has_text = false;
 
     let mut in_code_block = false;
     let mut current_code = String::new();
@@ -2405,10 +2406,20 @@ pub fn render_markdown(
                     Event::End(TagEnd::TableRow) => {
                         table_rows.push(std::mem::take(&mut current_row));
                     }
-                    Event::Start(Tag::TableCell) => current_cell = String::new(),
+                    Event::Start(Tag::TableCell) => {
+                        current_cell = String::new();
+                        cell_has_text = false;
+                    }
                     Event::End(TagEnd::TableCell) => {
                         for markup in cell_markup.drain(..).rev() {
                             current_cell.push_str(markup.end);
+                        }
+                        // A line of code alone sits higher than the text of the cells beside
+                        // it, as the code font rises less above the baseline. A word joiner in
+                        // the text font, which shows nothing, sets the line on the same
+                        // baseline.
+                        if !cell_has_text && !current_cell.is_empty() {
+                            current_cell.insert(0, '\u{2060}');
                         }
                         current_row.push(std::mem::take(&mut current_cell));
                     }
@@ -2462,12 +2473,14 @@ pub fn render_markdown(
                         ));
                     }
                     Event::Text(t) => {
+                        cell_has_text |= !t.trim().is_empty();
                         current_cell.push_str(&glib::markup_escape_text(&t));
                     }
                     Event::Html(html) | Event::InlineHtml(html) => {
                         for part in html_parts_with_emoji(&html, font_has_emoji) {
                             match part {
                                 HtmlPart::Text(text) => {
+                                    cell_has_text |= !text.trim().is_empty();
                                     current_cell.push_str(&glib::markup_escape_text(&text));
                                 }
                                 HtmlPart::StyleStart(style) => start_cell_markup(
