@@ -66,12 +66,14 @@ struct Inline {
     footnote: bool,
 }
 
-/// Text with its styled stretches and links, as byte ranges of the text.
+/// Text with its styled stretches and links, as byte ranges of the text, and what is drawn
+/// in it, at the byte offset of the character it takes the place of.
 #[derive(Debug, Default)]
 struct Paragraph {
     text: String,
     styles: Vec<(Range<usize>, Inline)>,
     links: Vec<(Range<usize>, String)>,
+    objects: Vec<(usize, Object)>,
 }
 
 impl Paragraph {
@@ -80,6 +82,77 @@ impl Paragraph {
         self.text.push_str(text);
         if style != Inline::default() && !text.is_empty() {
             self.styles.push((start..self.text.len(), style));
+        }
+    }
+
+    /// Hold the place of `object` with an object replacement character, which it is drawn
+    /// over.
+    fn push_object(&mut self, object: Object) {
+        self.objects.push((self.text.len(), object));
+        self.text.push('\u{FFFC}');
+    }
+}
+
+/// Something drawn in a paragraph rather than set in a font.
+#[derive(Debug)]
+enum Object {
+    /// The box of a task list item, ticked or not. Drawn, as the box glyphs of the fonts
+    /// that have them differ in size from each other.
+    Task(bool),
+}
+
+impl Object {
+    /// How wide the object is, and how far it reaches above and below the baseline, in text
+    /// of `size` points.
+    fn extents(&self, size: f64) -> (f64, f64, f64) {
+        match self {
+            // About as tall as a capital letter, and centred on the lower-case letters.
+            Self::Task(_) => {
+                let side = 0.8 * size;
+                let middle = 0.28 * size;
+                (side, middle + side / 2.0, side / 2.0 - middle)
+            }
+        }
+    }
+
+    /// Draw the object with its left end at `x` on the baseline at `y`, in text of `size`
+    /// points.
+    fn draw(&self, cr: &cairo::Context, x: f64, y: f64, size: f64) {
+        let (width, ascent, descent) = self.extents(size);
+        match self {
+            Self::Task(checked) => {
+                let top = y - ascent;
+                let side = ascent + descent;
+                if *checked {
+                    rounded_path(cr, x, top, width, side, 0.2 * side);
+                    let (red, green, blue) = LINK_COLOR;
+                    cr.set_source_rgb(red, green, blue);
+                    let _ = cr.fill();
+                    cr.set_source_rgb(1.0, 1.0, 1.0);
+                    cr.set_line_width(0.13 * side);
+                    cr.set_line_cap(cairo::LineCap::Round);
+                    cr.set_line_join(cairo::LineJoin::Round);
+                    cr.move_to(x + 0.24 * width, top + 0.52 * side);
+                    cr.line_to(x + 0.42 * width, top + 0.7 * side);
+                    cr.line_to(x + 0.77 * width, top + 0.3 * side);
+                    let _ = cr.stroke();
+                } else {
+                    let (red, green, blue) = DIM_COLOR;
+                    cr.set_source_rgb(red, green, blue);
+                    cr.set_line_width(0.08 * side);
+                    // Inside the box, as the ticked box is filled to its edge.
+                    let inset = 0.04 * side;
+                    rounded_path(
+                        cr,
+                        x + inset,
+                        top + inset,
+                        width - 2.0 * inset,
+                        side - 2.0 * inset,
+                        0.2 * side - inset,
+                    );
+                    let _ = cr.stroke();
+                }
+            }
         }
     }
 }
@@ -293,10 +366,6 @@ impl<'a> Reader<'a> {
                 self.paragraph.push(&format!("[{name}]"), style);
             }
             Event::TaskListMarker(checked) => {
-                let style = Inline {
-                    bold: true,
-                    ..self.style
-                };
                 // The box takes the place of a bullet, as in the preview.
                 if self.hanging
                     && self.lists.last() == Some(&None)
@@ -304,8 +373,8 @@ impl<'a> Reader<'a> {
                 {
                     self.paragraph = Paragraph::default();
                 }
-                self.paragraph
-                    .push(if checked { "■ " } else { "□ " }, style);
+                self.paragraph.push_object(Object::Task(checked));
+                self.paragraph.push(" ", self.style);
                 self.prefix = self.paragraph.text.len();
             }
             Event::Rule => {
@@ -624,8 +693,19 @@ impl<'a> Typesetter<'a> {
     }
 
     /// The Pango attributes of `paragraph`'s styles.
-    fn attributes(&self, paragraph: &Paragraph) -> pango::AttrList {
+    fn attributes(&self, paragraph: &Paragraph, size: f64) -> pango::AttrList {
         let list = no_hyphens();
+        let units = |points: f64| (points * f64::from(pango::SCALE)).round() as i32;
+        for (index, object) in &paragraph.objects {
+            let (width, ascent, descent) = object.extents(size);
+            let rectangle =
+                pango::Rectangle::new(0, units(-ascent), units(width), units(ascent + descent));
+            let mut shape: pango::Attribute =
+                pango::AttrShape::new(&rectangle, &rectangle).upcast();
+            shape.set_start_index(saturating_u32(*index));
+            shape.set_end_index(saturating_u32(index + '\u{FFFC}'.len_utf8()));
+            list.insert(shape);
+        }
         let channel = |value: f64| (value * 65535.0).round() as u16;
         for (range, style) in &paragraph.styles {
             let mut attributes: Vec<pango::Attribute> = Vec::new();
@@ -674,7 +754,8 @@ impl<'a> Typesetter<'a> {
         lines: &[Line],
         x: f64,
         padding: f64,
-        links: &[(Range<usize>, String)],
+        paragraph: &Paragraph,
+        size: f64,
         decorate: &dyn Fn(&Self, f64, f64),
     ) -> Result<(), cairo::Error> {
         let mut start = 0;
@@ -700,7 +781,8 @@ impl<'a> Typesetter<'a> {
                 self.cr
                     .move_to(x + line.x, line_top + line.baseline - line.top);
                 pangocairo::functions::show_layout_line(&self.cr, &line.line);
-                self.link_line(line, x, line_top, links);
+                self.draw_objects(line, x, line_top, paragraph, size);
+                self.link_line(line, x, line_top, &paragraph.links);
             }
             self.y = top + height + 2.0 * padding;
             start = end;
@@ -709,6 +791,23 @@ impl<'a> Typesetter<'a> {
             }
         }
         self.cr.status()
+    }
+
+    /// Draw the objects of `paragraph` on `line`, set at `x` and `top` in text of `size` points.
+    fn draw_objects(&self, line: &Line, x: f64, top: f64, paragraph: &Paragraph, size: f64) {
+        let scale = f64::from(pango::SCALE);
+        for (index, object) in &paragraph.objects {
+            if !line.range.contains(index) {
+                continue;
+            }
+            let left = line.line.index_to_x(saturating_i32(*index), false);
+            object.draw(
+                &self.cr,
+                x + line.x + f64::from(left) / scale,
+                top + line.baseline - line.top,
+                size,
+            );
+        }
     }
 
     /// Make the parts of `links` on `line`, set at `x` and `top`, follow their address.
@@ -752,33 +851,7 @@ impl<'a> Typesetter<'a> {
     }
 
     fn rounded_rectangle(&self, x: f64, y: f64, width: f64, height: f64) {
-        let radius = CORNER_RADIUS.min(width / 2.0).min(height / 2.0);
-        let degrees = std::f64::consts::PI / 180.0;
-        self.cr.new_sub_path();
-        self.cr
-            .arc(x + width - radius, y + radius, radius, -90.0 * degrees, 0.0);
-        self.cr.arc(
-            x + width - radius,
-            y + height - radius,
-            radius,
-            0.0,
-            90.0 * degrees,
-        );
-        self.cr.arc(
-            x + radius,
-            y + height - radius,
-            radius,
-            90.0 * degrees,
-            180.0 * degrees,
-        );
-        self.cr.arc(
-            x + radius,
-            y + radius,
-            radius,
-            180.0 * degrees,
-            270.0 * degrees,
-        );
-        self.cr.close_path();
+        rounded_path(&self.cr, x, y, width, height, CORNER_RADIUS);
     }
 
     fn set(&mut self, blocks: &[Block]) -> Result<(), cairo::Error> {
@@ -845,7 +918,7 @@ impl<'a> Typesetter<'a> {
         layout.set_wrap(pango::WrapMode::WordChar);
         layout.set_line_spacing(LINE_SPACING);
         layout.set_text(&paragraph.text);
-        let attributes = self.attributes(paragraph);
+        let attributes = self.attributes(paragraph, BODY_SIZE * scale);
         if heading.is_some() {
             let mut bold: pango::Attribute =
                 pango::AttrInt::new_weight(pango::Weight::Bold).upcast();
@@ -898,7 +971,8 @@ impl<'a> Typesetter<'a> {
             &lines,
             MARGIN + indent,
             0.0,
-            &paragraph.links,
+            paragraph,
+            BODY_SIZE * scale,
             &|setter, top, bottom| setter.quote_bars(quote, top, bottom),
         )?;
         self.y += gap;
@@ -969,7 +1043,8 @@ impl<'a> Typesetter<'a> {
             &lines,
             x + CODE_PADDING,
             CODE_PADDING,
-            &[],
+            &Paragraph::default(),
+            CODE_SIZE,
             // Framed like a table, as the preview frames code blocks.
             &|setter, top, bottom| {
                 setter.quote_bars(quote, top, bottom);
@@ -1002,7 +1077,7 @@ impl<'a> Typesetter<'a> {
             let paragraph = rows[row].get(column);
             layout.set_text(paragraph.map_or("", |paragraph| paragraph.text.as_str()));
             if let Some(paragraph) = paragraph {
-                let attributes = self.attributes(paragraph);
+                let attributes = self.attributes(paragraph, BODY_SIZE);
                 // The first row is the header, bold as in the preview.
                 if row == 0 {
                     let mut bold: pango::Attribute =
@@ -1327,6 +1402,37 @@ fn saturating_i32_points(points: f64) -> i32 {
     (points.max(1.0) * f64::from(pango::SCALE)) as i32
 }
 
+/// Add a rectangle with corners rounded by `radius`, or less for a small one, to the path of
+/// `cr`.
+fn rounded_path(cr: &cairo::Context, x: f64, y: f64, width: f64, height: f64, radius: f64) {
+    let radius = radius.min(width / 2.0).min(height / 2.0);
+    let degrees = std::f64::consts::PI / 180.0;
+    cr.new_sub_path();
+    cr.arc(x + width - radius, y + radius, radius, -90.0 * degrees, 0.0);
+    cr.arc(
+        x + width - radius,
+        y + height - radius,
+        radius,
+        0.0,
+        90.0 * degrees,
+    );
+    cr.arc(
+        x + radius,
+        y + height - radius,
+        radius,
+        90.0 * degrees,
+        180.0 * degrees,
+    );
+    cr.arc(
+        x + radius,
+        y + radius,
+        radius,
+        180.0 * degrees,
+        270.0 * degrees,
+    );
+    cr.close_path();
+}
+
 /// `text` as a string in the attributes of a cairo tag.
 fn tag_string(text: &str) -> String {
     text.replace('\\', "\\\\").replace('\'', "\\'")
@@ -1439,7 +1545,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(texts, ["■ done", "□ to do", "1. □ first"]);
+        assert_eq!(
+            texts,
+            ["\u{FFFC} done", "\u{FFFC} to do", "1. \u{FFFC} first"]
+        );
     }
 
     #[test]
