@@ -904,11 +904,13 @@ impl<'a> Typesetter<'a> {
             x + CODE_PADDING,
             CODE_PADDING,
             &[],
+            // Framed like a table, as the preview frames code blocks.
             &|setter, top, bottom| {
                 setter.quote_bars(quote, top, bottom);
-                setter.set_color(TINT_COLOR);
+                setter.set_color(LINE_COLOR);
+                setter.cr.set_line_width(0.6);
                 setter.rounded_rectangle(x, top, width, bottom - top);
-                let _ = setter.cr.fill();
+                let _ = setter.cr.stroke();
             },
         )?;
         self.y += PARAGRAPH_GAP + 2.0;
@@ -1078,9 +1080,16 @@ impl<'a> Typesetter<'a> {
         let top = self.y;
         self.quote_bars(quote, top, top + height);
         if row == 0 {
+            // The header opens each part of the table, so its tint follows the rounded
+            // top corners of the frame.
+            let width: f64 = widths.iter().sum();
+            self.cr.save()?;
+            self.rounded_rectangle(x, top, width, height + 2.0 * CORNER_RADIUS);
+            self.cr.clip();
             self.set_color(TINT_COLOR);
-            self.cr.rectangle(x, top, widths.iter().sum(), height);
+            self.cr.rectangle(x, top, width, height);
             self.cr.fill()?;
+            self.cr.restore()?;
         } else {
             self.set_color(LINE_COLOR);
             self.cr.set_line_width(0.6);

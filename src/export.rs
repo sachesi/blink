@@ -264,7 +264,7 @@ h4, h5, h6 {{ font-size: 1.2em; }}
 h1, h2, h3, h4, h5, h6 {{ line-height: 1.25; }}
 code, pre {{ font-family: {monospace_font}, monospace; }}
 code {{ font-size: 0.9em; padding: 0.1em 0.3em; border-radius: 4px; background: rgba(128, 128, 128, 0.15); }}
-pre {{ padding: 12px; border-radius: 12px; background: rgba(0, 0, 6, 0.04); overflow-x: auto; line-height: 1.4; }}
+pre {{ padding: 12px; border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 12px; overflow-x: auto; line-height: 1.4; }}
 pre code {{ padding: 0; background: none; }}
 pre span {{ color: var(--light); }}
 blockquote {{ margin: 1em 0; padding: 0.25em 1em; border-left: 3px solid rgba(128, 128, 128, 0.3); background: rgba(128, 128, 128, 0.04); color: rgba(0, 0, 0, 0.6); font-style: italic; }}
@@ -281,7 +281,6 @@ li > input[type="checkbox"] {{ margin: 0 0.4em 0 0; }}
 @media (prefers-color-scheme: dark) {{
   body {{ background: #1d1d20; color: #ffffff; }}
   a {{ color: #78aeed; }}
-  pre {{ background: rgba(255, 255, 255, 0.04); }}
   pre span {{ color: var(--dark); }}
   blockquote {{ color: rgba(255, 255, 255, 0.7); }}
 }}
