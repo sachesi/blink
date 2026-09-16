@@ -457,11 +457,11 @@ impl BlinkWindow {
             .collect()
     }
 
-    /// Close `document`, a blank one a file failed to open in, unless nothing else is
-    /// left in the window.
+    /// Close `document`, a blank one made for a file that failed to open, and with it its
+    /// window when it has no other tab. The last window of the application stays.
     pub fn discard_blank(&self, document: &BlinkDocument) {
         let tab_view = &self.imp().tab_view;
-        if tab_view.n_pages() > 1 {
+        if tab_view.n_pages() > 1 || self.app().windows().len() > 1 {
             tab_view.close_page(&tab_view.page(document));
         }
     }

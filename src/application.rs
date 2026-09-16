@@ -157,18 +157,22 @@ impl BlinkApplication {
             document.present();
             return document;
         }
-        let document = self.blank_document(window);
-        document.load(file);
+        let (document, made) = self.blank_document(window);
+        document.load(file, made);
         document.present();
         document
     }
 
-    /// The selected document of `window` when it is blank, or else a new document.
-    fn blank_document(&self, window: Option<&BlinkWindow>) -> BlinkDocument {
-        window
+    /// The selected document of `window` when it is blank, or else a new document, and
+    /// whether it is new.
+    fn blank_document(&self, window: Option<&BlinkWindow>) -> (BlinkDocument, bool) {
+        match window
             .and_then(BlinkWindow::selected_document)
             .filter(BlinkDocument::is_blank)
-            .unwrap_or_else(|| self.new_document(window))
+        {
+            Some(document) => (document, false),
+            None => (self.new_document(window), true),
+        }
     }
 
     fn load_style(&self) {
@@ -341,7 +345,7 @@ impl BlinkApplication {
                 let open = self
                     .documents()
                     .find(|document| document.holds_either(file.as_ref(), canonical.as_deref()));
-                let document = open.unwrap_or_else(|| self.blank_document(window.as_ref()));
+                let document = open.unwrap_or_else(|| self.blank_document(window.as_ref()).0);
                 document.restore(record);
                 document.present();
             }

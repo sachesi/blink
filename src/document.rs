@@ -124,6 +124,9 @@ mod imp {
         pub reserved: Cell<bool>,
         /// The file on its way in, which is not to be opened anywhere else meanwhile.
         pub claimed: RefCell<Option<gio::File>>,
+        /// The document was made for the file on its way in, and goes if the file cannot
+        /// be opened.
+        pub made_for_file: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -341,9 +344,11 @@ impl BlinkDocument {
             })
     }
 
-    /// Open `file` in the document, which should be blank.
-    pub fn load(&self, file: gio::File) {
+    /// Open `file` in the document, which should be blank. `made_for_file` when the
+    /// document was made to open the file in.
+    pub fn load(&self, file: gio::File, made_for_file: bool) {
         let imp = self.imp();
+        imp.made_for_file.set(made_for_file);
         imp.reserved.set(true);
         imp.claimed.replace(Some(file.clone()));
         self.enqueue(Command::OpenFile(file));

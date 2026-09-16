@@ -105,9 +105,11 @@ impl BlinkDocument {
         match command {
             Command::OpenFile(file) => {
                 let loaded = self.load_file(file).await;
+                let made_for_file = self.imp().made_for_file.take();
                 self.release_claim();
-                // A tab opened for the file alone is of no use without it.
+                // A tab or window opened for the file alone is of no use without it.
                 if !loaded
+                    && made_for_file
                     && self.is_blank()
                     && let Some(window) = self.window()
                 {
@@ -158,11 +160,14 @@ impl BlinkDocument {
 
     /// Read `file` into the document. False when it could not be read.
     async fn load_file(&self, file: gio::File) -> bool {
+        // The errors wait to be dismissed: a tab or window opened for the file closes after,
+        // and would take them with it.
         let Some(path) = file.path() else {
-            self.present_error(
+            self.show_error(
                 gettext("Error Opening File"),
                 gettext("Only local files are supported"),
-            );
+            )
+            .await;
             return false;
         };
         let read_path = path.clone();
@@ -203,14 +208,15 @@ impl BlinkDocument {
                 true
             }
             Err(err) => {
-                self.present_error(
+                self.show_error(
                     gettext("Error Opening File"),
                     format!(
                         "{}\n\n{}",
                         gettext("Could not open \"{}\"").replacen("{}", &file_title(&file), 1),
                         describe_io_error(&err)
                     ),
-                );
+                )
+                .await;
                 false
             }
         }
@@ -693,14 +699,26 @@ impl BlinkDocument {
     }
 
     pub(super) fn present_error(&self, heading: String, body: String) {
-        let alert = adw::AlertDialog::builder()
-            .heading(heading)
-            .body(body)
-            .build();
-        alert.add_response("ok", &gettext("OK"));
+        let alert = error_alert(heading, body);
         self.present();
         alert.present(Some(self));
     }
+
+    /// Show an error, and return once it is dismissed.
+    async fn show_error(&self, heading: String, body: String) {
+        let alert = error_alert(heading, body);
+        self.present();
+        alert.choose_future(Some(self)).await;
+    }
+}
+
+fn error_alert(heading: String, body: String) -> adw::AlertDialog {
+    let alert = adw::AlertDialog::builder()
+        .heading(heading)
+        .body(body)
+        .build();
+    alert.add_response("ok", &gettext("OK"));
+    alert
 }
 
 /// Run blocking file IO on a worker thread.
