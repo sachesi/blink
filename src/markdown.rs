@@ -38,6 +38,11 @@ fn cached_texture(path: &Path) -> Option<gtk::gdk::Texture> {
 /// it), so indenting tags have to start from this value.
 pub const TEXT_MARGIN: i32 = 32;
 
+/// How far each level of list nesting indents its items.
+const LIST_INDENT: i32 = 20;
+/// How far each level of blockquote nesting indents its text.
+const QUOTE_INDENT: i32 = 24;
+
 /// Characters after which the text of a table cell wraps.
 const CELL_WRAP_CHARS: i32 = 40;
 
@@ -215,6 +220,31 @@ fn end_block(buffer: &TextBuffer, iter: &mut gtk::TextIter) {
     for _ in present..2 {
         buffer.insert(iter, "\n");
     }
+}
+
+/// Start a new line unless one is already started. A code block or table in a tight list
+/// item follows the item's text directly, and anchored on that line it would take the
+/// item's hanging indent.
+fn start_line(buffer: &TextBuffer, iter: &mut gtk::TextIter) {
+    if !iter.starts_line() {
+        buffer.insert(iter, "\n");
+    }
+}
+
+/// End the line of a code block or table: inside a list only the line, so the next item
+/// follows as closely as after text; elsewhere with the blank line after any block.
+fn end_widget_block(buffer: &TextBuffer, iter: &mut gtk::TextIter, in_list: bool) {
+    if in_list {
+        start_line(buffer, iter);
+    } else {
+        end_block(buffer, iter);
+    }
+}
+
+/// Left margin of a code block or table, in line with the text of the list item or
+/// blockquote around it.
+fn block_indent(list_stack: &[Option<u64>], blockquote_depth: i32) -> i32 {
+    i32::try_from(list_stack.len()).unwrap_or(0) * LIST_INDENT + blockquote_depth * QUOTE_INDENT
 }
 
 /// Whether a link may be handed to the system URI launcher. Documents can come
@@ -405,7 +435,7 @@ fn ensure_blockquote_tag(buffer: &TextBuffer, depth: i32) -> String {
         buffer.create_tag(
             Some(&name),
             &[
-                ("left-margin", &(TEXT_MARGIN + depth * 24)),
+                ("left-margin", &(TEXT_MARGIN + depth * QUOTE_INDENT)),
                 ("style", &gtk::pango::Style::Italic),
                 ("foreground", &dim_foreground()),
                 ("paragraph-background", &"rgba(128, 128, 128, 0.04)"),
@@ -425,8 +455,11 @@ fn ensure_list_tag(buffer: &TextBuffer, depth: usize) -> String {
         buffer.create_tag(
             Some(&name),
             &[
-                ("left-margin", &(TEXT_MARGIN + (depth as i32 + 1) * 20)),
-                ("indent", &-20),
+                (
+                    "left-margin",
+                    &(TEXT_MARGIN + (depth as i32 + 1) * LIST_INDENT),
+                ),
+                ("indent", &-LIST_INDENT),
             ],
         );
     }
@@ -550,11 +583,12 @@ pub fn render_markdown(
                 }
                 Event::End(TagEnd::CodeBlock) => {
                     in_code_block = false;
-                    let indent = list_stack.len() as i32 * 16 + blockquote_depth * 24;
+                    let indent = block_indent(&list_stack, blockquote_depth);
                     let clean_code = current_code.trim_end_matches('\n');
                     let (scroll, code_buffer) =
                         code_block_widget(clean_code, &current_code_lang, indent, hadj);
 
+                    start_line(&buffer, &mut iter);
                     let anchor_offset = iter.offset();
                     let anchor = buffer.create_child_anchor(&mut iter);
                     view.add_child_at_anchor(&scroll, &anchor);
@@ -562,7 +596,7 @@ pub fn render_markdown(
                         anchor_offset,
                         buffer: code_buffer,
                     });
-                    end_block(&buffer, &mut iter);
+                    end_widget_block(&buffer, &mut iter, !list_stack.is_empty());
                 }
                 _ => {}
             }
@@ -623,7 +657,7 @@ pub fn render_markdown(
                 }
                 Event::End(TagEnd::Table) => {
                     in_table = false;
-                    let indent = list_stack.len() as i32 * 16 + blockquote_depth * 24;
+                    let indent = block_indent(&list_stack, blockquote_depth);
                     let grid = Grid::builder().hexpand(true).build();
                     // A table wider than the column scrolls sideways, like a code block,
                     // rather than squeezing its columns until the words break apart.
@@ -706,6 +740,7 @@ pub fn render_markdown(
                             }
                         }
                     }
+                    start_line(&buffer, &mut iter);
                     let anchor_offset = iter.offset();
                     let anchor = buffer.create_child_anchor(&mut iter);
                     view.add_child_at_anchor(&scroll, &anchor);
@@ -715,7 +750,7 @@ pub fn render_markdown(
                             label,
                         });
                     }
-                    end_block(&buffer, &mut iter);
+                    end_widget_block(&buffer, &mut iter, !list_stack.is_empty());
                 }
                 _ => {}
             }
@@ -863,6 +898,11 @@ pub fn render_markdown(
                     let name = format!("list-{depth}");
                     current_tags.retain(|t| t != &name);
                     list_stack.pop();
+                    // A nested list ends inside its parent item; the outermost one is a
+                    // block of its own, followed by a blank line like any other.
+                    if list_stack.is_empty() {
+                        end_block(&buffer, &mut iter);
+                    }
                 }
                 TagEnd::Item => {
                     // A loose item ends with its paragraph's blank line already.
