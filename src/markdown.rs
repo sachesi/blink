@@ -1190,9 +1190,21 @@ pub enum HtmlPart {
     SummaryEnd,
     StyleStart(HtmlStyle),
     StyleEnd(HtmlStyle),
-    /// A `<p>`, `<div>` or `<center>` element starts, which may align its content.
-    BlockStart(Option<HtmlAlign>),
-    BlockEnd,
+    /// A `<p>`, `<div>` or `<center>` element starts.
+    BlockStart(HtmlBlock),
+    /// A `<p>` element ends, or a `<div>` or `<center>` element.
+    BlockEnd {
+        paragraph: bool,
+    },
+}
+
+/// A `<p>`, `<div>` or `<center>` element: how it aligns its content, and whether it is a
+/// paragraph, which the end of its HTML block ends too, as a paragraph cannot hold the
+/// Markdown blocks after it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HtmlBlock {
+    pub align: Option<HtmlAlign>,
+    pub paragraph: bool,
 }
 
 /// How a block of raw HTML aligns its content, other than to the start of its lines.
@@ -1218,6 +1230,97 @@ impl HtmlAlign {
             Self::Center => "align-center",
             Self::Right => "align-right",
         }
+    }
+}
+
+/// The elements raw HTML opened and has not closed, across the Markdown blocks after them,
+/// each with how deep in quotes, list items and notes it was opened. As in a browser, an end
+/// tag ends only an element opened in the same container, and the end of a container ends
+/// the elements opened in it.
+#[derive(Debug)]
+pub struct OpenHtml<T> {
+    open: Vec<(T, usize)>,
+    depth: usize,
+}
+
+impl<T> Default for OpenHtml<T> {
+    fn default() -> Self {
+        Self {
+            open: Vec::new(),
+            depth: 0,
+        }
+    }
+}
+
+impl<T> OpenHtml<T> {
+    /// The open elements, outermost first.
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &T> {
+        self.open.iter().map(|(element, _)| element)
+    }
+
+    pub fn open(&mut self, element: T) {
+        self.open.push((element, self.depth));
+    }
+
+    /// End the innermost element opened in the current container that `is` accepts, or the
+    /// outermost if not `innermost`, and those opened after it. The ended elements are
+    /// returned innermost first.
+    pub fn close(&mut self, innermost: bool, is: impl Fn(&T) -> bool) -> Vec<T> {
+        let accepted = |(element, depth): &(T, usize)| *depth == self.depth && is(element);
+        let index = if innermost {
+            self.open.iter().rposition(accepted)
+        } else {
+            self.open.iter().position(accepted)
+        };
+        index.map_or_else(Vec::new, |index| self.close_from(index))
+    }
+
+    /// Follow `event` into and out of the containers of Markdown, and end the elements
+    /// opened in a container that ends. The ended elements are returned innermost first.
+    pub fn follow(&mut self, event: &Event) -> Vec<T> {
+        match event {
+            Event::Start(
+                Tag::BlockQuote(_)
+                | Tag::Item
+                | Tag::FootnoteDefinition(_)
+                | Tag::DefinitionListDefinition,
+            ) => {
+                self.depth += 1;
+                Vec::new()
+            }
+            Event::End(
+                TagEnd::BlockQuote(_)
+                | TagEnd::Item
+                | TagEnd::FootnoteDefinition
+                | TagEnd::DefinitionListDefinition,
+            ) => {
+                let depth = self.depth;
+                self.depth = depth.saturating_sub(1);
+                let index = self
+                    .open
+                    .iter()
+                    .position(|(_, opened)| *opened >= depth)
+                    .unwrap_or(self.open.len());
+                self.close_from(index)
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// End every open element, returned innermost first.
+    pub fn close_all(&mut self) -> Vec<T> {
+        self.close_from(0)
+    }
+
+    fn close_from(&mut self, index: usize) -> Vec<T> {
+        let mut closed: Vec<T> = self
+            .open
+            .split_off(index)
+            .into_iter()
+            .map(|(element, _)| element)
+            .collect();
+        closed.reverse();
+        closed
     }
 }
 
@@ -1307,13 +1410,18 @@ pub fn html_parts_with_emoji(chunk: &str, emoji: EmojiFilter) -> Vec<HtmlPart> {
     parts
 }
 
-/// How many `<details>` elements a raw HTML chunk opens, less those it closes.
-fn details_depth_change(chunk: &str) -> isize {
+/// How many `<details>` elements a raw HTML chunk opens, and `<div>` and `<center>` elements
+/// if it is a `block` of its own, less those it closes.
+fn html_depth_change(chunk: &str, block: bool) -> isize {
     html_parts(chunk)
         .iter()
         .map(|part| match part {
             HtmlPart::DetailsStart { .. } => 1,
+            HtmlPart::BlockStart(HtmlBlock {
+                paragraph: false, ..
+            }) if block => 1,
             HtmlPart::DetailsEnd => -1,
+            HtmlPart::BlockEnd { paragraph: false } if block => -1,
             _ => 0,
         })
         .sum()
@@ -1530,8 +1638,8 @@ fn tag_text(chunk: &str, tags: &mut Vec<HtmlPart>) -> String {
             ("details", false) => Some(HtmlPart::DetailsEnd),
             ("summary", true) => Some(HtmlPart::SummaryStart),
             ("summary", false) => Some(HtmlPart::SummaryEnd),
-            ("p" | "div", true) => Some(HtmlPart::BlockStart(
-                html_tags(tag, name)
+            ("p" | "div", true) => Some(HtmlPart::BlockStart(HtmlBlock {
+                align: html_tags(tag, name)
                     .first()
                     .and_then(|(_, attributes)| {
                         attributes
@@ -1539,9 +1647,15 @@ fn tag_text(chunk: &str, tags: &mut Vec<HtmlPart>) -> String {
                             .find(|(attribute, _)| attribute == "align")
                     })
                     .and_then(|(_, value)| HtmlAlign::from_attribute(value)),
-            )),
-            ("center", true) => Some(HtmlPart::BlockStart(Some(HtmlAlign::Center))),
-            ("p" | "div" | "center", false) => Some(HtmlPart::BlockEnd),
+                paragraph: name == "p",
+            })),
+            ("center", true) => Some(HtmlPart::BlockStart(HtmlBlock {
+                align: Some(HtmlAlign::Center),
+                paragraph: false,
+            })),
+            ("p" | "div" | "center", false) => Some(HtmlPart::BlockEnd {
+                paragraph: name == "p",
+            }),
             (name, true) => HtmlStyle::named(name).map(HtmlPart::StyleStart),
             (name, false) => HtmlStyle::named(name).map(HtmlPart::StyleEnd),
         };
@@ -2251,8 +2365,9 @@ fn definitions(link_definitions: &RefDefs, events: &[(Event, Range<usize>)]) -> 
 }
 
 /// The top-level blocks of a document, as the range of their events and of their source.
-/// A `<details>` element is one block with all it holds, which is shown or hidden together;
-/// one that is not closed, as while it is typed, holds nothing but itself.
+/// A `<details>` element is one block with all it holds, which is shown or hidden together,
+/// and so is a `<div>` or `<center>` element, whose alignment its blocks take; one that is
+/// not closed, as while it is typed, holds nothing but itself.
 fn top_level_blocks(events: &[(Event, Range<usize>)]) -> Vec<(Range<usize>, Range<usize>)> {
     let mut blocks = Vec::new();
     let mut first = 0;
@@ -2271,8 +2386,8 @@ fn top_level_blocks(events: &[(Event, Range<usize>)]) -> Vec<(Range<usize>, Rang
     blocks
 }
 
-/// How many events the first top-level block of `events` has, with the `<details>` elements
-/// it opens if `with_details`, or `None` if it does not end.
+/// How many events the first top-level block of `events` has, with the `<details>`, `<div>`
+/// and `<center>` elements it opens if `with_details`, or `None` if it does not end.
 fn block_length(events: &[(Event, Range<usize>)], with_details: bool) -> Option<usize> {
     let mut depth = 0usize;
     let mut details = 0isize;
@@ -2281,7 +2396,8 @@ fn block_length(events: &[(Event, Range<usize>)], with_details: bool) -> Option<
             Event::Start(_) => depth += 1,
             Event::End(_) => depth = depth.saturating_sub(1),
             Event::Html(chunk) | Event::InlineHtml(chunk) if with_details => {
-                details = (details + details_depth_change(chunk)).max(0);
+                let block = matches!(event, Event::Html(_));
+                details = (details + html_depth_change(chunk, block)).max(0);
             }
             _ => {}
         }
@@ -2384,7 +2500,7 @@ pub fn render_markdown(
     // The tags of the styles raw HTML opened, which it may never close, and the blocks it
     // opened, with how each aligns its content.
     let mut html_styles: Vec<&'static str> = Vec::new();
-    let mut html_blocks: Vec<Option<HtmlAlign>> = Vec::new();
+    let mut html_blocks: OpenHtml<HtmlBlock> = OpenHtml::default();
 
     // One entry per open list. `Some(n)` is an ordered list whose next item
     // number is `n`; `None` is a bullet list. Length doubles as nesting depth.
@@ -2447,6 +2563,11 @@ pub fn render_markdown(
         // A `<details>` element started, and its summary may still come.
         let mut awaiting_summary = false;
         for (event, event_range) in events.by_ref().take(block_events.len()) {
+            for block in html_blocks.follow(&event) {
+                if let Some(align) = block.align {
+                    close_tag(&mut current_tags, align.text_tag());
+                }
+            }
             // Content before any summary is summed up as GitHub sums it up.
             if awaiting_summary && !leads_to_summary(&event) {
                 awaiting_summary = false;
@@ -2779,7 +2900,7 @@ pub fn render_markdown(
                             let anchor = buffer.create_child_anchor(&mut iter);
                             view.add_child_at_anchor(&picture, &anchor);
                             // Aligned as the block of raw HTML it is in aligns it.
-                            if let Some(align) = html_blocks.iter().rev().flatten().next() {
+                            if let Some(align) = html_blocks.iter().rev().find_map(|b| b.align) {
                                 let start = buffer.iter_at_offset(anchor_offset);
                                 buffer.apply_tag_by_name(align.text_tag(), &start, &iter);
                             }
@@ -2890,10 +3011,12 @@ pub fn render_markdown(
                         start_line(&buffer, &mut iter);
                     }
                     TagEnd::DefinitionList => end_block(&buffer, &mut iter),
-                    // The blocks of raw HTML it leaves open end with it.
+                    // The paragraphs of raw HTML it leaves open end with it.
                     TagEnd::HtmlBlock => {
-                        for align in html_blocks.drain(..).rev().flatten() {
-                            close_tag(&mut current_tags, align.text_tag());
+                        for block in html_blocks.close(false, |block| block.paragraph) {
+                            if let Some(align) = block.align {
+                                close_tag(&mut current_tags, align.text_tag());
+                            }
                         }
                     }
                     // The note ends with a link back to where it is referred to, after its
@@ -3116,20 +3239,22 @@ pub fn render_markdown(
                             }
                             // A block starts and ends a line; blocks inside text are not laid
                             // out.
-                            HtmlPart::BlockStart(align) if matches!(event, Event::Html(_)) => {
+                            HtmlPart::BlockStart(block) if matches!(event, Event::Html(_)) => {
                                 start_line(&buffer, &mut iter);
-                                if let Some(align) = align {
+                                if let Some(align) = block.align {
                                     current_tags.push(align.text_tag().to_owned());
                                 }
-                                html_blocks.push(align);
+                                html_blocks.open(block);
                             }
-                            HtmlPart::BlockEnd if matches!(event, Event::Html(_)) => {
+                            HtmlPart::BlockEnd { paragraph } if matches!(event, Event::Html(_)) => {
                                 start_line(&buffer, &mut iter);
-                                if let Some(Some(align)) = html_blocks.pop() {
-                                    close_tag(&mut current_tags, align.text_tag());
+                                for block in html_blocks.close(true, |b| b.paragraph == paragraph) {
+                                    if let Some(align) = block.align {
+                                        close_tag(&mut current_tags, align.text_tag());
+                                    }
                                 }
                             }
-                            HtmlPart::BlockStart(_) | HtmlPart::BlockEnd => {}
+                            HtmlPart::BlockStart(_) | HtmlPart::BlockEnd { .. } => {}
                             HtmlPart::DetailsEnd => {
                                 if in_summary {
                                     in_summary = false;
@@ -3253,6 +3378,13 @@ pub fn render_markdown(
                 }
             }
         }
+        // The elements of raw HTML left open end with their block, which a block after it that
+        // is rendered again would not know of.
+        for block in html_blocks.close_all() {
+            if let Some(align) = block.align {
+                close_tag(&mut current_tags, align.text_tag());
+            }
+        }
         // Every block ends with the same blank line, so that what a block renders to never
         // depends on the block before it.
         end_block(&buffer, &mut iter);
@@ -3362,10 +3494,10 @@ pub fn render_markdown(
 #[cfg(test)]
 mod tests {
     use super::{
-        HtmlAlign, HtmlPart, HtmlStyle, LinkTarget, bare_links, close_tag, definitions, events,
-        heading_slug, html_images, html_parts, image_width, is_safe_link, lang_candidates,
-        link_target, list_marker, local_image_path, replace_shortcodes, shown_size, strip_html,
-        top_level_blocks, unchanged_ends, wiki_destination, word_count,
+        HtmlAlign, HtmlBlock, HtmlPart, HtmlStyle, LinkTarget, OpenHtml, bare_links, close_tag,
+        definitions, events, heading_slug, html_images, html_parts, image_width, is_safe_link,
+        lang_candidates, link_target, list_marker, local_image_path, replace_shortcodes,
+        shown_size, strip_html, top_level_blocks, unchanged_ends, wiki_destination, word_count,
     };
     use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
     use std::fs;
@@ -3833,14 +3965,26 @@ mod tests {
         assert_eq!(
             html_parts("<p align=\"CENTER\">a</p><div align=right><center></center></div><div>"),
             [
-                HtmlPart::BlockStart(Some(HtmlAlign::Center)),
+                HtmlPart::BlockStart(HtmlBlock {
+                    align: Some(HtmlAlign::Center),
+                    paragraph: true
+                }),
                 HtmlPart::Text("a".into()),
-                HtmlPart::BlockEnd,
-                HtmlPart::BlockStart(Some(HtmlAlign::Right)),
-                HtmlPart::BlockStart(Some(HtmlAlign::Center)),
-                HtmlPart::BlockEnd,
-                HtmlPart::BlockEnd,
-                HtmlPart::BlockStart(None),
+                HtmlPart::BlockEnd { paragraph: true },
+                HtmlPart::BlockStart(HtmlBlock {
+                    align: Some(HtmlAlign::Right),
+                    paragraph: false
+                }),
+                HtmlPart::BlockStart(HtmlBlock {
+                    align: Some(HtmlAlign::Center),
+                    paragraph: false
+                }),
+                HtmlPart::BlockEnd { paragraph: false },
+                HtmlPart::BlockEnd { paragraph: false },
+                HtmlPart::BlockStart(HtmlBlock {
+                    align: None,
+                    paragraph: false
+                }),
             ]
         );
         // A tag in a comment or a script is not one, and the marks of the tags cannot be
@@ -3887,6 +4031,39 @@ mod tests {
                 "After"
             ]
         );
+    }
+
+    #[test]
+    fn a_div_element_is_one_block_but_in_text() {
+        let text = "<div align=\"center\">\n\n# Title\n\n</div>\n\nA <div> b\n\nAfter\n";
+        let events = super::events(text);
+        let sources: Vec<&str> = top_level_blocks(&events)
+            .into_iter()
+            .map(|(_, source)| text[source].trim_end())
+            .collect();
+        assert_eq!(
+            sources,
+            [
+                "<div align=\"center\">\n\n# Title\n\n</div>",
+                "A <div> b",
+                "After"
+            ]
+        );
+    }
+
+    #[test]
+    fn open_html_ends_elements_in_their_container() {
+        let mut open = OpenHtml::default();
+        open.open('a');
+        assert!(open.follow(&Event::Start(Tag::Item)).is_empty());
+        open.open('b');
+        open.open('c');
+        // An end tag does not reach out of the container, and ends what was opened after it.
+        assert!(open.close(true, |element| *element == 'a').is_empty());
+        assert_eq!(open.close(false, |element| *element != 'a'), ['c', 'b']);
+        open.open('d');
+        assert_eq!(open.follow(&Event::End(TagEnd::Item)), ['d']);
+        assert_eq!(open.close_all(), ['a']);
     }
 
     #[test]

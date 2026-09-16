@@ -272,7 +272,7 @@ struct Reader<'a> {
     /// The styles raw HTML opened, which it may never close, and the blocks it opened, with
     /// how each aligns its content.
     html_styles: Vec<HtmlStyle>,
-    html_blocks: Vec<Option<HtmlAlign>>,
+    html_blocks: markdown::OpenHtml<markdown::HtmlBlock>,
     lists: Vec<Option<u64>>,
     /// How many definitions of definition lists are open.
     definitions: usize,
@@ -304,7 +304,7 @@ impl<'a> Reader<'a> {
             heading_id: None,
             style: Inline::default(),
             html_styles: Vec::new(),
-            html_blocks: Vec::new(),
+            html_blocks: markdown::OpenHtml::default(),
             lists: Vec::new(),
             definitions: 0,
             quote: Quote::default(),
@@ -367,7 +367,7 @@ impl<'a> Reader<'a> {
 
     /// How the innermost block of raw HTML that aligns its content aligns it.
     fn html_align(&self) -> Option<HtmlAlign> {
-        self.html_blocks.iter().rev().flatten().next().copied()
+        self.html_blocks.iter().rev().find_map(|block| block.align)
     }
 
     /// Leave at least `gap` after the last block.
@@ -446,9 +446,16 @@ impl<'a> Reader<'a> {
             return;
         }
 
+        if let Event::Start(_) = event {
+            self.html_blocks.follow(&event);
+        }
         match event {
             Event::Start(tag) => self.start(tag),
-            Event::End(tag) => self.end(tag),
+            // The blocks of raw HTML opened in a container end after what it holds is set.
+            Event::End(tag) => {
+                self.end(tag);
+                self.html_blocks.follow(&Event::End(tag));
+            }
             Event::Text(text) => self.push_text(&text),
             Event::Code(code) => {
                 let style = self.style;
@@ -488,17 +495,21 @@ impl<'a> Reader<'a> {
                         }
                         // A block is a paragraph of its own; blocks inside text are not laid
                         // out.
-                        markdown::HtmlPart::BlockStart(align)
+                        markdown::HtmlPart::BlockStart(block)
                             if matches!(event, Event::Html(_)) =>
                         {
                             self.flush(PARAGRAPH_GAP);
-                            self.html_blocks.push(align);
+                            self.html_blocks.open(block);
                         }
-                        markdown::HtmlPart::BlockEnd if matches!(event, Event::Html(_)) => {
+                        markdown::HtmlPart::BlockEnd { paragraph }
+                            if matches!(event, Event::Html(_)) =>
+                        {
                             self.flush(PARAGRAPH_GAP);
-                            self.html_blocks.pop();
+                            self.html_blocks
+                                .close(true, |block| block.paragraph == paragraph);
                         }
-                        markdown::HtmlPart::BlockStart(_) | markdown::HtmlPart::BlockEnd => {}
+                        markdown::HtmlPart::BlockStart(_) | markdown::HtmlPart::BlockEnd { .. } => {
+                        }
                         markdown::HtmlPart::StyleStart(style) => self.html_styles.push(style),
                         markdown::HtmlPart::StyleEnd(style) => {
                             if let Some(index) = self.html_styles.iter().rposition(|s| *s == style)
@@ -734,10 +745,10 @@ impl<'a> Reader<'a> {
                     paragraph.links.push((start..end, url));
                 }
             }
-            // The blocks of raw HTML it leaves open end with it.
-            TagEnd::HtmlBlock if !self.html_blocks.is_empty() => {
+            // The paragraphs of raw HTML it leaves open end with it.
+            TagEnd::HtmlBlock => {
                 self.flush(PARAGRAPH_GAP);
-                self.html_blocks.clear();
+                self.html_blocks.close(false, |block| block.paragraph);
             }
             TagEnd::TableCell => {
                 self.html_styles.clear();
@@ -1989,6 +2000,26 @@ mod tests {
                 (String::from("One"), Some(HtmlAlign::Center)),
                 (String::from("Two"), None),
                 (String::from("Three"), Some(HtmlAlign::Right)),
+            ]
+        );
+        // A `<div>` aligns the Markdown blocks up to its end, and a quote it is opened in.
+        let aligns: Vec<Option<HtmlAlign>> = blocks(
+            "<div align=\"center\">\n\n# Title\n\nText\n\n</div>\n\nAfter\n\n> <div align=\"right\">\n>\n> In\n\nOut\n",
+        )
+        .into_iter()
+        .filter_map(|block| match block {
+            Block::Text { paragraph, .. } => Some(paragraph.align),
+            _ => None,
+        })
+        .collect();
+        assert_eq!(
+            aligns,
+            [
+                Some(HtmlAlign::Center),
+                Some(HtmlAlign::Center),
+                None,
+                Some(HtmlAlign::Right),
+                None
             ]
         );
     }

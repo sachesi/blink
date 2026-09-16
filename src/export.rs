@@ -7,7 +7,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::markdown::{self, CodeRun, CodeStyle, HtmlAlign, HtmlPart, HtmlStyle};
+use crate::markdown::{self, CodeRun, CodeStyle, HtmlAlign, HtmlPart, HtmlStyle, OpenHtml};
 use crate::math;
 
 /// True when `url` carries an explicit URI scheme (`scheme:`), per the RFC 3986
@@ -59,6 +59,27 @@ fn escape_html(text: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// An element of raw HTML the export writes again, other than a style.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Opened {
+    /// A `<div>`, for a `<p>` if `paragraph`.
+    Block {
+        paragraph: bool,
+    },
+    Details,
+}
+
+/// The end tags of `elements`, in their order.
+fn end_tags(elements: Vec<Opened>) -> String {
+    elements
+        .into_iter()
+        .map(|element| match element {
+            Opened::Block { .. } => "</div>",
+            Opened::Details => "</details>",
+        })
+        .collect()
 }
 
 /// The end tags of the styles raw HTML left open, innermost first.
@@ -173,12 +194,17 @@ pub fn render_html(text: &str, options: &Options) -> String {
     let mut footnote_numbers: HashMap<String, usize> = HashMap::new();
     let mut referenced: HashSet<String> = HashSet::new();
     let mut footnotes: Vec<String> = Vec::new();
-    // The styles raw HTML opened and has not closed, and how many blocks.
+    // The styles raw HTML opened and has not closed, and its other elements.
     let mut html_styles: Vec<HtmlStyle> = Vec::new();
-    let mut html_blocks = 0usize;
+    let mut html_open: OpenHtml<Opened> = OpenHtml::default();
     // An image an `<img>` tag gave a width: its address, its width and its alternative text.
     let mut sized_image: Option<(String, i32, String)> = None;
     for (event, _) in markdown::events(text) {
+        let closed = html_open.follow(&event);
+        if !closed.is_empty() {
+            let close = close_styles(&mut html_styles) + &end_tags(closed);
+            events.push(Event::Html(format!("{close}\n").into()));
+        }
         if let Some((source, width, alt)) = sized_image.as_mut() {
             match event {
                 Event::Text(text) | Event::Code(text) => alt.push_str(&text),
@@ -236,27 +262,44 @@ pub fn render_html(text: &str, options: &Options) -> String {
                         HtmlPart::Text(text) => {
                             html.push_str(&escape_html(text).replace('\n', "<br>\n"));
                         }
-                        HtmlPart::DetailsStart { open: true } => html.push_str("<details open>"),
-                        HtmlPart::DetailsStart { open: false } => html.push_str("<details>"),
-                        HtmlPart::DetailsEnd => html.push_str("</details>"),
+                        HtmlPart::DetailsStart { open } => {
+                            html.push_str(if *open { "<details open>" } else { "<details>" });
+                            html_open.open(Opened::Details);
+                        }
+                        HtmlPart::DetailsEnd => {
+                            let closed = html_open.close(true, |open| *open == Opened::Details);
+                            if !closed.is_empty() {
+                                html.push_str(&close_styles(&mut html_styles));
+                                html.push_str(&end_tags(closed));
+                            }
+                        }
                         HtmlPart::SummaryStart => html.push_str("<summary>"),
                         HtmlPart::SummaryEnd => html.push_str("</summary>"),
                         // A block written inside the text of a paragraph would end the paragraph.
-                        HtmlPart::BlockStart(align) if block => {
+                        HtmlPart::BlockStart(opened) if block => {
                             html.push_str(&close_styles(&mut html_styles));
-                            html.push_str(match align {
+                            html.push_str(match opened.align {
                                 Some(HtmlAlign::Center) => "<div class=\"align-center\">",
                                 Some(HtmlAlign::Right) => "<div class=\"align-right\">",
                                 None => "<div>",
                             });
-                            html_blocks += 1;
+                            html_open.open(Opened::Block {
+                                paragraph: opened.paragraph,
+                            });
                         }
-                        HtmlPart::BlockEnd if block && html_blocks > 0 => {
-                            html.push_str(&close_styles(&mut html_styles));
-                            html.push_str("</div>");
-                            html_blocks -= 1;
+                        HtmlPart::BlockEnd { paragraph } if block => {
+                            let closed = html_open.close(true, |open| {
+                                *open
+                                    == Opened::Block {
+                                        paragraph: *paragraph,
+                                    }
+                            });
+                            if !closed.is_empty() {
+                                html.push_str(&close_styles(&mut html_styles));
+                                html.push_str(&end_tags(closed));
+                            }
                         }
-                        HtmlPart::BlockStart(_) | HtmlPart::BlockEnd => {}
+                        HtmlPart::BlockStart(_) | HtmlPart::BlockEnd { .. } => {}
                         HtmlPart::StyleStart(style) => {
                             html.push_str(&format!("<{}>", style.element()));
                             html_styles.push(*style);
@@ -302,11 +345,15 @@ pub fn render_html(text: &str, options: &Options) -> String {
                     });
                 }
             }
-            // The blocks of raw HTML it leaves open end with it.
-            Event::End(TagEnd::HtmlBlock) if html_blocks > 0 => {
-                let close = close_styles(&mut html_styles) + &"</div>".repeat(html_blocks);
-                html_blocks = 0;
-                events.push(Event::Html(format!("{close}\n").into()));
+            // The paragraphs of raw HTML it leaves open end with it.
+            Event::End(TagEnd::HtmlBlock) => {
+                let closed =
+                    html_open.close(false, |open| *open == Opened::Block { paragraph: true });
+                if !closed.is_empty() {
+                    let close = close_styles(&mut html_styles) + &end_tags(closed);
+                    events.push(Event::Html(format!("{close}\n").into()));
+                }
+                events.push(Event::End(TagEnd::HtmlBlock));
             }
             // As the end of a paragraph closes them in a browser.
             Event::End(
@@ -438,6 +485,11 @@ pub fn render_html(text: &str, options: &Options) -> String {
             }
             other => events.push(other),
         }
+    }
+    let closed = html_open.close_all();
+    if !closed.is_empty() {
+        let close = close_styles(&mut html_styles) + &end_tags(closed);
+        events.push(Event::Html(format!("{close}\n").into()));
     }
     let mut body = String::new();
     pulldown_cmark::html::push_html(&mut body, events.into_iter());
@@ -663,11 +715,22 @@ mod tests {
         assert!(html.contains("<p>A <sup>b</sup> <mark>c</mark></p>"));
         assert!(html.contains("<img src=\"https://example.com/a.png\" alt=\"A\" width=\"40\" />"));
         assert!(!html.contains("onclick"));
-        // A block left open ends with the HTML block, and one in a paragraph is not written.
+        // A paragraph left open ends with the HTML block, a block left open with the document,
+        // and a block in a paragraph is not written.
+        let html = render("<p>\nOne\n\nTwo\n");
+        assert!(html.contains("<div>One\n</div>\n<p>Two</p>"));
         let html =
             render("<center>\n<img src=\"https://example.com/a.png\">\n\nText <div>x</div>\n");
         assert!(html.contains("<div class=\"align-center\">"));
-        assert!(html.contains("</div>\n<p>Text x</p>"));
+        assert!(html.contains("<p>Text x</p>\n</div>"));
+        // A `<div>` holds the Markdown blocks up to its end, but not past the end of a quote,
+        // and ends a `<details>` element opened in it.
+        let html = render("<div align=\"center\">\n\n# Title\n\n</div>\n");
+        assert!(html.contains("<div class=\"align-center\">\n<h1 id=\"title\">Title</h1>\n</div>"));
+        let html = render("> <div>\n>\n> In\n\n</div>\n\n<div><details>\n\nx\n\n</div>\n");
+        assert!(html.contains("<p>In</p>\n</div>\n</blockquote>"));
+        assert!(html.contains("<p>x</p>\n</details></div>"));
+        assert_eq!(html.matches("<div").count(), html.matches("</div>").count());
     }
 
     #[test]

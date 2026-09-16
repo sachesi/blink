@@ -71,7 +71,9 @@ common alias of one (`js`, `py`, `sh`, `rs` and so on). Raw HTML is not laid out
 are dropped and the text inside them is kept, without scripts and style sheets. The tags of
 text styles still style it: `<b>`, `<strong>`, `<i>`, `<em>`, `<s>`, `<del>`, `<u>`, `<ins>`,
 `<code>`, `<kbd>`, `<sup>`, `<sub>` and `<mark>`. A `<p>`, `<div>` or `<center>` starts a
-line of its own, aligned as its `align` attribute says, centre or right. An `<img>` shows
+line of its own, aligned as its `align` attribute says, centre or right. A `<div>` or
+`<center>` aligns the Markdown after it up to its end tag, as a centred header written as
+`<div align="center">`, a blank line, Markdown and `</div>`. An `<img>` shows
 like a Markdown image, at the pixel width it gives, and a `<details>` element's `<summary>`
 shows and hides the rest of it when clicked. It starts closed unless it has the `open`
 attribute, and stays as it was left while the document is edited.
