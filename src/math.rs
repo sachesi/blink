@@ -564,7 +564,10 @@ fn escape_attribute(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{kern_missing_characters, number, typeset};
+    use super::{
+        MATH_SCALE, SYSTEM_GLYPH_SIZE, kern_missing_characters, number, system_layout, typeset,
+    };
+    use gtk::pango;
 
     #[test]
     fn formulas_are_typeset_or_left_as_their_source() {
@@ -574,13 +577,17 @@ mod tests {
         assert!(inline.ascent < fraction.ascent);
         assert!(typeset(r"\frac{a}{", false).is_none());
         assert!(typeset(r"\notacommand", false).is_none());
-        // A letter none of KaTeX's fonts has is drawn in a font of the system.
-        let cyrillic = typeset(r"\text{Привіт}", true).expect("Cyrillic text");
-        let latin = typeset(r"\text{Pryvit}", true).expect("Latin text");
-        assert!((cyrillic.width - latin.width).abs() < 0.3);
+        // A letter none of KaTeX's fonts has is drawn in a font of the system, as wide as it is
+        // there, whichever font that is.
+        let cyrillic = typeset(r"\text{П}", true).expect("Cyrillic text");
+        let (layout, _) = system_layout('П', "Serif", false, false).expect("a Cyrillic font");
+        let natural =
+            f64::from(layout.extents().1.width()) / f64::from(pango::SCALE) / SYSTEM_GLYPH_SIZE;
+        assert!((cyrillic.width - natural * MATH_SCALE).abs() < 0.01);
         assert!(cyrillic.shapes.iter().all(|shape| !shape.path.is_empty()));
         // A capital letter reaches above the height KaTeX gives a letter it does not know.
-        assert!(cyrillic.ascent > latin.ascent - 0.05);
+        let small = typeset(r"\text{x}", true).expect("Latin text");
+        assert!(cyrillic.ascent > small.ascent);
         // A symbol one of KaTeX's fonts has is laid out without a kern.
         assert_eq!(kern_missing_characters("x ∈ ℕ, é"), "x ∈ ℕ, é");
         assert!(kern_missing_characters("П").starts_with("П\\kern{"));
