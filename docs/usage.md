@@ -55,8 +55,10 @@ more of what GitHub renders:
   their title in its colour.
 - Front matter, the YAML between `---` lines or the TOML between `+++` lines at the top of a
   file, shows as a code block.
-- Math between `$` signs shows as inline code, and between `$$` lines as a LaTeX code
-  block; it is not typeset.
+- Math between `$` signs is typeset in the line, and between `$$` signs on a centred line of
+  its own, with the commands KaTeX knows, in the preview and in both exports. Math that
+  does not parse, or has letters KaTeX's fonts lack, such as Cyrillic in `\text{}`, shows
+  as its source; in a table cell math always does.
 - Definition lists, a term with `: its definition` on the next line, and wiki links,
   `[[Page]]` for `Page.md`.
 - A footnote reference links to its note, and the note ends with an arrow that links back

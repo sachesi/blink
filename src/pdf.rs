@@ -10,9 +10,11 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, Tag, TagEnd};
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use crate::export::Options;
 use crate::markdown::{self, CodeRun};
+use crate::math;
 
 /// A4, in points.
 const PAGE_WIDTH: f64 = 595.276;
@@ -101,6 +103,11 @@ enum Object {
     /// The box of a task list item, ticked or not. Drawn, as the box glyphs of the fonts
     /// that have them differ in size from each other.
     Task(bool),
+    /// A formula, set on a line of its own if it is displayed.
+    Math {
+        formula: Rc<math::Formula>,
+        display: bool,
+    },
 }
 
 impl Object {
@@ -114,6 +121,11 @@ impl Object {
                 let middle = 0.28 * size;
                 (side, middle + side / 2.0, side / 2.0 - middle)
             }
+            Self::Math { formula, .. } => (
+                formula.width * size,
+                formula.ascent * size,
+                formula.descent * size,
+            ),
         }
     }
 
@@ -155,6 +167,7 @@ impl Object {
                     let _ = cr.stroke();
                 }
             }
+            Self::Math { formula, .. } => formula.draw(cr, x, y, size, TEXT_COLOR),
         }
     }
 }
@@ -364,6 +377,23 @@ impl<'a> Reader<'a> {
                     }
                 }
             }
+            Event::InlineMath(ref latex) | Event::DisplayMath(ref latex) => {
+                let display = matches!(event, Event::DisplayMath(_));
+                // Math that does not typeset has been made code already.
+                if let Some(formula) = math::typeset(latex, display) {
+                    // A displayed formula is a centred paragraph of its own, as in the preview.
+                    if display && self.has_text() {
+                        self.flush(PARAGRAPH_GAP);
+                    }
+                    self.paragraph
+                        .push_object(Object::Math { formula, display });
+                    if display {
+                        self.flush(PARAGRAPH_GAP);
+                    }
+                }
+            }
+            // Not at the start of the paragraph after a displayed formula.
+            Event::SoftBreak if !self.has_text() && self.table.is_none() => {}
             Event::SoftBreak => self.push_text(" "),
             Event::HardBreak => self.push_text("\n"),
             // A reference links to its note, and the first one is where the note links back to.
@@ -400,7 +430,6 @@ impl<'a> Reader<'a> {
                 self.flush(PARAGRAPH_GAP);
                 self.blocks.push(Block::Rule);
             }
-            _ => {}
         }
     }
 
@@ -983,6 +1012,15 @@ impl<'a> Typesetter<'a> {
         layout.set_wrap(pango::WrapMode::WordChar);
         layout.set_line_spacing(LINE_SPACING);
         layout.set_text(&paragraph.text);
+        // A displayed formula alone in its paragraph is centred, as in the preview.
+        if paragraph.text == "\u{FFFC}"
+            && matches!(
+                paragraph.objects.first(),
+                Some((_, Object::Math { display: true, .. }))
+            )
+        {
+            layout.set_alignment(pango::Alignment::Center);
+        }
         let attributes = self.attributes(paragraph, BODY_SIZE * scale);
         if heading.is_some() {
             let mut bold: pango::Attribute =

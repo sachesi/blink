@@ -6,6 +6,8 @@ mod document;
 mod editor_view;
 mod export;
 mod markdown;
+mod math;
+mod math_view;
 mod pdf;
 mod preferences;
 mod window;

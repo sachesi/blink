@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::markdown::{self, CodeRun, CodeStyle};
+use crate::math;
 
 /// True when `url` carries an explicit URI scheme (`scheme:`), per the RFC 3986
 /// grammar (`ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":"`). Scheme-relative,
@@ -272,6 +273,22 @@ pub fn render_html(text: &str, options: &Options) -> String {
                     events.push(Event::End(TagEnd::Image));
                 }
             }
+            // Math that typesets is drawn in SVG, which every browser shows without a script
+            // or a font; math that does not has been made code already.
+            Event::InlineMath(ref latex) | Event::DisplayMath(ref latex) => {
+                let display = matches!(event, Event::DisplayMath(_));
+                if let Some(formula) = math::typeset(latex, display) {
+                    let svg = formula.svg(latex);
+                    events.push(Event::InlineHtml(
+                        if display {
+                            format!("<span class=\"math-display\">{svg}</span>")
+                        } else {
+                            svg
+                        }
+                        .into(),
+                    ));
+                }
+            }
             Event::FootnoteReference(name) => {
                 let next = footnote_numbers.len() + 1;
                 let number = *footnote_numbers.entry(name.to_string()).or_insert(next);
@@ -359,6 +376,8 @@ dd {{ margin: 0 0 0.5em 20px; }}
 .markdown-alert-caution > p:first-child {{ color: #c00023; }}
 .footnote-definition {{ margin: 0.5em 0; }}
 .footnote-definition p {{ display: inline; }}
+svg.math {{ overflow: visible; }}
+.math-display {{ display: block; margin: 0.5em 0; text-align: center; }}
 .footnote-backref {{ margin-left: 0.25em; text-decoration: none; }}
 @media (prefers-color-scheme: dark) {{
   body {{ background: #1d1d20; color: #ffffff; }}
@@ -512,6 +531,17 @@ mod tests {
         assert!(html.contains("class=\"markdown-alert-tip\""));
         assert!(html.contains("<strong>Tip</strong>"));
         assert!(html.contains("href=\"#intro\""));
+    }
+
+    #[test]
+    fn export_draws_math() {
+        let html = render("Inline $x^2$ and\n\n$$\n\\frac{a}{b}\n$$\n\nnot $\\nope$.\n");
+        assert!(
+            html.contains("<p>Inline <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"math\"")
+        );
+        assert!(html.contains("<p><span class=\"math-display\"><svg"));
+        assert!(html.contains("aria-label=\"\n\\frac{a}{b}\n\""));
+        assert!(html.contains("not <code>\\nope</code>."));
     }
 
     #[test]

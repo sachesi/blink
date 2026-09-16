@@ -13,6 +13,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::math;
+use crate::math_view::BlinkMathView;
+
 /// The width images are decoded at, at most: the widest reading column at a display scale
 /// of 2. A photo decoded at its full size holds tens of megabytes to show a few hundred
 /// pixels.
@@ -382,6 +385,11 @@ pub fn setup_tags(buffer: &TextBuffer) {
     );
     // Placeholder for an image that could not be shown.
     buffer.create_tag(Some("image-alt"), &[("style", &gtk::pango::Style::Italic)]);
+    // A displayed formula that is a paragraph of its own.
+    buffer.create_tag(
+        Some("math-display"),
+        &[("justification", &gtk::Justification::Center)],
+    );
     // The definition of a term, under the term.
     buffer.create_tag(
         Some("definition"),
@@ -571,8 +579,8 @@ fn alert_title(kind: BlockQuoteKind) -> String {
 /// Turn what the parser reads but the renderers have no layout of their own for into what
 /// they have, so that the preview and the exports show it alike:
 ///
-/// - front matter and math standing alone in a paragraph become code blocks, and other math
-///   inline code;
+/// - front matter becomes a code block, and so does math standing alone in a paragraph that
+///   does not typeset, and other such math inline code;
 /// - web addresses written out become links, and emoji shortcodes emoji, as on GitHub;
 /// - `<img>` tags in raw HTML become images, held to the same rules as Markdown images;
 /// - an alert starts with its title in bold;
@@ -620,9 +628,9 @@ fn extend_events<'a>(
                 if matches!(
                     (events.get(index), events.get(index + 1)),
                     (
-                        Some((Event::DisplayMath(_), _)),
+                        Some((Event::DisplayMath(math), _)),
                         Some((Event::End(TagEnd::Paragraph), _))
-                    )
+                    ) if math::typeset(math, true).is_none()
                 ) =>
             {
                 if let Event::DisplayMath(math) = &events[index].0 {
@@ -633,6 +641,12 @@ fn extend_events<'a>(
                     out.push((Event::End(TagEnd::CodeBlock), range));
                 }
                 index += 2;
+            }
+            Event::InlineMath(ref math) if math::typeset(math, false).is_some() => {
+                out.push((event, range));
+            }
+            Event::DisplayMath(ref math) if math::typeset(math, true).is_some() => {
+                out.push((event, range));
             }
             Event::InlineMath(math) | Event::DisplayMath(math) => {
                 out.push((Event::Code(math), range));
@@ -2120,7 +2134,8 @@ pub fn render_markdown(
                             current_cell.push_str(close);
                         }
                     }
-                    Event::Code(c) => {
+                    // A label cannot hold a formula, which shows as its source.
+                    Event::Code(c) | Event::InlineMath(c) | Event::DisplayMath(c) => {
                         current_cell.push_str(&MONOSPACE_FAMILY.with_borrow(|family| {
                             format!(
                                 "<span font_family=\"{}\">{}</span>",
@@ -2479,6 +2494,34 @@ pub fn render_markdown(
                         buffer.apply_tag_by_name(tag, &start_iter, &iter);
                     }
                 }
+                Event::InlineMath(ref latex) | Event::DisplayMath(ref latex) => {
+                    if let Some((_, alt)) = current_image.as_mut() {
+                        alt.push_str(latex);
+                        continue;
+                    }
+                    let display = matches!(event, Event::DisplayMath(_));
+                    // Math that does not typeset has been made code already.
+                    let Some(formula) = math::typeset(latex, display) else {
+                        continue;
+                    };
+                    // A displayed formula is a centred line of its own, as on GitHub.
+                    if display {
+                        start_line(&buffer, &mut iter);
+                    }
+                    let start_offset = iter.offset();
+                    let anchor = buffer.create_child_anchor(&mut iter);
+                    view.add_child_at_anchor(&BlinkMathView::new(formula, display, latex), &anchor);
+                    let start_iter = buffer.iter_at_offset(start_offset);
+                    if display {
+                        buffer.apply_tag_by_name("math-display", &start_iter, &iter);
+                    }
+                    for tag in &current_tags {
+                        buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                    }
+                    if display {
+                        buffer.insert(&mut iter, "\n");
+                    }
+                }
                 Event::Html(ref html) | Event::InlineHtml(ref html)
                     if current_image.is_none()
                         && html_parts(html)
@@ -2639,6 +2682,10 @@ pub fn render_markdown(
                     // A single line break in the source only wraps the source; the paragraph
                     // reflows to the width of the preview, as it does in the HTML export.
                     let separator = if matches!(event, Event::SoftBreak) {
+                        // Not at the start of the line after a displayed formula.
+                        if iter.starts_line() {
+                            continue;
+                        }
                         " "
                     } else {
                         "\n"
@@ -2650,7 +2697,6 @@ pub fn render_markdown(
                         buffer.apply_tag_by_name(tag, &start_iter, &iter);
                     }
                 }
-                _ => {}
             }
         }
         // Every block ends with the same blank line, so that what a block renders to never
@@ -3007,8 +3053,10 @@ mod tests {
     }
 
     #[test]
-    fn front_matter_and_math_read_as_code() {
-        let events = events("---\ntitle: x\n---\n\n$$\na^2\n$$\n\nInline $b$.\n");
+    fn front_matter_and_math_that_does_not_typeset_read_as_code() {
+        let events = events(
+            "---\ntitle: x\n---\n\n$$\na^2\n$$\n\n$$\n\\nope\n$$\n\nInline $b$ and $\\nope$.\n",
+        );
         let code_blocks: Vec<String> = events
             .iter()
             .filter_map(|(event, _)| match event {
@@ -3017,16 +3065,11 @@ mod tests {
             })
             .collect();
         assert_eq!(code_blocks, ["yaml", "latex"]);
-        assert!(
-            events
-                .iter()
-                .any(|(event, _)| *event == Event::Code("b".into()))
-        );
-        assert!(
-            events
-                .iter()
-                .any(|(event, _)| *event == Event::Text("a^2\n".into()))
-        );
+        let has = |wanted: Event| events.iter().any(|(event, _)| *event == wanted);
+        assert!(has(Event::DisplayMath("\na^2\n".into())));
+        assert!(has(Event::InlineMath("b".into())));
+        assert!(has(Event::Text("\\nope\n".into())));
+        assert!(has(Event::Code("\\nope".into())));
     }
 
     #[test]
