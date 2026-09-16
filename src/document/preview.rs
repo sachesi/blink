@@ -66,11 +66,7 @@ impl BlinkDocument {
                     document.follow_link(target);
                 } else if let Some(details) = document.details_at(x, y) {
                     let open = details.tag.is_invisible();
-                    markdown::set_details_open(
-                        &document.imp().preview_view.buffer(),
-                        &details,
-                        open,
-                    );
+                    markdown::set_details_open(&document.imp().preview_view, &details, open);
                 }
             }
         ));

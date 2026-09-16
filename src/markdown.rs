@@ -1587,13 +1587,17 @@ impl Rendered {
     }
 }
 
-/// Show or hide the content of `details` in `buffer`, and remember that it was chosen.
-pub fn set_details_open(buffer: &TextBuffer, details: &Details, open: bool) {
+/// Show or hide the content of `details` in `view`, and remember that it was chosen.
+pub fn set_details_open(view: &TextView, details: &Details, open: bool) {
+    let buffer = view.buffer();
     details.chosen.set(Some(open));
     show_details(details, open);
     let start = buffer.iter_at_offset(details.content.start);
     let end = buffer.iter_at_offset(details.content.end);
     show_widgets(&start, &end);
+    // Hidden or shown text alone changes the height of the view without a new layout of the
+    // window, which is then drawn without one.
+    view.queue_resize();
 }
 
 /// Show or hide the text of the content of `details`, and turn its triangle. An open element
