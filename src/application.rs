@@ -129,7 +129,8 @@ impl BlinkApplication {
             .build();
         let preferences = gio::ActionEntry::builder("preferences")
             .activate(|app: &Self, _, _| {
-                BlinkPreferencesDialog::new().present(app.active_window().as_ref());
+                let window = app.active_window().and_downcast::<BlinkWindow>();
+                BlinkPreferencesDialog::new(window.as_ref()).present(window.as_ref());
             })
             .build();
         self.add_action_entries([quit, about, preferences]);

@@ -9,6 +9,10 @@ opened from, and comes back only once the window is wider and it is picked again
 
 A file opens in the preview, a new document in the source.
 
+On a wide window the source and the preview stay in a column of 700, 800, 900 or 1000
+pixels, 900 unless changed. The button beside the view toggles changes it for the window;
+picked in Preferences, it applies to the window and to every window opened later.
+
 Focus mode (F11, or the main menu) puts the window in full screen without the header bar
 and the status bar; F11 or Escape leaves it.
 
@@ -79,8 +83,8 @@ Ctrl+? lists them all.
 
 ## Settings
 
-Preferences holds the style (follow the system, light or dark), word wrap, line numbers
-and the tab width. Everything is stored in GSettings under `io.github.sachesi.blink`,
+Preferences holds the style (follow the system, light or dark), the content width, word
+wrap, line numbers and the tab width. Everything is stored in GSettings under `io.github.sachesi.blink`,
 including a setting with no place in Preferences:
 
     gsettings set io.github.sachesi.blink editor-font 'JetBrains Mono'

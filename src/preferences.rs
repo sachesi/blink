@@ -3,8 +3,10 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::glib;
+use std::cell::OnceCell;
 
 use crate::config;
+use crate::window::BlinkWindow;
 
 /// The `color-scheme` nicks, in the order of the style row's list.
 const SCHEMES: [&str; 3] = ["system", "light", "dark"];
@@ -18,11 +20,17 @@ mod imp {
         #[template_child]
         pub style_row: TemplateChild<adw::ComboRow>,
         #[template_child]
+        pub width_row: TemplateChild<adw::ComboRow>,
+        #[template_child]
         pub wrap_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub line_numbers_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub tab_width_row: TemplateChild<adw::SpinRow>,
+
+        /// The window the dialog is for, whose width it shows and sets.
+        pub window: glib::WeakRef<BlinkWindow>,
+        pub width_handler: OnceCell<glib::SignalHandlerId>,
     }
 
     #[glib::object_subclass]
@@ -56,6 +64,33 @@ mod imp {
                     SCHEMES.get(index as usize).map(|nick| nick.to_variant())
                 })
                 .build();
+            let widths: Vec<String> = config::CONTENT_WIDTHS
+                .into_iter()
+                .map(config::content_width_label)
+                .collect();
+            let widths: Vec<&str> = widths.iter().map(String::as_str).collect();
+            self.width_row
+                .set_model(Some(&gtk::StringList::new(&widths)));
+            self.obj().show_content_width(settings.int("content-width"));
+            // Picking a width sets it for new windows and for the window the dialog is on.
+            // A settings binding would miss the second whenever the window had its own
+            // width and the setting was picked again, which changes nothing there.
+            let handler = self.width_row.connect_selected_notify(glib::clone!(
+                #[weak(rename_to = imp)]
+                self,
+                #[strong]
+                settings,
+                move |row| {
+                    let Some(width) = config::CONTENT_WIDTHS.get(row.selected() as usize) else {
+                        return;
+                    };
+                    let _ = settings.set_int("content-width", *width);
+                    if let Some(window) = imp.window.upgrade() {
+                        window.set_content_width(*width);
+                    }
+                }
+            ));
+            self.width_handler.set(handler).ok();
             settings
                 .bind("wrap-text", &*self.wrap_row, "active")
                 .build();
@@ -80,7 +115,24 @@ glib::wrapper! {
 }
 
 impl BlinkPreferencesDialog {
-    pub fn new() -> Self {
-        glib::Object::new()
+    /// Preferences for `window`, showing its content width.
+    pub fn new(window: Option<&BlinkWindow>) -> Self {
+        let dialog: Self = glib::Object::new();
+        let imp = dialog.imp();
+        if let Some(window) = window {
+            imp.window.set(Some(window));
+            if let Some(handler) = imp.width_handler.get() {
+                imp.width_row.block_signal(handler);
+                dialog.show_content_width(window.content_width());
+                imp.width_row.unblock_signal(handler);
+            }
+        }
+        dialog
+    }
+
+    fn show_content_width(&self, width: i32) {
+        if let Some(index) = config::CONTENT_WIDTHS.iter().position(|w| *w == width) {
+            self.imp().width_row.set_selected(index as u32);
+        }
     }
 }

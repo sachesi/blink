@@ -66,6 +66,8 @@ mod imp {
         #[template_child]
         pub view_toggles: TemplateChild<adw::ToggleGroup>,
         #[template_child]
+        pub width_button: TemplateChild<gtk::MenuButton>,
+        #[template_child]
         pub recent_menu: TemplateChild<gio::Menu>,
         #[template_child]
         pub search_bar: TemplateChild<gtk::Box>,
@@ -99,6 +101,9 @@ mod imp {
         /// Full screen, with the header bar and the status bar hidden.
         #[property(get, set = Self::set_focus_mode)]
         focus_mode: Cell<bool>,
+        /// The widest the editor and the preview get, in pixels.
+        #[property(get, set)]
+        content_width: Cell<i32>,
 
         pub settings: OnceCell<gio::Settings>,
         /// The editor font and zoom, as CSS that changes with the settings.
@@ -184,6 +189,7 @@ mod imp {
                 let _ = win.settings().set_int("zoom", 0);
             });
             klass.install_property_action("win.focus-mode", "focus-mode");
+            klass.install_property_action("win.content-width", "content-width");
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -205,6 +211,7 @@ mod imp {
             }
             self.settings.set(settings).ok();
 
+            obj.setup_content_width();
             obj.setup_editor();
             obj.setup_preview();
             obj.setup_search();
@@ -348,6 +355,27 @@ impl BlinkWindow {
     /// Open `file`, asking first about unsaved changes.
     pub fn open_file(&self, file: gio::File) {
         self.enqueue(Command::OpenFile(file));
+    }
+
+    /// The window starts at the width in the settings and follows a change to it; the
+    /// header bar menu changes this window's alone.
+    fn setup_content_width(&self) {
+        self.settings()
+            .bind("content-width", self, "content-width")
+            .get_only()
+            .build();
+        let hadj = self.imp().preview_scroll.hadjustment();
+        markdown::set_content_width(&hadj, self.content_width());
+        self.connect_content_width_notify(move |win| {
+            markdown::set_content_width(&hadj, win.content_width());
+        });
+        let menu = gio::Menu::new();
+        for width in config::CONTENT_WIDTHS {
+            let item = gio::MenuItem::new(Some(&config::content_width_label(width)), None);
+            item.set_action_and_target_value(Some("win.content-width"), Some(&width.to_variant()));
+            menu.append_item(&item);
+        }
+        self.imp().width_button.set_menu_model(Some(&menu));
     }
 
     fn setup_editor(&self) {

@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.5.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 12:04+0300\n"
+"POT-Creation-Date: 2026-09-16 12:47+0300\n"
 "PO-Revision-Date: 2026-09-13 23:50+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -42,39 +42,47 @@ msgstr "Світлий або темний стиль"
 msgid "“system” follows the desktop, “light” and “dark” override it."
 msgstr "«system» слідує за стільницею, «light» і «dark» її перевизначають."
 
-#: data/io.github.sachesi.blink.gschema.xml:16
+#: data/io.github.sachesi.blink.gschema.xml:17
+msgid "Widest the editor and the preview get, in pixels"
+msgstr "Найбільша ширина редактора та перегляду, у пікселях"
+
+#: data/io.github.sachesi.blink.gschema.xml:18
+msgid "The width new windows start with; a window can change its own."
+msgstr "Ширина, з якою відкриваються нові вікна; вікно може змінити власну."
+
+#: data/io.github.sachesi.blink.gschema.xml:22
 msgid "Wrap long lines in the editor"
 msgstr "Переносити довгі рядки в редакторі"
 
-#: data/io.github.sachesi.blink.gschema.xml:20
+#: data/io.github.sachesi.blink.gschema.xml:26
 msgid "Show line numbers in the editor"
 msgstr "Показувати номери рядків у редакторі"
 
-#: data/io.github.sachesi.blink.gschema.xml:25
+#: data/io.github.sachesi.blink.gschema.xml:31
 msgid "Width of a tab in the editor, in spaces"
 msgstr "Ширина табуляції в редакторі, у пробілах"
 
-#: data/io.github.sachesi.blink.gschema.xml:30
+#: data/io.github.sachesi.blink.gschema.xml:36
 msgid "Text size, in points above or below 11"
 msgstr "Розмір тексту, у пунктах більше або менше за 11"
 
-#: data/io.github.sachesi.blink.gschema.xml:34
+#: data/io.github.sachesi.blink.gschema.xml:40
 msgid "Font family of the editor"
 msgstr "Шрифт редактора"
 
-#: data/io.github.sachesi.blink.gschema.xml:35
+#: data/io.github.sachesi.blink.gschema.xml:41
 msgid "Empty for the system monospace font."
 msgstr "Порожньо — системний моноширинний шрифт."
 
-#: data/io.github.sachesi.blink.gschema.xml:39
+#: data/io.github.sachesi.blink.gschema.xml:45
 msgid "Recently opened files, newest first"
 msgstr "Нещодавно відкриті файли, найновіші першими"
 
-#: data/io.github.sachesi.blink.gschema.xml:43
+#: data/io.github.sachesi.blink.gschema.xml:49
 msgid "Window size"
 msgstr "Розмір вікна"
 
-#: data/io.github.sachesi.blink.gschema.xml:47
+#: data/io.github.sachesi.blink.gschema.xml:53
 msgid "Window maximized"
 msgstr "Вікно розгорнуто"
 
@@ -171,18 +179,24 @@ msgstr ""
 msgid "translator-credits"
 msgstr "sachesi <xsachesi@pm.me>"
 
-#: src/markdown.rs:357
+#. Translators: a width in pixels
+#: src/config.rs:22
+#, no-c-format
+msgid "{} px"
+msgstr "{} пкс"
+
+#: src/markdown.rs:570
 #, no-c-format
 msgid "Copy Code"
 msgstr "Копіювати код"
 
-#: src/window.rs:160
+#: src/window.rs:165
 #, no-c-format
 msgid "Code copied"
 msgstr "Код скопійовано"
 
-#: src/window.rs:609 src/window/document.rs:326 src/window/document.rs:574
-#: src/window/recovery.rs:120 ui/window.ui:49 ui/window.ui:85
+#: src/window.rs:636 src/window/document.rs:326 src/window/document.rs:574
+#: src/window/recovery.rs:120 ui/window.ui:49 ui/window.ui:86
 #, no-c-format
 msgid "Untitled Document"
 msgstr "Документ без назви"
@@ -356,7 +370,7 @@ msgstr "На диску недостатньо вільного місця."
 msgid "The location is read-only."
 msgstr "Розташування доступне лише для читання."
 
-#: src/window/preview.rs:297
+#: src/window/preview.rs:318
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
@@ -364,7 +378,7 @@ msgstr[0] "{} слово"
 msgstr[1] "{} слова"
 msgstr[2] "{} слів"
 
-#: src/window/preview.rs:302
+#: src/window/preview.rs:323
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -415,12 +429,12 @@ msgstr[0] "Замінено {} збіг"
 msgstr[1] "Замінено {} збіги"
 msgstr[2] "Замінено {} збігів"
 
-#: src/window/search.rs:234 src/window/search.rs:407
+#: src/window/search.rs:234 src/window/search.rs:409
 #, no-c-format
 msgid "No matches"
 msgstr "Немає збігів"
 
-#: src/window/search.rs:254 src/window/search.rs:412
+#: src/window/search.rs:254 src/window/search.rs:414
 #, no-c-format
 msgid "{} of {} match"
 msgid_plural "{} of {} matches"
@@ -428,12 +442,12 @@ msgstr[0] "{} з {} збігу"
 msgstr[1] "{} з {} збігів"
 msgstr[2] "{} з {} збігів"
 
-#: src/window/search.rs:404
+#: src/window/search.rs:406
 #, no-c-format
 msgid "Searching…"
 msgstr "Пошук…"
 
-#: src/window/search.rs:417
+#: src/window/search.rs:419
 #, no-c-format
 msgid "{} matches"
 msgstr "{} збігів"
@@ -458,19 +472,27 @@ msgstr "Світла"
 msgid "Dark"
 msgstr "Темна"
 
-#: ui/preferences_dialog.ui:34
+#: ui/preferences_dialog.ui:32 ui/window.ui:126
+msgid "Content Width"
+msgstr "Ширина вмісту"
+
+#: ui/preferences_dialog.ui:33
+msgid "The widest the editor and the preview get"
+msgstr "Найбільша ширина редактора та перегляду"
+
+#: ui/preferences_dialog.ui:40
 msgid "Editor"
 msgstr "Редактор"
 
-#: ui/preferences_dialog.ui:37
+#: ui/preferences_dialog.ui:43
 msgid "Wrap Text"
 msgstr "Перенесення тексту"
 
-#: ui/preferences_dialog.ui:42
+#: ui/preferences_dialog.ui:48
 msgid "Line Numbers"
 msgstr "Номери рядків"
 
-#: ui/preferences_dialog.ui:47
+#: ui/preferences_dialog.ui:53
 msgid "Tab Width"
 msgstr "Ширина табуляції"
 
@@ -522,11 +544,11 @@ msgstr "Знайти далі"
 msgid "Find Previous"
 msgstr "Знайти раніше"
 
-#: ui/shortcuts_dialog.ui:85 ui/window.ui:187 ui/window.ui:193
+#: ui/shortcuts_dialog.ui:85 ui/window.ui:194 ui/window.ui:200
 msgid "Replace"
 msgstr "Замінити"
 
-#: ui/shortcuts_dialog.ui:91 ui/window.ui:200
+#: ui/shortcuts_dialog.ui:91 ui/window.ui:207
 msgid "Replace All"
 msgstr "Замінити все"
 
@@ -598,55 +620,55 @@ msgstr "_Комбінації клавіш"
 msgid "_About Blink"
 msgstr "_Про Blink"
 
-#: ui/window.ui:72
+#: ui/window.ui:73
 msgid "Open Document"
 msgstr "Відкрити документ"
 
-#: ui/window.ui:79
+#: ui/window.ui:80
 msgid "Save Document"
 msgstr "Зберегти документ"
 
-#: ui/window.ui:91
+#: ui/window.ui:92
 msgid "Main Menu"
 msgstr "Головне меню"
 
-#: ui/window.ui:103
+#: ui/window.ui:104
 msgid "Edit Document"
 msgstr "Редагувати документ"
 
-#: ui/window.ui:110
+#: ui/window.ui:111
 msgid "Preview Document"
 msgstr "Попередній перегляд"
 
-#: ui/window.ui:117
+#: ui/window.ui:118
 msgid "Split View"
 msgstr "Розділений перегляд"
 
-#: ui/window.ui:143
+#: ui/window.ui:150
 msgid "Search"
 msgstr "Пошук"
 
-#: ui/window.ui:160
+#: ui/window.ui:167
 msgid "Previous Match"
 msgstr "Попередній збіг"
 
-#: ui/window.ui:167
+#: ui/window.ui:174
 msgid "Next Match"
 msgstr "Наступний збіг"
 
-#: ui/window.ui:174
+#: ui/window.ui:181
 msgid "Close Search"
 msgstr "Закрити пошук"
 
-#: ui/window.ui:194
+#: ui/window.ui:201
 msgid "Replace Match"
 msgstr "Замінити збіг"
 
-#: ui/window.ui:201
+#: ui/window.ui:208
 msgid "Replace All Matches"
 msgstr "Замінити всі збіги"
 
-#: ui/window.ui:211
+#: ui/window.ui:218
 msgid ""
 "Changes other programs make to this file will not be noticed until the next "
 "save"
@@ -654,6 +676,6 @@ msgstr ""
 "Зміни, які інші програми вносять до цього файлу, буде помічено лише під час "
 "наступного збереження"
 
-#: ui/window.ui:315
+#: ui/window.ui:322
 msgid "Drop Markdown file to open"
 msgstr "Перетягніть файл Markdown для відкриття"

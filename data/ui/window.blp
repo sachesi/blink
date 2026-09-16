@@ -61,6 +61,8 @@ template $BlinkWindow: Adw.ApplicationWindow {
 
     setters {
       split_toggle.enabled: false;
+      // The content is narrower than any of the widths anyway.
+      width_button.visible: false;
     }
 
     apply => $on_narrow() swapped;
@@ -121,6 +123,12 @@ template $BlinkWindow: Adw.ApplicationWindow {
               icon-name: "view-dual-symbolic";
               tooltip: _("Split View");
             }
+          }
+
+          [end]
+          Gtk.MenuButton width_button {
+            icon-name: "format-justify-fill-symbolic";
+            tooltip-text: _("Content Width");
           }
         }
 
@@ -216,7 +224,7 @@ template $BlinkWindow: Adw.ApplicationWindow {
             // through its own scrollable interface. A plain Clamp is not scrollable, and
             // the scrolled window would scroll the whole view to its top on every click.
             child: Adw.ClampScrollable {
-              maximum-size: 700;
+              maximum-size: bind template.content-width;
 
               child: GtkSource.View edit_view {
                 monospace: true;
@@ -253,7 +261,7 @@ template $BlinkWindow: Adw.ApplicationWindow {
             visible: false;
 
             child: Adw.ClampScrollable {
-              maximum-size: 700;
+              maximum-size: bind template.content-width;
 
               // Read-only but focusable, so its text and tables can be selected and
               // copied.

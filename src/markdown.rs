@@ -3,7 +3,7 @@ use gettextrs::gettext;
 use gtk::{Grid, Label, TextBuffer, TextView, gio, glib};
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Parser, RefDefs, Tag, TagEnd};
 use sourceview5::prelude::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ use std::time::SystemTime;
 /// The width images are decoded at, at most: the widest reading column at a display scale
 /// of 2. A photo decoded at its full size holds tens of megabytes to show a few hundred
 /// pixels.
-const IMAGE_DECODE_WIDTH: i32 = 1400;
+const IMAGE_DECODE_WIDTH: i32 = 2000;
 
 /// An image of the document, and once decoded its texture and pixel size, or else the
 /// pictures waiting for them.
@@ -157,10 +157,23 @@ const QUOTE_INDENT: i32 = 24;
 /// Characters after which the text of a table cell wraps.
 const CELL_WRAP_CHARS: i32 = 40;
 
-/// Width available to a block widget at the given viewport width.
+thread_local! {
+    // The widest the preview may get, as the window last set it.
+    static CONTENT_WIDTH: Cell<f64> = const { Cell::new(f64::MAX) };
+}
+
+/// Limit the width of the preview behind `hadj` to `width`. Block widgets are sized from
+/// the width of the preview, which cannot become narrower than they are, so they apply the
+/// limit themselves, and are sized again here.
+pub fn set_content_width(hadj: &gtk::Adjustment, width: i32) {
+    CONTENT_WIDTH.set(f64::from(width));
+    hadj.notify("page-size");
+}
+
+/// Width available to a block widget in a preview of the given width.
 fn column_width(page_size: f64, indent: i32) -> f64 {
-    let max_width = page_size.min(700.0);
-    (max_width - 2.0 * f64::from(TEXT_MARGIN) - f64::from(indent)).max(100.0)
+    let width = page_size.min(CONTENT_WIDTH.get());
+    (width - 2.0 * f64::from(TEXT_MARGIN) - f64::from(indent)).max(100.0)
 }
 
 /// Size a preview child widget to the visible page width. GtkTextView allocates

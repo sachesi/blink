@@ -11,6 +11,12 @@
       <summary>Light or dark style</summary>
       <description>“system” follows the desktop, “light” and “dark” override it.</description>
     </key>
+    <key name="content-width" type="i">
+      <range min="700" max="1000"/>
+      <default>900</default>
+      <summary>Widest the editor and the preview get, in pixels</summary>
+      <description>The width new windows start with; a window can change its own.</description>
+    </key>
     <key name="wrap-text" type="b">
       <default>true</default>
       <summary>Wrap long lines in the editor</summary>
