@@ -2,7 +2,7 @@
 //! draw with cairo and the HTML export writes as SVG.
 
 use ab_glyph::{Font, FontRef, OutlineCurve};
-use gtk::cairo;
+use gtk::{cairo, pango};
 use ratex_font::FontId;
 use ratex_types::{Color, DisplayItem, MathStyle, PathCommand};
 use std::cell::RefCell;
@@ -49,8 +49,8 @@ pub struct Formula {
 type Typeset = HashMap<(String, bool), Option<Rc<Formula>>>;
 
 /// `latex` typeset in display style, as a block of its own, or in text style, in a line.
-/// `None` if it does not parse, or holds a character none of KaTeX's fonts has, so that it
-/// is shown as its source instead. Formulas are kept once typeset.
+/// `None` if it does not parse, or holds a character no font has, so that it is shown as its
+/// source instead. Formulas are kept once typeset.
 pub fn typeset(latex: &str, display: bool) -> Option<Rc<Formula>> {
     thread_local! {
         static TYPESET: RefCell<Typeset> = RefCell::new(HashMap::new());
@@ -75,7 +75,10 @@ pub fn typeset(latex: &str, display: bool) -> Option<Rc<Formula>> {
 }
 
 fn layout(latex: &str, display: bool) -> Option<Formula> {
-    let nodes = ratex_parser::parse(latex).ok()?;
+    let kerned = kern_missing_characters(latex);
+    let nodes = ratex_parser::parse(&kerned)
+        .or_else(|_| ratex_parser::parse(latex))
+        .ok()?;
     let options = ratex_layout::LayoutOptions {
         style: if display {
             MathStyle::Display
@@ -98,7 +101,8 @@ fn layout(latex: &str, display: bool) -> Option<Formula> {
                 char_code,
                 color,
             } => Shape {
-                path: glyph(*x, y - top, *scale, font, *char_code)?,
+                path: glyph(*x, y - top, *scale, font, *char_code)
+                    .or_else(|| system_glyph(*x, y - top, *scale, font, *char_code))?,
                 stroke: None,
                 color: own_color(color),
             },
@@ -259,6 +263,126 @@ fn glyph(x: f64, y: f64, scale: f64, font: &str, char_code: u32) -> Option<Vec<S
         path.push(Segment::Close);
     }
     Some(path)
+}
+
+/// The size the outlines of characters of the system's fonts are made at, in units of the
+/// surface.
+const SYSTEM_GLYPH_SIZE: f64 = 1000.0;
+
+/// `latex` with a kern after each character that KaTeX's fonts do not have, as a Cyrillic
+/// letter in `\text{}`. KaTeX lays such a character out in a width of its guessing, and the
+/// kern makes up the width of the character in the font of the system it is drawn in.
+fn kern_missing_characters(latex: &str) -> String {
+    thread_local! {
+        static KERNS: RefCell<HashMap<char, Option<f64>>> = RefCell::new(HashMap::new());
+    }
+    let kern = |character: char| {
+        KERNS.with_borrow_mut(|kerns| {
+            *kerns.entry(character).or_insert_with(|| {
+                if glyph(
+                    0.0,
+                    0.0,
+                    1.0,
+                    FontId::MainRegular.as_str(),
+                    u32::from(character),
+                )
+                .is_some()
+                {
+                    return None;
+                }
+                let (layout, _) = system_layout(character, "Serif", false, false)?;
+                let natural = f64::from(layout.extents().1.width())
+                    / f64::from(pango::SCALE)
+                    / SYSTEM_GLYPH_SIZE;
+                let text = format!("\\text{{{character}}}");
+                let nodes = ratex_parser::parse(&text).ok()?;
+                let options = ratex_layout::LayoutOptions::default();
+                let guessed = ratex_layout::layout(&nodes, &options).width;
+                Some(natural - guessed).filter(|kern| kern.abs() > 0.005)
+            })
+        })
+    };
+    let mut kerned = String::with_capacity(latex.len());
+    for character in latex.chars() {
+        kerned.push(character);
+        if !character.is_ascii()
+            && let Some(kern) = kern(character)
+        {
+            let _ = write!(kerned, "\\kern{{{kern:.3}em}}");
+        }
+    }
+    kerned
+}
+
+/// A layout of `character` alone in `family` at [`SYSTEM_GLYPH_SIZE`], bold or italic, drawn
+/// on a context of its own, or `None` if no font has the character.
+fn system_layout(
+    character: char,
+    family: &str,
+    bold: bool,
+    italic: bool,
+) -> Option<(pango::Layout, cairo::Context)> {
+    let surface = cairo::ImageSurface::create(cairo::Format::A8, 1, 1).ok()?;
+    let cr = cairo::Context::new(&surface).ok()?;
+    let layout = pangocairo::functions::create_layout(&cr);
+    let mut description = pango::FontDescription::new();
+    description.set_family(family);
+    description.set_absolute_size(SYSTEM_GLYPH_SIZE * f64::from(pango::SCALE));
+    if bold {
+        description.set_weight(pango::Weight::Bold);
+    }
+    if italic {
+        description.set_style(pango::Style::Italic);
+    }
+    layout.set_font_description(Some(&description));
+    layout.set_text(character.encode_utf8(&mut [0; 4]));
+    (layout.unknown_glyphs_count() == 0).then_some((layout, cr))
+}
+
+/// The outline of the character `char_code` in a font of the system alike to the KaTeX font
+/// `font`, for a character none of KaTeX's fonts has, `scale` ems tall, with its origin at
+/// `(x, y)`. `None` if no font has it.
+fn system_glyph(x: f64, y: f64, scale: f64, font: &str, char_code: u32) -> Option<Vec<Segment>> {
+    let character = char::from_u32(char_code)?;
+    let id = FontId::parse(font)?;
+    let name = id.as_str();
+    let family = if name.starts_with("SansSerif") {
+        "Sans"
+    } else if name.starts_with("Typewriter") {
+        "Monospace"
+    } else {
+        "Serif"
+    };
+    let (layout, cr) = system_layout(
+        character,
+        family,
+        name.contains("Bold"),
+        name.contains("Italic"),
+    )?;
+    let baseline = f64::from(layout.baseline()) / f64::from(pango::SCALE);
+    pangocairo::functions::layout_path(&cr, &layout);
+    let factor = scale / SYSTEM_GLYPH_SIZE;
+    let at = |(px, py): (f64, f64)| (x + px * factor, y + (py - baseline) * factor);
+    let path = cr.copy_path().ok()?;
+    Some(
+        path.iter()
+            .map(|segment| match segment {
+                cairo::PathSegment::MoveTo(point) => {
+                    let (px, py) = at(point);
+                    Segment::Move(px, py)
+                }
+                cairo::PathSegment::LineTo(point) => {
+                    let (px, py) = at(point);
+                    Segment::Line(px, py)
+                }
+                cairo::PathSegment::CurveTo(first, second, end) => {
+                    let ((ax, ay), (bx, by), (px, py)) = (at(first), at(second), at(end));
+                    Segment::Cubic(ax, ay, bx, by, px, py)
+                }
+                cairo::PathSegment::ClosePath => Segment::Close,
+            })
+            .collect(),
+    )
 }
 
 fn distance(a: (f64, f64), b: (f64, f64)) -> f64 {
@@ -423,6 +547,11 @@ mod tests {
         assert!(inline.ascent < fraction.ascent);
         assert!(typeset(r"\frac{a}{", false).is_none());
         assert!(typeset(r"\notacommand", false).is_none());
+        // A letter none of KaTeX's fonts has is drawn in a font of the system.
+        let cyrillic = typeset(r"\text{Привіт}", true).expect("Cyrillic text");
+        let latin = typeset(r"\text{Pryvit}", true).expect("Latin text");
+        assert!((cyrillic.width - latin.width).abs() < 0.3);
+        assert!(cyrillic.shapes.iter().all(|shape| !shape.path.is_empty()));
     }
 
     #[test]
