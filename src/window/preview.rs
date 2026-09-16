@@ -36,6 +36,7 @@ impl BlinkWindow {
         let imp = self.imp();
         let buffer = imp.preview_view.buffer();
         markdown::setup_tags(&buffer);
+        markdown::set_monospace_family(&buffer, &self.font_families().1);
         // Indenting text tags carry absolute left margins, so the renderer owns this value.
         imp.preview_view.set_left_margin(markdown::TEXT_MARGIN);
         imp.preview_view.set_right_margin(markdown::TEXT_MARGIN);
@@ -329,7 +330,7 @@ impl BlinkWindow {
         self.imp().status_label.set_label(&status);
     }
 
-    fn render_tick(&self) {
+    pub(super) fn render_tick(&self) {
         let imp = self.imp();
         if self.preview_visible() {
             // Rendering replaces the whole buffer, so the preview is briefly much shorter

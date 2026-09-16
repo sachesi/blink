@@ -43,9 +43,14 @@
       <default>0</default>
       <summary>Text size, in points above or below 11</summary>
     </key>
-    <key name="editor-font" type="s">
+    <key name="text-font" type="s">
       <default>''</default>
-      <summary>Font family of the editor</summary>
+      <summary>Font family of the preview and of exported documents</summary>
+      <description>Empty for the system document font.</description>
+    </key>
+    <key name="monospace-font" type="s">
+      <default>''</default>
+      <summary>Font family of the editor and of code</summary>
       <description>Empty for the system monospace font.</description>
     </key>
     <key name="recent-files" type="as">

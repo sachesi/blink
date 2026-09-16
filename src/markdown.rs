@@ -160,6 +160,16 @@ const CELL_WRAP_CHARS: i32 = 40;
 thread_local! {
     // The widest the preview may get, as the window last set it.
     static CONTENT_WIDTH: Cell<f64> = const { Cell::new(f64::MAX) };
+    // The family of inline code and of code in table cells, as the window last set it.
+    static MONOSPACE_FAMILY: RefCell<String> = RefCell::new(String::from("Monospace"));
+}
+
+/// Show the inline code of `buffer`, and of table cells rendered from now on, in `family`.
+pub fn set_monospace_family(buffer: &TextBuffer, family: &str) {
+    MONOSPACE_FAMILY.replace(family.to_owned());
+    if let Some(code) = buffer.tag_table().lookup("code") {
+        code.set_family(Some(family));
+    }
 }
 
 /// Limit the width of the preview behind `hadj` to `width`. Block widgets are sized from
@@ -552,6 +562,7 @@ fn code_block_widget(
     src_view.set_margin_start(12);
     src_view.set_margin_end(12);
     src_view.add_css_class("transparent-bg");
+    src_view.add_css_class("code-view");
 
     let scroll = gtk::ScrolledWindow::builder()
         .hexpand(true)
@@ -725,6 +736,17 @@ pub struct Rendered {
     definitions: Vec<String>,
 }
 
+impl Rendered {
+    /// Empty `buffer`, so that the next render builds every block again.
+    pub fn clear(&mut self, buffer: &TextBuffer) {
+        for block in self.blocks.drain(..) {
+            buffer.delete_mark(&block.start);
+        }
+        let (mut start, mut end) = buffer.bounds();
+        buffer.delete(&mut start, &mut end);
+    }
+}
+
 /// The link reference and footnote definitions of a document, in a comparable form. A
 /// block can use either wherever they are defined, so a change to them changes blocks
 /// elsewhere.
@@ -812,11 +834,7 @@ pub fn render_markdown(
     // any block may hold: when either changes, every block is rendered again.
     let base_dir = image_base_dir.map(Path::to_path_buf);
     if rendered.base_dir != base_dir || rendered.definitions != definitions {
-        for block in rendered.blocks.drain(..) {
-            buffer.delete_mark(&block.start);
-        }
-        let (mut start, mut end) = buffer.bounds();
-        buffer.delete(&mut start, &mut end);
+        rendered.clear(&buffer);
         rendered.base_dir = base_dir;
         rendered.definitions = definitions;
     }
@@ -958,8 +976,13 @@ pub fn render_markdown(
                         }
                     }
                     Event::Code(c) => {
-                        current_cell
-                            .push_str(&format!("<tt>{}</tt>", glib::markup_escape_text(&c)));
+                        current_cell.push_str(&MONOSPACE_FAMILY.with_borrow(|family| {
+                            format!(
+                                "<span font_family=\"{}\">{}</span>",
+                                glib::markup_escape_text(family),
+                                glib::markup_escape_text(&c)
+                            )
+                        }));
                     }
                     Event::Text(t) => {
                         current_cell.push_str(&glib::markup_escape_text(&t));

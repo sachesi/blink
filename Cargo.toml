@@ -19,6 +19,7 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 async-channel = "2"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+pangocairo = "0.22"
 
 [build-dependencies]
 glib-build-tools = "0.22"

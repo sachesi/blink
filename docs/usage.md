@@ -83,12 +83,10 @@ Ctrl+? lists them all.
 
 ## Settings
 
-Preferences holds the style (follow the system, light or dark), the content width, word
-wrap, line numbers, the highlight of the line with the cursor, the shading of every other
-line and the tab width. Everything is stored in GSettings under `io.github.sachesi.blink`,
-including a setting with no place in Preferences:
-
-    gsettings set io.github.sachesi.blink editor-font 'JetBrains Mono'
-
-sets the font of the source; empty is the system monospace font. The text size set with
+Preferences holds the style (follow the system, light or dark), the content width, the
+fonts, word wrap, line numbers, the highlight of the line with the cursor, the shading of
+every other line and the tab width. The text font is the one of the preview, the
+monospace font the one of the editor and of code; either follows the system's document or
+monospace font until another is picked, and the button beside it goes back to that.
+Everything is stored in GSettings under `io.github.sachesi.blink`. The text size set with
 Ctrl++ and Ctrl+- is `zoom`, in points above or below 11.

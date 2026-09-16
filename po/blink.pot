@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.5.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 13:12+0300\n"
+"POT-Creation-Date: 2026-09-16 13:17+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -78,22 +78,30 @@ msgid "Text size, in points above or below 11"
 msgstr ""
 
 #: data/io.github.sachesi.blink.gschema.xml:48
-msgid "Font family of the editor"
+msgid "Font family of the preview and of exported documents"
 msgstr ""
 
 #: data/io.github.sachesi.blink.gschema.xml:49
-msgid "Empty for the system monospace font."
+msgid "Empty for the system document font."
 msgstr ""
 
 #: data/io.github.sachesi.blink.gschema.xml:53
+msgid "Font family of the editor and of code"
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:54
+msgid "Empty for the system monospace font."
+msgstr ""
+
+#: data/io.github.sachesi.blink.gschema.xml:58
 msgid "Recently opened files, newest first"
 msgstr ""
 
-#: data/io.github.sachesi.blink.gschema.xml:57
+#: data/io.github.sachesi.blink.gschema.xml:62
 msgid "Window size"
 msgstr ""
 
-#: data/io.github.sachesi.blink.gschema.xml:61
+#: data/io.github.sachesi.blink.gschema.xml:66
 msgid "Window maximized"
 msgstr ""
 
@@ -165,12 +173,12 @@ msgid "translator-credits"
 msgstr ""
 
 #. Translators: a width in pixels
-#: src/config.rs:22
+#: src/config.rs:23
 #, no-c-format
 msgid "{} px"
 msgstr ""
 
-#: src/markdown.rs:570
+#: src/markdown.rs:581
 #, no-c-format
 msgid "Copy Code"
 msgstr ""
@@ -180,7 +188,7 @@ msgstr ""
 msgid "Code copied"
 msgstr ""
 
-#: src/window.rs:653 src/window/document.rs:326 src/window/document.rs:574
+#: src/window.rs:687 src/window/document.rs:326 src/window/document.rs:574
 #: src/window/recovery.rs:120 ui/window.ui:49 ui/window.ui:86
 #, no-c-format
 msgid "Untitled Document"
@@ -353,14 +361,14 @@ msgstr ""
 msgid "The location is read-only."
 msgstr ""
 
-#: src/window/preview.rs:318
+#: src/window/preview.rs:319
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window/preview.rs:323
+#: src/window/preview.rs:324
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -459,27 +467,47 @@ msgstr ""
 msgid "The widest the editor and the preview get"
 msgstr ""
 
-#: ui/preferences_dialog.ui:40
+#: ui/preferences_dialog.ui:38 ui/preferences_dialog.ui:58
+msgid "Text Font"
+msgstr ""
+
+#: ui/preferences_dialog.ui:39
+msgid "The preview and exported documents"
+msgstr ""
+
+#: ui/preferences_dialog.ui:44 ui/preferences_dialog.ui:73
+msgid "Use System Font"
+msgstr ""
+
+#: ui/preferences_dialog.ui:67 ui/preferences_dialog.ui:87
+msgid "Monospace Font"
+msgstr ""
+
+#: ui/preferences_dialog.ui:68
+msgid "The editor and code"
+msgstr ""
+
+#: ui/preferences_dialog.ui:98
 msgid "Editor"
 msgstr ""
 
-#: ui/preferences_dialog.ui:43
+#: ui/preferences_dialog.ui:101
 msgid "Wrap Text"
 msgstr ""
 
-#: ui/preferences_dialog.ui:48
+#: ui/preferences_dialog.ui:106
 msgid "Line Numbers"
 msgstr ""
 
-#: ui/preferences_dialog.ui:53
+#: ui/preferences_dialog.ui:111
 msgid "Highlight Current Line"
 msgstr ""
 
-#: ui/preferences_dialog.ui:58
+#: ui/preferences_dialog.ui:116
 msgid "Shade Alternate Lines"
 msgstr ""
 
-#: ui/preferences_dialog.ui:63
+#: ui/preferences_dialog.ui:121
 msgid "Tab Width"
 msgstr ""
 
@@ -661,6 +689,6 @@ msgid ""
 "save"
 msgstr ""
 
-#: ui/window.ui:322
+#: ui/window.ui:323
 msgid "Drop Markdown file to open"
 msgstr ""

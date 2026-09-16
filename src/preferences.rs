@@ -2,7 +2,7 @@
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gtk::glib;
+use gtk::{gio, glib, pango};
 use std::cell::OnceCell;
 
 use crate::config;
@@ -21,6 +21,14 @@ mod imp {
         pub style_row: TemplateChild<adw::ComboRow>,
         #[template_child]
         pub width_row: TemplateChild<adw::ComboRow>,
+        #[template_child]
+        pub text_font_button: TemplateChild<gtk::FontDialogButton>,
+        #[template_child]
+        pub text_font_reset: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub monospace_font_button: TemplateChild<gtk::FontDialogButton>,
+        #[template_child]
+        pub monospace_font_reset: TemplateChild<gtk::Button>,
         #[template_child]
         pub wrap_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
@@ -95,6 +103,30 @@ mod imp {
                 }
             ));
             self.width_handler.set(handler).ok();
+            bind_font(
+                &settings,
+                false,
+                &self.text_font_button,
+                &self.text_font_reset,
+            );
+            bind_font(
+                &settings,
+                true,
+                &self.monospace_font_button,
+                &self.monospace_font_reset,
+            );
+            if let Some(dialog) = self.monospace_font_button.dialog() {
+                dialog.set_filter(Some(&gtk::CustomFilter::new(|item| {
+                    let family = item
+                        .downcast_ref::<pango::FontFamily>()
+                        .cloned()
+                        .or_else(|| {
+                            item.downcast_ref::<pango::FontFace>()
+                                .map(pango::FontFace::family)
+                        });
+                    family.is_none_or(|family| family.is_monospace())
+                })));
+            }
             settings
                 .bind("wrap-text", &*self.wrap_row, "active")
                 .build();
@@ -120,6 +152,50 @@ mod imp {
     impl WidgetImpl for BlinkPreferencesDialog {}
     impl AdwDialogImpl for BlinkPreferencesDialog {}
     impl PreferencesDialogImpl for BlinkPreferencesDialog {}
+}
+
+/// Show the font family of text, or of monospace text, on `button`, the system's while
+/// none is picked, and store the family picked there. `reset` goes back to the system's.
+fn bind_font(
+    settings: &gio::Settings,
+    monospace: bool,
+    button: &gtk::FontDialogButton,
+    reset: &gtk::Button,
+) {
+    let key = config::font_key(monospace);
+    settings
+        .bind(key, button, "font-desc")
+        .mapping(move |value, _| {
+            let mut family = value.str()?.to_owned();
+            if family.is_empty() {
+                family = config::system_font_family(monospace);
+            }
+            let mut description = pango::FontDescription::new();
+            description.set_family(&family);
+            Some(description.to_value())
+        })
+        .set_mapping(|value, _| {
+            let description = value.get::<pango::FontDescription>().ok()?;
+            Some(description.family()?.to_variant())
+        })
+        .build();
+    settings
+        .bind(key, reset, "visible")
+        .mapping(|value, _| {
+            Some(
+                value
+                    .str()
+                    .is_some_and(|family| !family.is_empty())
+                    .to_value(),
+            )
+        })
+        .get_only()
+        .build();
+    reset.connect_clicked(glib::clone!(
+        #[strong]
+        settings,
+        move |_| settings.reset(key)
+    ));
 }
 
 glib::wrapper! {

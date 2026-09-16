@@ -24,6 +24,62 @@ template $BlinkPreferencesDialog: Adw.PreferencesDialog {
         title: _("Content Width");
         subtitle: _("The widest the editor and the preview get");
       }
+
+      Adw.ActionRow {
+        title: _("Text Font");
+        subtitle: _("The preview and exported documents");
+        activatable-widget: text_font_button;
+
+        [suffix]
+        Gtk.Button text_font_reset {
+          icon-name: "edit-undo-symbolic";
+          tooltip-text: _("Use System Font");
+          valign: center;
+
+          styles [
+            "flat",
+          ]
+        }
+
+        [suffix]
+        Gtk.FontDialogButton text_font_button {
+          level: family;
+          use-font: true;
+          valign: center;
+
+          dialog: Gtk.FontDialog {
+            title: _("Text Font");
+          };
+        }
+      }
+
+      Adw.ActionRow {
+        title: _("Monospace Font");
+        subtitle: _("The editor and code");
+        activatable-widget: monospace_font_button;
+
+        [suffix]
+        Gtk.Button monospace_font_reset {
+          icon-name: "edit-undo-symbolic";
+          tooltip-text: _("Use System Font");
+          valign: center;
+
+          styles [
+            "flat",
+          ]
+        }
+
+        [suffix]
+        Gtk.FontDialogButton monospace_font_button {
+          level: family;
+          use-font: true;
+          valign: center;
+
+          dialog: Gtk.FontDialog {
+            title: _("Monospace Font");
+          };
+        }
+      }
     }
 
     Adw.PreferencesGroup {

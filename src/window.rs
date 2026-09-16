@@ -107,7 +107,7 @@ mod imp {
         content_width: Cell<i32>,
 
         pub settings: OnceCell<gio::Settings>,
-        /// The editor font and zoom, as CSS that changes with the settings.
+        /// The fonts and the zoom, as CSS that changes with the settings.
         pub font_css: OnceCell<gtk::CssProvider>,
         pub style_handlers: RefCell<Vec<glib::SignalHandlerId>>,
         pub autosave_timer: RefCell<Option<glib::SourceId>>,
@@ -433,16 +433,52 @@ impl BlinkWindow {
         }
         imp.font_css.set(css).ok();
         self.apply_font_css();
-        for key in ["zoom", "editor-font"] {
-            settings.connect_changed(
-                Some(key),
-                glib::clone!(
-                    #[weak(rename_to = win)]
-                    self,
-                    move |_, _| win.apply_font_css()
-                ),
-            );
+        settings.connect_changed(
+            Some("zoom"),
+            glib::clone!(
+                #[weak(rename_to = win)]
+                self,
+                move |_, _| win.apply_font_css()
+            ),
+        );
+        let refont = glib::clone!(
+            #[weak(rename_to = win)]
+            self,
+            move || win.apply_fonts()
+        );
+        for key in ["text-font", "monospace-font"] {
+            let refont = refont.clone();
+            settings.connect_changed(Some(key), move |_, _| refont());
         }
+        let style_manager = adw::StyleManager::default();
+        let handlers = [
+            style_manager.connect_document_font_name_notify({
+                let refont = refont.clone();
+                move |_| refont()
+            }),
+            style_manager.connect_monospace_font_name_notify(move |_| refont()),
+        ];
+        imp.style_handlers.borrow_mut().extend(handlers);
+    }
+
+    /// The font families of text and of monospace text.
+    pub fn font_families(&self) -> (String, String) {
+        let settings = self.settings();
+        (
+            config::font_family(settings, false),
+            config::font_family(settings, true),
+        )
+    }
+
+    /// Follow a change of font: the stylesheet, the inline code of the preview, and code in
+    /// its table cells, which only a new render changes.
+    fn apply_fonts(&self) {
+        let imp = self.imp();
+        self.apply_font_css();
+        let buffer = imp.preview_view.buffer();
+        markdown::set_monospace_family(&buffer, &self.font_families().1);
+        imp.preview.rendered.borrow_mut().clear(&buffer);
+        self.render_tick();
     }
 
     /// Word wrap, or a horizontal scrollbar: without wrapping the longest line would
@@ -463,16 +499,14 @@ impl BlinkWindow {
     }
 
     fn apply_font_css(&self) {
-        let settings = self.settings();
-        let size = (11 + settings.int("zoom")).clamp(6, 32);
-        let font = settings.string("editor-font");
-        let family = if font.is_empty() {
-            String::new()
-        } else {
-            format!("textview.editor-view {{ font-family: \"{font}\"; }}")
-        };
+        let size = (11 + self.settings().int("zoom")).clamp(6, 32);
+        let (text, monospace) = self.font_families();
+        let (text, monospace) = (css_string(&text), css_string(&monospace));
         let css = format!(
-            "textview.editor-view {{ font-size: {size}pt; }}\ntextview.transparent-bg {{ font-size: {size}pt; }}\n{family}"
+            "textview.editor-view {{ font-size: {size}pt; }}\n\
+             textview.transparent-bg {{ font-size: {size}pt; }}\n\
+             textview.preview-view {{ font-family: {text}; }}\n\
+             textview.editor-view, textview.code-view {{ font-family: {monospace}; }}"
         );
         if let Some(provider) = self.imp().font_css.get() {
             provider.load_from_string(&css);
@@ -499,7 +533,7 @@ impl BlinkWindow {
             style_manager.connect_dark_notify(retheme.clone()),
             style_manager.connect_accent_color_notify(retheme),
         ];
-        self.imp().style_handlers.replace(handlers);
+        self.imp().style_handlers.borrow_mut().extend(handlers);
     }
 
     fn apply_editor_scheme(&self) {
@@ -670,6 +704,11 @@ impl BlinkWindow {
 fn buffer_text(buffer: &impl IsA<gtk::TextBuffer>) -> String {
     let (start, end) = buffer.bounds();
     buffer.text(&start, &end, false).to_string()
+}
+
+/// `text` as a quoted CSS string.
+fn css_string(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn saturating_u32(n: usize) -> u32 {
