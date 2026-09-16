@@ -114,7 +114,7 @@ mod imp {
             });
             klass.install_action("win.tab-to-new-window", None, |win, _, _| {
                 if let Some(page) = win.imp().menu_page.take() {
-                    let window = super::BlinkWindow::new(&win.app());
+                    let window = super::BlinkWindow::for_tab(&win.app(), win);
                     win.imp()
                         .tab_view
                         .transfer_page(&page, &window.imp().tab_view, 0);
@@ -183,14 +183,7 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             let obj = self.obj();
-            let settings = config::settings();
-
-            let (width, height) = settings.get::<(i32, i32)>("window-size");
-            obj.set_default_size(width, height);
-            if settings.boolean("window-maximized") {
-                obj.maximize();
-            }
-            self.settings.set(settings).ok();
+            self.settings.set(config::settings()).ok();
 
             obj.setup_content_width();
             obj.setup_recent_menu();
@@ -289,7 +282,8 @@ mod imp {
         /// A tab was dropped outside every window.
         #[template_callback]
         fn on_create_window(&self) -> Option<adw::TabView> {
-            let window = super::BlinkWindow::new(&self.obj().app());
+            let obj = self.obj();
+            let window = super::BlinkWindow::for_tab(&obj.app(), &obj);
             window.present();
             Some(window.imp().tab_view.get())
         }
@@ -377,9 +371,26 @@ glib::wrapper! {
 }
 
 impl BlinkWindow {
-    /// A window without documents; [`BlinkWindow::add_document`] gives it one.
+    /// A window without documents, at the size the last one closed with;
+    /// [`BlinkWindow::add_document`] gives it one.
     pub fn new(app: &impl IsA<gtk::Application>) -> Self {
-        glib::Object::builder().property("application", app).build()
+        let window: Self = glib::Object::builder().property("application", app).build();
+        let settings = window.settings();
+        let (width, height) = settings.get::<(i32, i32)>("window-size");
+        window.set_default_size(width, height);
+        if settings.boolean("window-maximized") {
+            window.maximize();
+        }
+        window
+    }
+
+    /// A window for a tab moved out of `source`, as large as `source` is when not
+    /// maximized.
+    pub fn for_tab(app: &impl IsA<gtk::Application>, source: &BlinkWindow) -> Self {
+        let window: Self = glib::Object::builder().property("application", app).build();
+        let (width, height) = source.default_size();
+        window.set_default_size(width, height);
+        window
     }
 
     fn app(&self) -> BlinkApplication {
