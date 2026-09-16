@@ -990,6 +990,23 @@ pub fn render_markdown(
         buffer.delete_mark(&block.start);
     }
     let insert_offset = iter.offset();
+    // Text inserted where a tag starts takes the tag, so the output of the blocks after the
+    // rebuilt ones sheds its tags until the rebuilt output is in, and then takes them back.
+    let following_tags: Vec<(gtk::TextTag, i32)> = iter
+        .tags()
+        .into_iter()
+        .map(|tag| {
+            let mut end = iter;
+            end.forward_to_tag_toggle(Some(&tag));
+            (tag, end.offset() - insert_offset)
+        })
+        .collect();
+    for (tag, length) in &following_tags {
+        let start = buffer.iter_at_offset(insert_offset);
+        let end = buffer.iter_at_offset(insert_offset + length);
+        buffer.remove_tag(tag, &start, &end);
+    }
+    let mut iter = buffer.iter_at_offset(insert_offset);
     let mut new_blocks = Vec::new();
     let mut added = Vec::new();
 
@@ -1501,6 +1518,14 @@ pub fn render_markdown(
             images: std::mem::take(&mut shown_images),
         });
     }
+
+    let following_offset = iter.offset();
+    for (tag, length) in &following_tags {
+        let start = buffer.iter_at_offset(following_offset);
+        let end = buffer.iter_at_offset(following_offset + length);
+        buffer.apply_tag(tag, &start, &end);
+    }
+    let iter = buffer.iter_at_offset(following_offset);
 
     // The marks of the blocks after the rebuilt ones stay where the rebuilt output was
     // inserted, before it.
