@@ -19,6 +19,10 @@ blocks are coloured by GtkSourceView when their fence names a language it knows,
 common alias of one (`js`, `py`, `sh`, `rs` and so on). Raw HTML is not laid out: its tags
 are dropped and the text inside them is kept.
 
+Text in code blocks and table cells is selected and copied like the rest of the preview. A
+code block also has a button that copies all of it, shown while the pointer is over the
+block. A table wider than the preview scrolls sideways.
+
 Documents can come from anyone, so the preview is careful with what they point at:
 
 - Images are shown only when they are files inside the document's own folder or below
