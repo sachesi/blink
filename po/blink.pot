@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 16:27+0300\n"
+"POT-Creation-Date: 2026-09-16 16:32+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -177,7 +177,11 @@ msgid ""
 "restored backups are backed up again before the old backup is removed."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:51
+#: data/io.github.sachesi.blink.metainfo.xml:47
+msgid "Blink is translated into Russian."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:52
 msgid ""
 "The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
 "the split view are three toggles in the header bar, and the split view can "
@@ -187,7 +191,7 @@ msgid ""
 "versions are not carried over."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:52
+#: data/io.github.sachesi.blink.metainfo.xml:53
 msgid ""
 "Backups of unsaved work can be recovered after a crash every time: about "
 "half of them used to be lost, because their record could not be written. "
@@ -199,13 +203,13 @@ msgid ""
 "in the Adwaita icon theme."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:57
+#: data/io.github.sachesi.blink.metainfo.xml:58
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:62
+#: data/io.github.sachesi.blink.metainfo.xml:63
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."

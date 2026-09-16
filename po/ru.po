@@ -1,14 +1,14 @@
-# Ukrainian translation for blink.
+# Russian translation for blink.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
 "POT-Creation-Date: 2026-09-16 16:32+0300\n"
-"PO-Revision-Date: 2026-09-13 23:50+0300\n"
+"PO-Revision-Date: 2026-09-16 16:27+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
-"Language-Team: Ukrainian <uk@li.org>\n"
-"Language: uk\n"
+"Language-Team: Russian <ru@li.org>\n"
+"Language: ru\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -28,91 +28,92 @@ msgstr "Редактор Markdown"
 #: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:368
 #, no-c-format
 msgid "Edit Markdown with a live preview"
-msgstr "Редагуйте Markdown із живим переглядом"
+msgstr "Редактируйте Markdown с живым предпросмотром"
 
 #: data/io.github.sachesi.blink.desktop:10
 msgid "markdown;md;editor;text;preview;"
-msgstr "markdown;md;editor;text;preview;редактор;текст;перегляд;"
+msgstr "markdown;md;editor;text;preview;редактор;текст;просмотр;предпросмотр;"
 
 #: data/io.github.sachesi.blink.gschema.xml:11
 msgid "Light or dark style"
-msgstr "Світлий або темний стиль"
+msgstr "Светлый или тёмный стиль"
 
 #: data/io.github.sachesi.blink.gschema.xml:12
 msgid "“system” follows the desktop, “light” and “dark” override it."
-msgstr "«system» слідує за стільницею, «light» і «dark» її перевизначають."
+msgstr ""
+"«system» следует за рабочим столом, «light» и «dark» переопределяют его."
 
 #: data/io.github.sachesi.blink.gschema.xml:16
 msgid "Open documents in tabs"
-msgstr "Відкривати документи у вкладках"
+msgstr "Открывать документы во вкладках"
 
 #: data/io.github.sachesi.blink.gschema.xml:17
 msgid ""
 "New and opened documents become tabs of the window they are opened from; "
 "otherwise each gets a window of its own."
 msgstr ""
-"Нові та відкриті документи стають вкладками вікна, з якого їх відкрито; "
-"інакше кожен отримує власне вікно."
+"Новые и открытые документы становятся вкладками окна, из которого они "
+"открыты; иначе каждый получает собственное окно."
 
 #: data/io.github.sachesi.blink.gschema.xml:22
 msgid "Widest the editor and the preview get, in pixels"
-msgstr "Найбільша ширина редактора та перегляду, у пікселях"
+msgstr "Наибольшая ширина редактора и предпросмотра в пикселях"
 
 #: data/io.github.sachesi.blink.gschema.xml:23
 msgid "The width new windows start with; a window can change its own."
-msgstr "Ширина, з якою відкриваються нові вікна; вікно може змінити власну."
+msgstr "Ширина, с которой открываются новые окна; окно может изменить свою."
 
 #: data/io.github.sachesi.blink.gschema.xml:27
 msgid "Wrap long lines in the editor"
-msgstr "Переносити довгі рядки в редакторі"
+msgstr "Переносить длинные строки в редакторе"
 
 #: data/io.github.sachesi.blink.gschema.xml:31
 msgid "Show line numbers in the editor"
-msgstr "Показувати номери рядків у редакторі"
+msgstr "Показывать номера строк в редакторе"
 
 #: data/io.github.sachesi.blink.gschema.xml:35
 msgid "Highlight the line with the cursor in the editor"
-msgstr "Підсвічувати рядок із курсором у редакторі"
+msgstr "Подсвечивать строку с курсором в редакторе"
 
 #: data/io.github.sachesi.blink.gschema.xml:39
 msgid "Shade every other line in the editor"
-msgstr "Затіняти кожен другий рядок у редакторі"
+msgstr "Затенять каждую вторую строку в редакторе"
 
 #: data/io.github.sachesi.blink.gschema.xml:44
 msgid "Width of a tab in the editor, in spaces"
-msgstr "Ширина табуляції в редакторі, у пробілах"
+msgstr "Ширина табуляции в редакторе, в пробелах"
 
 #: data/io.github.sachesi.blink.gschema.xml:49
 msgid "Text size, in points above or below 11"
-msgstr "Розмір тексту, у пунктах більше або менше за 11"
+msgstr "Размер текста, в пунктах больше или меньше 11"
 
 #: data/io.github.sachesi.blink.gschema.xml:53
 msgid "Font family of the preview and of exported documents"
-msgstr "Шрифт перегляду та експортованих документів"
+msgstr "Шрифт предпросмотра и экспортированных документов"
 
 #: data/io.github.sachesi.blink.gschema.xml:54
 msgid "Empty for the system document font."
-msgstr "Порожньо — системний шрифт документів."
+msgstr "Пусто — системный шрифт документов."
 
 #: data/io.github.sachesi.blink.gschema.xml:58
 msgid "Font family of the editor and of code"
-msgstr "Шрифт редактора та коду"
+msgstr "Шрифт редактора и кода"
 
 #: data/io.github.sachesi.blink.gschema.xml:59
 msgid "Empty for the system monospace font."
-msgstr "Порожньо — системний моноширинний шрифт."
+msgstr "Пусто — системный моноширинный шрифт."
 
 #: data/io.github.sachesi.blink.gschema.xml:63
 msgid "Recently opened files, newest first"
-msgstr "Нещодавно відкриті файли, найновіші першими"
+msgstr "Недавно открытые файлы, сначала новые"
 
 #: data/io.github.sachesi.blink.gschema.xml:67
 msgid "Window size"
-msgstr "Розмір вікна"
+msgstr "Размер окна"
 
 #: data/io.github.sachesi.blink.gschema.xml:71
 msgid "Window maximized"
-msgstr "Вікно розгорнуто"
+msgstr "Окно развёрнуто"
 
 #: data/io.github.sachesi.blink.metainfo.xml:9
 msgid ""
@@ -122,35 +123,35 @@ msgid ""
 "up for recovery after a crash, and never written over a change another "
 "program made to the file."
 msgstr ""
-"Blink — редактор Markdown для GNOME, створений на GTK 4 і libadwaita. Він "
-"показує документ як початковий текст, як відтворений текст або обидва поруч "
-"і береже незбережену роботу: зміни зберігаються у файл під час набору, "
-"резервуються для відновлення після збою і ніколи не записуються поверх змін, "
-"які внесла до файлу інша програма."
+"Blink — редактор Markdown для GNOME, созданный на GTK 4 и libadwaita. Он "
+"показывает документ как исходный текст, как отформатированный текст или оба "
+"рядом и бережёт несохранённую работу: изменения сохраняются в файл по мере "
+"набора, копируются для восстановления после сбоя и никогда не записываются "
+"поверх изменений, сделанных в файле другой программой."
 
 #: data/io.github.sachesi.blink.metainfo.xml:11
 msgid ""
 "Rendered preview with tables, task lists, footnotes, images from the "
 "document's folder and syntax-coloured code blocks"
 msgstr ""
-"Перегляд із таблицями, списками завдань, виносками, зображеннями з теки "
-"документа та блоками коду з підсвічуванням синтаксису"
+"Предпросмотр с таблицами, списками задач, сносками, изображениями из папки "
+"документа и подсветкой синтаксиса в блоках кода"
 
 #: data/io.github.sachesi.blink.metainfo.xml:12
 msgid "Documents in tabs, which can be dragged out into windows of their own"
-msgstr "Документи у вкладках, які можна перетягнути в окремі вікна"
+msgstr "Документы во вкладках, которые можно перетащить в отдельные окна"
 
 #: data/io.github.sachesi.blink.metainfo.xml:13
 msgid "Find and replace in the source, and find in the rendered text"
-msgstr "Пошук і заміна в початковому тексті та пошук у відтвореному тексті"
+msgstr "Поиск и замена в исходном тексте и поиск в отформатированном"
 
 #: data/io.github.sachesi.blink.metainfo.xml:14
 msgid "Focus mode, full screen with nothing but the text"
-msgstr "Режим фокусування: повний екран і нічого, крім тексту"
+msgstr "Режим фокусировки: полный экран и ничего, кроме текста"
 
 #: data/io.github.sachesi.blink.metainfo.xml:15
 msgid "Export to a standalone HTML file or to PDF"
-msgstr "Експорт в окремий файл HTML або в PDF"
+msgstr "Экспорт в самостоятельный файл HTML или в PDF"
 
 #: data/io.github.sachesi.blink.metainfo.xml:44
 msgid ""
@@ -161,12 +162,12 @@ msgid ""
 "their folders. Preferences can open every document in a window of its own "
 "instead."
 msgstr ""
-"Документи відкриваються у вкладках, які можна перетягнути в окремі вікна або "
-"перемістити через «Перемістити в нове вікно»; вузьке вікно показує свої "
-"вкладки в огляді. Уже відкритий файл виводиться наперед, навіть якщо його "
-"відкрито через символьне посилання, а дві вкладки файлів з однаковою назвою "
-"показують ще й свої теки. У параметрах можна відкривати кожен документ в "
-"окремому вікні."
+"Документы открываются во вкладках, которые можно перетащить в отдельные окна "
+"или переместить через «Переместить в новое окно»; узкое окно показывает свои "
+"вкладки в обзоре. Уже открытый файл выводится на передний план, даже если "
+"открыт через символьную ссылку, а у двух вкладок с файлами одного имени "
+"показываются и их папки. В параметрах можно открывать каждый документ в "
+"отдельном окне."
 
 #: data/io.github.sachesi.blink.metainfo.xml:45
 msgid ""
@@ -177,12 +178,11 @@ msgid ""
 "and the preview. The editor shades every other line and highlights the "
 "current one."
 msgstr ""
-"Документи експортуються в PDF на сторінках A4 з номерами сторінок, "
-"посиланнями та змістом, а експорт в HTML має таке ж компонування, як "
-"перегляд, із вбудованими зображеннями та кодом, розфарбованим для світлого й "
-"темного стилю. Можна вибрати шрифти перегляду та коду, а також ширину "
-"редактора й перегляду. Редактор затіняє кожен другий рядок і підсвічує "
-"поточний."
+"Документы экспортируются в PDF на страницах A4 с номерами страниц, ссылками "
+"и оглавлением, а экспорт в HTML свёрстан как предпросмотр, со встроенными "
+"изображениями и кодом, раскрашенным для светлого и тёмного стиля. Можно "
+"выбрать шрифты предпросмотра и кода, а также ширину редактора и "
+"предпросмотра. Редактор затеняет каждую вторую строку и подсвечивает текущую."
 
 #: data/io.github.sachesi.blink.metainfo.xml:46
 msgid ""
@@ -194,17 +194,18 @@ msgid ""
 "once the tab is selected. Files dropped on the text of a document open, and "
 "restored backups are backed up again before the old backup is removed."
 msgstr ""
-"Текст можна копіювати з блоків коду та клітинок таблиць у перегляді, широкі "
-"таблиці прокручуються замість розривати слова, а рядок заголовка таблиці "
-"підфарбовано. Повторно відображаються лише змінені частини документа, а "
-"зображення декодуються у фоні. Запитання про файл тепер називають його, а "
-"про зміну на диску файлу у невидимій вкладці буде запитано, щойно вкладку "
-"вибрано. Файли, перетягнуті на текст документа, відкриваються, а відновлені "
-"резервні копії зберігаються знову перед вилученням старої копії."
+"Текст можно копировать из блоков кода и ячеек таблиц в предпросмотре, "
+"широкие таблицы прокручиваются, а не разрывают слова, а строка заголовка "
+"таблицы подкрашена. Заново отображаются только изменённые части документа, а "
+"изображения декодируются в фоне. Вопросы о файле теперь называют его, а об "
+"изменении на диске файла в невидимой вкладке спрашивается, как только "
+"вкладка выбрана. Файлы, перетащенные на текст документа, открываются, а "
+"восстановленные резервные копии сохраняются заново перед удалением старой "
+"копии."
 
 #: data/io.github.sachesi.blink.metainfo.xml:47
 msgid "Blink is translated into Russian."
-msgstr "Blink перекладено російською."
+msgstr "Blink переведён на русский язык."
 
 #: data/io.github.sachesi.blink.metainfo.xml:52
 msgid ""
@@ -215,12 +216,12 @@ msgid ""
 "the editor settings. Settings are kept in GSettings; those of earlier "
 "versions are not carried over."
 msgstr ""
-"Вікно перебудовано на власних віджетах libadwaita. Редагування, перегляд і "
-"розділений вигляд — три перемикачі в заголовку вікна, і розділений вигляд "
-"можна вибрати за розміру, з яким вікно відкривається вперше. Комбінації "
-"клавіш мають власне вікно з пошуком, а в параметрах стиль відокремлено від "
-"налаштувань редактора. Налаштування зберігаються в GSettings; налаштування "
-"попередніх версій не переносяться."
+"Окно перестроено на собственных виджетах libadwaita. Редактирование, "
+"предпросмотр и разделённый вид — три переключателя в заголовке окна, и "
+"разделённый вид можно выбрать при размере, с которым окно открывается "
+"впервые. У сочетаний клавиш есть собственное окно с поиском, а в параметрах "
+"стиль отделён от настроек редактора. Настройки хранятся в GSettings; "
+"настройки прежних версий не переносятся."
 
 #: data/io.github.sachesi.blink.metainfo.xml:53
 msgid ""
@@ -233,51 +234,51 @@ msgid ""
 "change of accent colour, and the split view button shows an icon that exists "
 "in the Adwaita icon theme."
 msgstr ""
-"Резервні копії незбереженої роботи тепер завжди можна відновити після збою: "
-"раніше близько половини з них втрачалися, бо не вдавалося записати їхній "
-"опис. Якщо закрити запит на відновлення, резервна копія лишається до "
-"наступного разу, а не видаляється. Збереження файлу, відкритого через "
-"символьне посилання, записує файл, на який воно вказує, і зберігає "
-"посилання. Комбінації для жирного, курсиву й посилання більше не змінюють "
-"прихований початковий текст під час перегляду, перегляд стежить за зміною "
-"кольору акценту, а кнопка розділеного вигляду показує значок, що є в темі "
-"значків Adwaita."
+"Резервные копии несохранённой работы теперь всегда можно восстановить после "
+"сбоя: раньше около половины из них терялось, потому что их запись не "
+"удавалось сохранить. Если закрыть вопрос о восстановлении, копия остаётся до "
+"следующего раза, а не удаляется. Сохранение файла, открытого через "
+"символьную ссылку, записывает файл, на который она указывает, и сохраняет "
+"ссылку. Сочетания для полужирного, курсива и ссылки больше не меняют скрытый "
+"исходный текст, пока показан предпросмотр, предпросмотр следует за сменой "
+"акцентного цвета, а кнопка разделённого вида показывает значок, который есть "
+"в теме значков Adwaita."
 
 #: data/io.github.sachesi.blink.metainfo.xml:58
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
 msgstr ""
-"Виправлення відтворення в перегляді: зображення, тематичні розриви, відступи "
-"списків і цитат, вбудований HTML, посилання в таблицях і виноски."
+"Исправления отображения предпросмотра: изображения, тематические разрывы, "
+"отступы списков и цитат, встроенный HTML, ссылки в таблицах и сноски."
 
 #: data/io.github.sachesi.blink.metainfo.xml:63
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."
 msgstr ""
-"Параметри, масштабування, довідка з комбінацій клавіш, перетягування та "
-"покращення доступності."
+"Параметры, масштаб, справка по сочетаниям клавиш, перетаскивание и улучшения "
+"доступности."
 
 #: src/application.rs:320
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
-msgstr "Знайдено незбережені зміни у «{}» з попереднього сеансу."
+msgstr "Найдены несохранённые изменения в «{}» из прошлого сеанса."
 
 #: src/application.rs:323
 #, no-c-format
 msgid "Recover Unsaved Document?"
-msgstr "Відновити незбережений документ?"
+msgstr "Восстановить несохранённый документ?"
 
 #: src/application.rs:326
 #, no-c-format
 msgid "Discard"
-msgstr "Відхилити"
+msgstr "Отбросить"
 
 #: src/application.rs:327
 #, no-c-format
 msgid "Restore"
-msgstr "Відновити"
+msgstr "Восстановить"
 
 #. Translators: put your name here, one per line, optionally with an email address.
 #: src/application.rs:373
@@ -289,44 +290,44 @@ msgstr "sachesi <xsachesi@pm.me>"
 #: src/config.rs:23
 #, no-c-format
 msgid "{} px"
-msgstr "{} пкс"
+msgstr "{} пикс."
 
 #: src/document.rs:307 src/document.rs:549 src/document/file.rs:434
 #: src/document/file.rs:735 src/document/recovery.rs:103 ui/window.ui:67
 #: ui/window.ui:115
 #, no-c-format
 msgid "Untitled Document"
-msgstr "Документ без назви"
+msgstr "Безымянный документ"
 
 #: src/document/file.rs:167 src/document/file.rs:212
 #, no-c-format
 msgid "Error Opening File"
-msgstr "Помилка відкриття файлу"
+msgstr "Ошибка открытия файла"
 
 #: src/document/file.rs:168 src/document/file.rs:240
 #, no-c-format
 msgid "Only local files are supported"
-msgstr "Підтримуються лише локальні файли"
+msgstr "Поддерживаются только локальные файлы"
 
 #: src/document/file.rs:215
 #, no-c-format
 msgid "Could not open \"{}\""
-msgstr "Не вдалося відкрити «{}»"
+msgstr "Не удалось открыть «{}»"
 
 #: src/document/file.rs:239 src/document/file.rs:276 src/document/file.rs:317
 #, no-c-format
 msgid "Error Saving File"
-msgstr "Помилка збереження файлу"
+msgstr "Ошибка сохранения файла"
 
 #: src/document/file.rs:279
 #, no-c-format
 msgid "Could not save \"{}\""
-msgstr "Не вдалося зберегти «{}»"
+msgstr "Не удалось сохранить «{}»"
 
 #: src/document/file.rs:302
 #, no-c-format
 msgid "Untitled.md"
-msgstr "Без назви.md"
+msgstr "Без названия.md"
 
 #: src/document/file.rs:318
 #, no-c-format
@@ -334,83 +335,83 @@ msgid ""
 "\"{}\" is open in another tab or window. Close it there first, or save under "
 "another name."
 msgstr ""
-"\"{}\" відкрито в іншій вкладці або вікні. Спершу закрийте його там або "
-"збережіть під іншою назвою."
+"«{}» открыт в другой вкладке или окне. Сначала закройте его там или "
+"сохраните под другим именем."
 
 #: src/document/file.rs:358
 #, no-c-format
 msgid "Untitled"
-msgstr "Без назви"
+msgstr "Без названия"
 
 #: src/document/file.rs:369
 #, no-c-format
 msgid "HTML Files"
-msgstr "Файли HTML"
+msgstr "Файлы HTML"
 
 #: src/document/file.rs:385
 #, no-c-format
 msgid "Error Exporting HTML"
-msgstr "Помилка експорту HTML"
+msgstr "Ошибка экспорта в HTML"
 
 #: src/document/file.rs:388 src/document/file.rs:414
 #, no-c-format
 msgid "Could not export the file"
-msgstr "Не вдалося експортувати файл"
+msgstr "Не удалось экспортировать файл"
 
 #: src/document/file.rs:397
 #, no-c-format
 msgid "PDF Files"
-msgstr "Файли PDF"
+msgstr "Файлы PDF"
 
 #: src/document/file.rs:411
 #, no-c-format
 msgid "Error Exporting PDF"
-msgstr "Помилка експорту PDF"
+msgstr "Ошибка экспорта в PDF"
 
 #: src/document/file.rs:450
 #, no-c-format
 msgid "Unsaved Changes"
-msgstr "Незбережені зміни"
+msgstr "Несохранённые изменения"
 
 #: src/document/file.rs:452
 #, no-c-format
 msgid "\"{}\" has unsaved changes. Do you want to close without saving?"
-msgstr "«{}» має незбережені зміни. Бажаєте закрити без збереження?"
+msgstr "В «{}» есть несохранённые изменения. Закрыть без сохранения?"
 
 #: src/document/file.rs:456
 #, no-c-format
 msgid "Cancel"
-msgstr "Скасувати"
+msgstr "Отмена"
 
 #: src/document/file.rs:457
 #, no-c-format
 msgid "Close Without Saving"
-msgstr "Закрити без збереження"
+msgstr "Закрыть без сохранения"
 
 #: src/document/file.rs:508
 #, no-c-format
 msgid "\"{}\" changed on disk — autosave paused"
-msgstr "«{}» змінено на диску — автозбереження призупинено"
+msgstr "«{}» изменён на диске — автосохранение приостановлено"
 
 #: src/document/file.rs:516
 #, no-c-format
 msgid "\"{}\" no longer exists"
-msgstr "«{}» більше не існує"
+msgstr "«{}» больше не существует"
 
 #: src/document/file.rs:525
 #, no-c-format
 msgid "Autosave of \"{}\" failed"
-msgstr "Не вдалося автоматично зберегти «{}»"
+msgstr "Не удалось автоматически сохранить «{}»"
 
 #: src/document/file.rs:656
 #, no-c-format
 msgid "\"{}\" was deleted on disk — save to keep your changes"
-msgstr "«{}» видалено з диска — збережіть, щоб не втратити зміни"
+msgstr "«{}» удалён с диска — сохраните, чтобы не потерять изменения"
 
 #: src/document/file.rs:670
 #, no-c-format
 msgid "File Changed on Disk"
-msgstr "Файл змінено на диску"
+msgstr "Файл изменён на диске"
 
 #: src/document/file.rs:672
 #, no-c-format
@@ -418,23 +419,23 @@ msgid ""
 "\"{}\" was modified by another program. Reload to discard your changes, or "
 "overwrite to keep them."
 msgstr ""
-"«{}» було змінено іншою програмою. Перезавантажте, щоб відхилити ваші зміни, "
-"або перезапишіть, щоб зберегти їх."
+"«{}» изменён другой программой. Перезагрузите, чтобы отбросить ваши "
+"изменения, или перезапишите, чтобы сохранить их."
 
 #: src/document/file.rs:675
 #, no-c-format
 msgid "Save As…"
-msgstr "Зберегти як…"
+msgstr "Сохранить как…"
 
 #: src/document/file.rs:676
 #, no-c-format
 msgid "Overwrite"
-msgstr "Перезаписати"
+msgstr "Перезаписать"
 
 #: src/document/file.rs:677
 #, no-c-format
 msgid "Reload"
-msgstr "Перезавантажити"
+msgstr "Перезагрузить"
 
 #: src/document/file.rs:720
 #, no-c-format
@@ -444,32 +445,32 @@ msgstr "ОК"
 #: src/document/file.rs:755
 #, no-c-format
 msgid "Markdown Files"
-msgstr "Файли Markdown"
+msgstr "Файлы Markdown"
 
 #: src/document/file.rs:760
 #, no-c-format
 msgid "All Files"
-msgstr "Усі файли"
+msgstr "Все файлы"
 
 #: src/document/file.rs:773
 #, no-c-format
 msgid "You do not have permission to access this file."
-msgstr "У вас немає дозволу на доступ до цього файлу."
+msgstr "У вас нет прав доступа к этому файлу."
 
 #: src/document/file.rs:774
 #, no-c-format
 msgid "The file no longer exists."
-msgstr "Файл більше не існує."
+msgstr "Файл больше не существует."
 
 #: src/document/file.rs:775
 #, no-c-format
 msgid "There is not enough space left on the disk."
-msgstr "На диску недостатньо вільного місця."
+msgstr "На диске недостаточно места."
 
 #: src/document/file.rs:776
 #, no-c-format
 msgid "The location is read-only."
-msgstr "Розташування доступне лише для читання."
+msgstr "Это расположение доступно только для чтения."
 
 #: src/document/preview.rs:327
 #, no-c-format
@@ -477,71 +478,71 @@ msgid "{} word"
 msgid_plural "{} words"
 msgstr[0] "{} слово"
 msgstr[1] "{} слова"
-msgstr[2] "{} слів"
+msgstr[2] "{} слов"
 
 #: src/document/preview.rs:332
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
 msgstr[0] "{} символ"
-msgstr[1] "{} символи"
-msgstr[2] "{} символів"
+msgstr[1] "{} символа"
+msgstr[2] "{} символов"
 
 #: src/document/recovery.rs:111
 #, no-c-format
 msgid "Backup of \"{}\" failed"
-msgstr "Не вдалося створити резервну копію «{}»"
+msgstr "Не удалось создать резервную копию «{}»"
 
 #: src/document/recovery.rs:177
 #, no-c-format
 msgid "Recovery Failed"
-msgstr "Не вдалося відновити"
+msgstr "Не удалось восстановить"
 
 #: src/document/recovery.rs:180
 #, no-c-format
 msgid "Could not read the recovered document"
-msgstr "Не вдалося прочитати відновлений документ"
+msgstr "Не удалось прочитать восстановленный документ"
 
 #: src/document/search.rs:197
 #, no-c-format
 msgid "{} match replaced"
 msgid_plural "{} matches replaced"
-msgstr[0] "Замінено {} збіг"
-msgstr[1] "Замінено {} збіги"
-msgstr[2] "Замінено {} збігів"
+msgstr[0] "Заменено {} совпадение"
+msgstr[1] "Заменено {} совпадения"
+msgstr[2] "Заменено {} совпадений"
 
 #: src/document/search.rs:234 src/document/search.rs:409
 #, no-c-format
 msgid "No matches"
-msgstr "Немає збігів"
+msgstr "Нет совпадений"
 
 #: src/document/search.rs:254 src/document/search.rs:414
 #, no-c-format
 msgid "{} of {} match"
 msgid_plural "{} of {} matches"
-msgstr[0] "{} з {} збігу"
-msgstr[1] "{} з {} збігів"
-msgstr[2] "{} з {} збігів"
+msgstr[0] "{} из {} совпадения"
+msgstr[1] "{} из {} совпадений"
+msgstr[2] "{} из {} совпадений"
 
 #: src/document/search.rs:406
 #, no-c-format
 msgid "Searching…"
-msgstr "Пошук…"
+msgstr "Поиск…"
 
 #: src/document/search.rs:419
 #, no-c-format
 msgid "{} matches"
-msgstr "{} збігів"
+msgstr "Совпадений: {}"
 
 #: src/markdown.rs:717
 #, no-c-format
 msgid "Copy Code"
-msgstr "Копіювати код"
+msgstr "Копировать код"
 
 #: src/window.rs:137
 #, no-c-format
 msgid "Code copied"
-msgstr "Код скопійовано"
+msgstr "Код скопирован"
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
@@ -552,47 +553,47 @@ msgstr "{} — {}"
 
 #: ui/document.ui:32
 msgid "Search"
-msgstr "Пошук"
+msgstr "Поиск"
 
 #: ui/document.ui:49
 msgid "Previous Match"
-msgstr "Попередній збіг"
+msgstr "Предыдущее совпадение"
 
 #: ui/document.ui:56
 msgid "Next Match"
-msgstr "Наступний збіг"
+msgstr "Следующее совпадение"
 
 #: ui/document.ui:63
 msgid "Close Search"
-msgstr "Закрити пошук"
+msgstr "Закрыть поиск"
 
 #: ui/document.ui:76 ui/document.ui:82 ui/shortcuts_dialog.ui:126
 msgid "Replace"
-msgstr "Замінити"
+msgstr "Заменить"
 
 #: ui/document.ui:83
 msgid "Replace Match"
-msgstr "Замінити збіг"
+msgstr "Заменить совпадение"
 
 #: ui/document.ui:89 ui/shortcuts_dialog.ui:132
 msgid "Replace All"
-msgstr "Замінити все"
+msgstr "Заменить все"
 
 #: ui/document.ui:90
 msgid "Replace All Matches"
-msgstr "Замінити всі збіги"
+msgstr "Заменить все совпадения"
 
 #: ui/document.ui:100
 msgid ""
 "Changes other programs make to this file will not be noticed until the next "
 "save"
 msgstr ""
-"Зміни, які інші програми вносять до цього файлу, буде помічено лише під час "
-"наступного збереження"
+"Изменения этого файла другими программами не будут замечены до следующего "
+"сохранения"
 
 #: ui/preferences_dialog.ui:15
 msgid "Appearance"
-msgstr "Вигляд"
+msgstr "Внешний вид"
 
 #: ui/preferences_dialog.ui:18
 msgid "Style"
@@ -600,55 +601,55 @@ msgstr "Стиль"
 
 #: ui/preferences_dialog.ui:22
 msgid "System"
-msgstr "Системна"
+msgstr "Системный"
 
 #: ui/preferences_dialog.ui:23
 msgid "Light"
-msgstr "Світла"
+msgstr "Светлый"
 
 #: ui/preferences_dialog.ui:24
 msgid "Dark"
-msgstr "Темна"
+msgstr "Тёмный"
 
 #: ui/preferences_dialog.ui:32 ui/window.ui:162
 msgid "Content Width"
-msgstr "Ширина вмісту"
+msgstr "Ширина содержимого"
 
 #: ui/preferences_dialog.ui:33
 msgid "The widest the editor and the preview get"
-msgstr "Найбільша ширина редактора та перегляду"
+msgstr "Наибольшая ширина редактора и предпросмотра"
 
 #: ui/preferences_dialog.ui:38 ui/preferences_dialog.ui:58
 msgid "Text Font"
-msgstr "Шрифт тексту"
+msgstr "Шрифт текста"
 
 #: ui/preferences_dialog.ui:39
 msgid "The preview and exported documents"
-msgstr "Перегляд та експортовані документи"
+msgstr "Предпросмотр и экспортированные документы"
 
 #: ui/preferences_dialog.ui:44 ui/preferences_dialog.ui:73
 msgid "Use System Font"
-msgstr "Використовувати системний шрифт"
+msgstr "Использовать системный шрифт"
 
 #: ui/preferences_dialog.ui:67 ui/preferences_dialog.ui:87
 msgid "Monospace Font"
-msgstr "Моноширинний шрифт"
+msgstr "Моноширинный шрифт"
 
 #: ui/preferences_dialog.ui:68
 msgid "The editor and code"
-msgstr "Редактор і код"
+msgstr "Редактор и код"
 
 #: ui/preferences_dialog.ui:98
 msgid "Windows"
-msgstr "Вікна"
+msgstr "Окна"
 
 #: ui/preferences_dialog.ui:101
 msgid "Open Documents in Tabs"
-msgstr "Відкривати документи у вкладках"
+msgstr "Открывать документы во вкладках"
 
 #: ui/preferences_dialog.ui:102
 msgid "Otherwise each document gets a window of its own"
-msgstr "Інакше кожен документ отримує власне вікно"
+msgstr "Иначе каждый документ получает собственное окно"
 
 #: ui/preferences_dialog.ui:109
 msgid "Editor"
@@ -656,47 +657,47 @@ msgstr "Редактор"
 
 #: ui/preferences_dialog.ui:112
 msgid "Wrap Text"
-msgstr "Перенесення тексту"
+msgstr "Переносить текст"
 
 #: ui/preferences_dialog.ui:117
 msgid "Line Numbers"
-msgstr "Номери рядків"
+msgstr "Номера строк"
 
 #: ui/preferences_dialog.ui:122
 msgid "Highlight Current Line"
-msgstr "Підсвічувати поточний рядок"
+msgstr "Подсвечивать текущую строку"
 
 #: ui/preferences_dialog.ui:127
 msgid "Shade Alternate Lines"
-msgstr "Затіняти рядки через один"
+msgstr "Затенять строки через одну"
 
 #: ui/preferences_dialog.ui:132
 msgid "Tab Width"
-msgstr "Ширина табуляції"
+msgstr "Ширина табуляции"
 
 #: ui/shortcuts_dialog.ui:12
 msgid "Documents"
-msgstr "Документи"
+msgstr "Документы"
 
 #: ui/shortcuts_dialog.ui:15
 msgid "New Document"
-msgstr "Новий документ"
+msgstr "Новый документ"
 
 #: ui/shortcuts_dialog.ui:21
 msgid "Open"
-msgstr "Відкрити"
+msgstr "Открыть"
 
 #: ui/shortcuts_dialog.ui:27
 msgid "Save"
-msgstr "Зберегти"
+msgstr "Сохранить"
 
 #: ui/shortcuts_dialog.ui:33
 msgid "Save As"
-msgstr "Зберегти як"
+msgstr "Сохранить как"
 
 #: ui/shortcuts_dialog.ui:39
 msgid "Close Document"
-msgstr "Закрити документ"
+msgstr "Закрыть документ"
 
 #: ui/shortcuts_dialog.ui:47
 msgid "Tabs"
@@ -704,31 +705,31 @@ msgstr "Вкладки"
 
 #: ui/shortcuts_dialog.ui:50
 msgid "Next Tab"
-msgstr "Наступна вкладка"
+msgstr "Следующая вкладка"
 
 #: ui/shortcuts_dialog.ui:56
 msgid "Previous Tab"
-msgstr "Попередня вкладка"
+msgstr "Предыдущая вкладка"
 
 #: ui/shortcuts_dialog.ui:62
 msgid "Move Tab Right"
-msgstr "Перемістити вкладку праворуч"
+msgstr "Переместить вкладку вправо"
 
 #: ui/shortcuts_dialog.ui:68
 msgid "Move Tab Left"
-msgstr "Перемістити вкладку ліворуч"
+msgstr "Переместить вкладку влево"
 
 #: ui/shortcuts_dialog.ui:74
 msgid "Go to Tab"
-msgstr "Перейти до вкладки"
+msgstr "Перейти к вкладке"
 
 #: ui/shortcuts_dialog.ui:82
 msgid "Editing"
-msgstr "Редагування"
+msgstr "Редактирование"
 
 #: ui/shortcuts_dialog.ui:85
 msgid "Bold"
-msgstr "Жирний"
+msgstr "Полужирный"
 
 #: ui/shortcuts_dialog.ui:91
 msgid "Italic"
@@ -736,136 +737,128 @@ msgstr "Курсив"
 
 #: ui/shortcuts_dialog.ui:97
 msgid "Link"
-msgstr "Посилання"
+msgstr "Ссылка"
 
 #: ui/shortcuts_dialog.ui:105
 msgid "Find and Replace"
-msgstr "Пошук і заміна"
+msgstr "Поиск и замена"
 
 #: ui/shortcuts_dialog.ui:108
 msgid "Find"
-msgstr "Знайти"
+msgstr "Найти"
 
 #: ui/shortcuts_dialog.ui:114
 msgid "Find Next"
-msgstr "Знайти далі"
+msgstr "Найти следующее"
 
 #: ui/shortcuts_dialog.ui:120
 msgid "Find Previous"
-msgstr "Знайти раніше"
+msgstr "Найти предыдущее"
 
 #: ui/shortcuts_dialog.ui:140
 msgid "View"
-msgstr "Вигляд"
+msgstr "Вид"
 
 #: ui/shortcuts_dialog.ui:143
 msgid "Zoom In"
-msgstr "Збільшити"
+msgstr "Увеличить"
 
 #: ui/shortcuts_dialog.ui:149
 msgid "Zoom Out"
-msgstr "Зменшити"
+msgstr "Уменьшить"
 
 #: ui/shortcuts_dialog.ui:155
 msgid "Reset Zoom"
-msgstr "Скинути масштаб"
+msgstr "Сбросить масштаб"
 
 #: ui/shortcuts_dialog.ui:161
 msgid "Focus Mode"
-msgstr "Режим фокусування"
+msgstr "Режим фокусировки"
 
 #: ui/shortcuts_dialog.ui:169
 msgid "General"
-msgstr "Загальне"
+msgstr "Общие"
 
 #: ui/shortcuts_dialog.ui:172
 msgid "Preferences"
-msgstr "Параметри"
+msgstr "Параметры"
 
 #: ui/shortcuts_dialog.ui:178
 msgid "Keyboard Shortcuts"
-msgstr "Комбінації клавіш"
+msgstr "Сочетания клавиш"
 
 #: ui/shortcuts_dialog.ui:184
 msgid "Quit"
-msgstr "Вийти"
+msgstr "Выйти"
 
 #: ui/window.ui:12
 msgid "_New Document"
-msgstr "_Новий документ"
+msgstr "_Новый документ"
 
 #: ui/window.ui:16
 msgid "Open _Recent"
-msgstr "Відкрити _нещодавні"
+msgstr "_Открыть недавние"
 
 #: ui/window.ui:19
 msgid "Save _As…"
-msgstr "Зберегти _як…"
+msgstr "Сохранить _как…"
 
 #: ui/window.ui:23
 msgid "_Export as HTML…"
-msgstr "_Експортувати в HTML…"
+msgstr "_Экспорт в HTML…"
 
 #: ui/window.ui:27
 msgid "Export as _PDF…"
-msgstr "Експортувати в _PDF…"
+msgstr "Экспорт в _PDF…"
 
 #: ui/window.ui:33
 msgid "_Focus Mode"
-msgstr "Режим _фокусування"
+msgstr "Режим _фокусировки"
 
 #: ui/window.ui:39
 msgid "_Preferences"
-msgstr "_Параметри"
+msgstr "_Параметры"
 
 #: ui/window.ui:43
 msgid "_Keyboard Shortcuts"
-msgstr "_Комбінації клавіш"
+msgstr "_Сочетания клавиш"
 
 #: ui/window.ui:47
 msgid "_About Blink"
-msgstr "_Про Blink"
+msgstr "О программе _Blink"
 
 #: ui/window.ui:55
 msgid "Move to _New Window"
-msgstr "Перемістити в _нове вікно"
+msgstr "Переместить в _новое окно"
 
 #: ui/window.ui:61
 msgid "_Close"
-msgstr "_Закрити"
+msgstr "_Закрыть"
 
 #: ui/window.ui:102
 msgid "Open Document"
-msgstr "Відкрити документ"
+msgstr "Открыть документ"
 
 #: ui/window.ui:109
 msgid "Save Document"
-msgstr "Зберегти документ"
+msgstr "Сохранить документ"
 
 #: ui/window.ui:121
 msgid "Main Menu"
-msgstr "Головне меню"
+msgstr "Главное меню"
 
 #: ui/window.ui:140 ui/window.ui:194
 msgid "Edit Document"
-msgstr "Редагувати документ"
+msgstr "Редактировать документ"
 
 #: ui/window.ui:147 ui/window.ui:201
 msgid "Preview Document"
-msgstr "Попередній перегляд"
+msgstr "Предпросмотр документа"
 
 #: ui/window.ui:154 ui/window.ui:208
 msgid "Split View"
-msgstr "Розділений перегляд"
+msgstr "Разделённый вид"
 
 #: ui/window.ui:232
 msgid "Drop Markdown file to open"
-msgstr "Перетягніть файл Markdown для відкриття"
-
-#, no-c-format
-#~ msgid "Opening another file will discard unsaved changes."
-#~ msgstr "Відкриття іншого файлу відкине незбережені зміни."
-
-#, no-c-format
-#~ msgid "Discard Changes"
-#~ msgstr "Відкинути зміни"
+msgstr "Перетащите файл Markdown, чтобы открыть"

@@ -44,6 +44,7 @@
         <p>Documents open in tabs, which can be dragged out into windows of their own or moved with "Move to New Window"; a narrow window shows its tabs in an overview. A file that is already open is brought forward, even when opened through a symbolic link, and two tabs of files of the same name also show their folders. Preferences can open every document in a window of its own instead.</p>
         <p>Documents export to PDF, set on A4 pages with page numbers, links and an outline, and the HTML export is laid out like the preview, with its images embedded and code coloured for the light and the dark style. The fonts of the preview and of code can be picked, and so can the width of the editor and the preview. The editor shades every other line and highlights the current one.</p>
         <p>Text can be copied from code blocks and table cells in the preview, wide tables scroll instead of breaking words, and the header row of a table is tinted. Only the parts of a document that changed are rendered again, and images are decoded in the background. Questions about a file now name it, and a change made on disk to a file in a tab out of sight is asked about once the tab is selected. Files dropped on the text of a document open, and restored backups are backed up again before the old backup is removed.</p>
+        <p>Blink is translated into Russian.</p>
       </description>
     </release>
     <release version="0.5.0" date="2026-09-13">
