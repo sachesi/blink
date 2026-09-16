@@ -429,7 +429,9 @@ fn end_block(buffer: &TextBuffer, iter: &mut gtk::TextIter) {
         return;
     }
     let start = buffer.iter_at_offset((iter.offset() - 2).max(0));
-    let tail = buffer.text(&start, iter, true);
+    // A slice, which unlike the text keeps a character for a widget: after a code block,
+    // the newline before it is not one after it.
+    let tail = buffer.slice(&start, iter, true);
     let present = tail.chars().rev().take_while(|c| *c == '\n').count();
     for _ in present..2 {
         buffer.insert(iter, "\n");
