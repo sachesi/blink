@@ -10,6 +10,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 /// The width images are decoded at, at most: the widest reading column at a display scale
@@ -1522,17 +1523,12 @@ struct RenderedBlock {
 
 impl RenderedBlock {
     /// Let go of what the block's output leaves in `buffer` once the output is deleted, and
-    /// keep in `released` whether its `<details>` elements were opened or closed in the
-    /// preview, as `details_open` has it.
-    fn release(
-        self,
-        buffer: &TextBuffer,
-        details_open: &HashMap<String, bool>,
-        released: &mut Vec<Option<bool>>,
-    ) {
+    /// keep in `released` the summary of each of its `<details>` elements and whether it was
+    /// opened or closed in the preview.
+    fn release(self, buffer: &TextBuffer, released: &mut Vec<(String, Option<bool>)>) {
         buffer.delete_mark(&self.start);
         for details in self.details {
-            released.push(details_open.get(&details.key).copied());
+            released.push((details.key, details.chosen.get()));
             buffer.tag_table().remove(&details.tag);
         }
     }
@@ -1554,6 +1550,8 @@ pub struct Details {
     pub key: String,
     /// Whether the element is open until it is opened or closed in the preview.
     pub open: bool,
+    /// Whether the element was opened or closed in the preview, which the copies of it share.
+    pub chosen: Rc<Cell<Option<bool>>>,
 }
 
 impl Details {
@@ -1572,12 +1570,9 @@ pub struct Rendered {
     blocks: Vec<RenderedBlock>,
     base_dir: Option<PathBuf>,
     definitions: Vec<String>,
-    /// Whether each `<details>` element was opened or closed in the preview, by its summary.
-    details_open: HashMap<String, bool>,
-    /// Whether the `<details>` elements of the output deleted since the last render were
-    /// opened or closed in the preview, in order. A rebuilt element whose summary changed is
-    /// known by its place among them.
-    released_details: Vec<Option<bool>>,
+    /// The summaries of the `<details>` elements of the output deleted since the last render,
+    /// in order, and whether each was opened or closed in the preview.
+    released_details: Vec<(String, Option<bool>)>,
 }
 
 impl Rendered {
@@ -1587,20 +1582,39 @@ impl Rendered {
         let (mut start, mut end) = buffer.bounds();
         delete_output(view, &mut start, &mut end);
         for block in self.blocks.drain(..) {
-            block.release(&buffer, &self.details_open, &mut self.released_details);
+            block.release(&buffer, &mut self.released_details);
         }
     }
+}
 
-    /// Show or hide the content of `details` in `view`, and remember it.
-    pub fn set_details_open(&mut self, view: &TextView, details: &Details, open: bool) {
-        let buffer = view.buffer();
-        details.tag.set_invisible(!open);
-        let start = buffer.iter_at_offset(details.content.start);
-        let end = buffer.iter_at_offset(details.content.end);
-        for_each_widget(&start, &end, |widget| widget.set_visible(open));
-        details.icon.set_icon_name(Some(details_icon(open)));
-        self.details_open.insert(details.key.clone(), open);
+/// Show or hide the content of `details` in `buffer`, and remember that it was chosen.
+pub fn set_details_open(buffer: &TextBuffer, details: &Details, open: bool) {
+    details.chosen.set(Some(open));
+    show_details(details, open);
+    let start = buffer.iter_at_offset(details.content.start);
+    let end = buffer.iter_at_offset(details.content.end);
+    show_widgets(&start, &end);
+}
+
+/// Show or hide the text of the content of `details`, and turn its triangle. An open element
+/// leaves its content as the elements around it have it, so that a closed one around it or
+/// in it still hides.
+fn show_details(details: &Details, open: bool) {
+    if open {
+        details.tag.set_invisible(false);
+        details.tag.set_property("invisible-set", false);
+    } else {
+        details.tag.set_invisible(true);
     }
+    details.icon.set_icon_name(Some(details_icon(open)));
+}
+
+/// Show the widgets between `start` and `end` whose place in the text shows, and hide the
+/// others, which the view would otherwise draw where the hidden text is.
+fn show_widgets(start: &gtk::TextIter, end: &gtk::TextIter) {
+    for_each_widget(start, end, |anchor, widget| {
+        widget.set_visible(!anchor.tags().iter().any(gtk::TextTag::is_invisible));
+    });
 }
 
 /// The triangle before the summary of an open or a closed `<details>` element. An icon, as
@@ -1625,8 +1639,12 @@ fn leads_to_summary(event: &Event) -> bool {
     }
 }
 
-/// Call `f` on each widget anchored between `start` and `end`.
-fn for_each_widget(start: &gtk::TextIter, end: &gtk::TextIter, mut f: impl FnMut(&gtk::Widget)) {
+/// Call `f` on each widget anchored between `start` and `end`, with where it is anchored.
+fn for_each_widget(
+    start: &gtk::TextIter,
+    end: &gtk::TextIter,
+    mut f: impl FnMut(&gtk::TextIter, &gtk::Widget),
+) {
     let mut from = *start;
     // Child widgets match the object replacement character.
     while let Some((anchor_start, anchor_end)) =
@@ -1634,7 +1652,7 @@ fn for_each_widget(start: &gtk::TextIter, end: &gtk::TextIter, mut f: impl FnMut
     {
         if let Some(anchor) = anchor_start.child_anchor() {
             for widget in anchor.widgets() {
-                f(&widget);
+                f(&anchor_start, &widget);
             }
         }
         from = anchor_end;
@@ -1656,6 +1674,8 @@ fn insert_summary(
     start_line(&buffer, iter);
     element.summary.start = iter.offset();
     element.icon.add_css_class("details-icon");
+    // Open, as the content shows until the element is ended.
+    element.icon.set_icon_name(Some(details_icon(true)));
     let anchor = buffer.create_child_anchor(iter);
     view.add_child_at_anchor(&element.icon, &anchor);
     buffer.insert(iter, " ");
@@ -1676,16 +1696,16 @@ fn end_summary(buffer: &TextBuffer, iter: &mut gtk::TextIter, open_details: &mut
     buffer.insert(iter, "\n");
 }
 
-/// End the innermost of `open_details` at `iter`, open or closed as `rendered` last had it.
-/// `released` holds whether the elements of the output this render replaces were opened or
-/// closed in the preview, and `ended` counts the elements this render has ended.
+/// End the innermost of `open_details` at `iter`, open or closed as it was left. `released`
+/// holds the elements of the output this render replaces that are not yet matched, and one
+/// with the same summary is the same element; an element without one is added to
+/// `unmatched`, to be matched once all are ended. Hiding the widgets is left to the caller.
 fn end_details(
     buffer: &TextBuffer,
     iter: &mut gtk::TextIter,
     open_details: &mut Vec<Details>,
-    details_open: &mut HashMap<String, bool>,
-    released: &[Option<bool>],
-    ended: &mut usize,
+    released: &mut [Option<(String, Option<bool>)>],
+    unmatched: &mut Vec<Details>,
 ) -> Option<Details> {
     let mut element = open_details.pop()?;
     // The content is hidden with the newline that ends it, as a line whose newline shows
@@ -1706,21 +1726,16 @@ fn end_details(
     let start = buffer.iter_at_offset(element.content.start);
     buffer.tag_table().add(&element.tag);
     buffer.apply_tag(&element.tag, &start, &end);
-    let chosen = details_open
-        .get(&element.key)
-        .copied()
-        .or(released.get(*ended).copied().flatten());
-    *ended += 1;
-    if let Some(chosen) = chosen {
-        details_open.insert(element.key.clone(), chosen);
+    let same = released
+        .iter_mut()
+        .find(|entry| entry.as_ref().is_some_and(|(key, _)| *key == element.key))
+        .and_then(Option::take);
+    match same {
+        Some((_, chosen)) => element.chosen.set(chosen),
+        None => unmatched.push(element.clone()),
     }
-    let open = chosen.unwrap_or(element.open);
-    element.tag.set_invisible(!open);
-    // Applying the tag left the iterators behind.
-    let start = buffer.iter_at_offset(element.content.start);
-    let end = buffer.iter_at_offset(element.content.end);
-    for_each_widget(&start, &end, |widget| widget.set_visible(open));
-    element.icon.set_icon_name(Some(details_icon(open)));
+    show_details(&element, element.chosen.get().unwrap_or(element.open));
+    // Applying the tag left the iterator behind.
     *iter = buffer.iter_at_offset(iter_offset);
     Some(element)
 }
@@ -1732,7 +1747,7 @@ fn end_details(
 /// pointer unmaps it in the middle of the deletion, and GTK then reads the half-changed
 /// buffer to tell the view that the pointer is back over it, and crashes.
 fn delete_output(view: &TextView, start: &mut gtk::TextIter, end: &mut gtk::TextIter) {
-    for_each_widget(start, end, |widget| view.remove(widget));
+    for_each_widget(start, end, |_, widget| view.remove(widget));
     view.buffer().delete(start, end);
 }
 
@@ -1759,32 +1774,45 @@ fn definitions(link_definitions: &RefDefs, events: &[(Event, Range<usize>)]) -> 
 }
 
 /// The top-level blocks of a document, as the range of their events and of their source.
-/// A `<details>` element is one block with all it holds, which is shown or hidden together.
+/// A `<details>` element is one block with all it holds, which is shown or hidden together;
+/// one that is not closed, as while it is typed, holds nothing but itself.
 fn top_level_blocks(events: &[(Event, Range<usize>)]) -> Vec<(Range<usize>, Range<usize>)> {
     let mut blocks = Vec::new();
+    let mut first = 0;
+    while first < events.len() {
+        let rest = &events[first..];
+        let length = block_length(rest, true)
+            .or_else(|| block_length(rest, false))
+            .unwrap_or(rest.len());
+        let last = &events[first + length - 1].1;
+        blocks.push((
+            first..first + length,
+            events[first].1.start.min(last.start)..last.end,
+        ));
+        first += length;
+    }
+    blocks
+}
+
+/// How many events the first top-level block of `events` has, with the `<details>` elements
+/// it opens if `with_details`, or `None` if it does not end.
+fn block_length(events: &[(Event, Range<usize>)], with_details: bool) -> Option<usize> {
     let mut depth = 0usize;
     let mut details = 0isize;
-    let mut first = 0;
-    for (index, (event, range)) in events.iter().enumerate() {
-        if depth == 0 && details == 0 {
-            first = index;
-        }
+    for (index, (event, _)) in events.iter().enumerate() {
         match event {
             Event::Start(_) => depth += 1,
             Event::End(_) => depth = depth.saturating_sub(1),
-            Event::Html(chunk) | Event::InlineHtml(chunk) => {
+            Event::Html(chunk) | Event::InlineHtml(chunk) if with_details => {
                 details = (details + details_depth_change(chunk)).max(0);
             }
             _ => {}
         }
         if depth == 0 && details == 0 {
-            blocks.push((
-                first..index + 1,
-                events[first].1.start.min(range.start)..range.end,
-            ));
+            return Some(index + 1);
         }
     }
-    blocks
+    None
 }
 
 /// How many blocks at the start and at the end of `new` are the same as in `old`, without
@@ -1845,14 +1873,14 @@ pub fn render_markdown(
     let mut removed_end = block_start(removed.end);
     delete_output(view, &mut iter, &mut removed_end);
     for block in rendered.blocks.drain(removed) {
-        block.release(
-            &buffer,
-            &rendered.details_open,
-            &mut rendered.released_details,
-        );
+        block.release(&buffer, &mut rendered.released_details);
     }
-    let released_details = std::mem::take(&mut rendered.released_details);
-    let mut ended_details = 0;
+    let mut released_details: Vec<_> = std::mem::take(&mut rendered.released_details)
+        .into_iter()
+        .map(Some)
+        .collect();
+    // The rebuilt `<details>` elements that no released one has the summary of.
+    let mut unmatched_details = Vec::new();
     let insert_offset = iter.offset();
     // Text inserted where a tag starts takes the tag, so the output of the blocks after the
     // rebuilt ones sheds its tags until the rebuilt output is in, and then takes them back.
@@ -1914,12 +1942,6 @@ pub fn render_markdown(
     // The tag of the title of the alert just started, until the title's paragraph ends.
     let mut alert_title: Option<&'static str> = None;
     let mut details: Vec<Details> = Vec::new();
-    // The `<details>` elements open around the text being rendered, and whether the text is
-    // their summary.
-    let mut open_details: Vec<Details> = Vec::new();
-    let mut in_summary = false;
-    // A `<details>` element started, and its summary may still come.
-    let mut awaiting_summary = false;
 
     let middle = &blocks[prefix..blocks.len() - suffix];
     let mut events = events
@@ -1928,6 +1950,12 @@ pub fn render_markdown(
     for (block_events, source) in middle {
         let start_offset = iter.offset();
         let start = buffer.create_mark(None, &iter, true);
+        // The `<details>` elements open around the text being rendered, and whether the text
+        // is their summary. An element is closed within its block, or not at all.
+        let mut open_details: Vec<Details> = Vec::new();
+        let mut in_summary = false;
+        // A `<details>` element started, and its summary may still come.
+        let mut awaiting_summary = false;
         for (event, event_range) in events.by_ref().take(block_events.len()) {
             // Content before any summary is summed up as GitHub sums it up.
             if awaiting_summary && !leads_to_summary(&event) {
@@ -2366,6 +2394,7 @@ pub fn render_markdown(
                                     tag: gtk::TextTag::new(None),
                                     key: String::new(),
                                     open,
+                                    chosen: Rc::default(),
                                 });
                                 awaiting_summary = true;
                             }
@@ -2406,9 +2435,8 @@ pub fn render_markdown(
                                     &buffer,
                                     &mut iter,
                                     &mut open_details,
-                                    &mut rendered.details_open,
-                                    &released_details,
-                                    &mut ended_details,
+                                    &mut released_details,
+                                    &mut unmatched_details,
                                 ) {
                                     details.push(element.shifted(-start_offset));
                                 }
@@ -2533,6 +2561,21 @@ pub fn render_markdown(
     }
 
     let following_offset = iter.offset();
+    // A rebuilt element whose summary changed is known by its place among those whose
+    // summary did.
+    for (element, (_, chosen)) in unmatched_details
+        .iter()
+        .zip(released_details.into_iter().flatten())
+    {
+        if let Some(chosen) = chosen {
+            element.chosen.set(Some(chosen));
+            show_details(element, chosen);
+        }
+    }
+    show_widgets(
+        &buffer.iter_at_offset(insert_offset),
+        &buffer.iter_at_offset(following_offset),
+    );
     for (tag, length) in &following_tags {
         let start = buffer.iter_at_offset(following_offset);
         let end = buffer.iter_at_offset(following_offset + length);
@@ -3001,6 +3044,20 @@ mod tests {
             html_parts("<detailsx>")
                 .iter()
                 .all(|part| matches!(part, HtmlPart::Text(_)))
+        );
+    }
+
+    #[test]
+    fn an_unclosed_details_element_leaves_the_blocks_after_it() {
+        let text = "<details>\n<summary>S</summary>\n\nInside\n\nAfter\n";
+        let events = super::events(text);
+        let sources: Vec<&str> = top_level_blocks(&events)
+            .into_iter()
+            .map(|(_, source)| text[source].trim_end())
+            .collect();
+        assert_eq!(
+            sources,
+            ["<details>\n<summary>S</summary>", "Inside", "After"]
         );
     }
 

@@ -61,16 +61,16 @@ impl BlinkDocument {
             #[weak(rename_to = document)]
             self,
             move |_, _, x, y| {
-                if let Some(details) = document.details_at(x, y) {
-                    let imp = document.imp();
+                // A link in a summary is followed rather than opening the element.
+                if let Some(target) = document.link_at(x, y) {
+                    document.follow_link(target);
+                } else if let Some(details) = document.details_at(x, y) {
                     let open = details.tag.is_invisible();
-                    imp.preview.rendered.borrow_mut().set_details_open(
-                        &imp.preview_view,
+                    markdown::set_details_open(
+                        &document.imp().preview_view.buffer(),
                         &details,
                         open,
                     );
-                } else if let Some(target) = document.link_at(x, y) {
-                    document.follow_link(target);
                 }
             }
         ));
