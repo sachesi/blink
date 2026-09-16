@@ -111,9 +111,10 @@ the link stays.
 column as wide as the window's, the text and monospace fonts, and code coloured for the
 light or the dark style, whichever the browser asks for. Images from the document's folder
 are embedded in the page, web images are left as addresses, and any other image shows its
-alternative text. Raw HTML in the document is left out, but for `<img>`, taken as a
-Markdown image, and `<details>` and `<summary>`, and so are link addresses other than web and mail addresses and relative
-paths, so the page runs no script when a browser opens it. Headings carry the names that
+alternative text. Raw HTML in the document is left out, except for `<img>`, taken as a
+Markdown image, and for `<details>` and `<summary>`, written without their attributes but
+`open`. Link addresses other than web and mail addresses and relative paths are left out
+too, so the page runs no script when a browser opens it. Headings carry the names that
 links to `#a-heading` point at.
 
 "Export as PDF…" sets the document on A4 pages in the same fonts, with page numbers and code
