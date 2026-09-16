@@ -2,10 +2,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: blink 0.6.0\n"
+"Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 18:03+0300\n"
-"PO-Revision-Date: 2026-09-13 23:50+0300\n"
+"POT-Creation-Date: 2026-09-16 23:03+0300\n"
+"PO-Revision-Date: 2026-09-16 23:10+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
 "Language: uk\n"
@@ -154,6 +154,52 @@ msgstr "Експорт в окремий файл HTML або в PDF"
 
 #: data/io.github.sachesi.blink.metainfo.xml:44
 msgid ""
+"The preview renders more of GitHub's Markdown. The boxes of task lists can "
+"be ticked, changing the source as typing would, and Ctrl+Z in the preview "
+"takes it back. Emoji shortcodes show as emoji, footnotes and their "
+"references link to each other, alerts are titled and coloured as on GitHub, "
+"and a details element opens and closes when its summary is clicked."
+msgstr ""
+"Перегляд відображає більше з Markdown GitHub. Поля списків завдань можна "
+"позначати, що змінює джерело так само, як це зробило б набирання, а Ctrl+Z у "
+"перегляді скасовує це. Скорочення емодзі показуються як емодзі, виноски та "
+"посилання на них ведуть одне до одного, сповіщення мають заголовки й "
+"кольори, як на GitHub, а елемент details відкривається й закривається "
+"клацанням на його підсумку."
+
+#: data/io.github.sachesi.blink.metainfo.xml:45
+msgid ""
+"Math written between dollar signs is typeset in the preview, in table cells, "
+"and in both exports, and letters that KaTeX's fonts lack, such as Cyrillic, "
+"are drawn in a font of the system. Raw HTML keeps its text styles, the "
+"widths of its images and the alignment of its paragraphs and divisions, so a "
+"README header centred with a div shows centred."
+msgstr ""
+"Математика між знаками долара верстається в перегляді, у клітинках таблиць і "
+"в обох експортах, а літери, яких немає у шрифтах KaTeX, як-от кирилиця, "
+"малюються системним шрифтом. Сирий HTML зберігає стилі тексту, ширину "
+"зображень і вирівнювання абзаців та блоків, тож заголовок README, "
+"центрований через div, показується по центру."
+
+#: data/io.github.sachesi.blink.metainfo.xml:46
+msgid ""
+"Quotes are rounded boxes in the preview, the PDF and the HTML export alike. "
+"Text in table cells and code blocks is copied with Ctrl+C or from their "
+"right-click menu. The PDF keeps the words of wide tables whole, breaks "
+"Chinese and Japanese text in tables between characters, and keeps code "
+"blocks and headings together with what follows across pages. Emoji that no "
+"installed font has show as their shortcodes."
+msgstr ""
+"Цитати однаково мають вигляд заокруглених блоків у перегляді, PDF та "
+"експорті в HTML. Текст із клітинок таблиць і блоків коду копіюється через "
+"Ctrl+C або з їхнього контекстного меню. PDF не розриває слова широких "
+"таблиць, переносить китайський і японський текст у таблицях між символами та "
+"не відокремлює блоки коду й заголовки від наступного тексту на межі "
+"сторінок. Емодзі, яких немає в жодному встановленому шрифті, показуються як "
+"їхні скорочення."
+
+#: data/io.github.sachesi.blink.metainfo.xml:51
+msgid ""
 "Documents open in tabs, which can be dragged out into windows of their own "
 "or moved with \"Move to New Window\"; a narrow window shows its tabs in an "
 "overview. A file that is already open is brought forward, even when opened "
@@ -168,7 +214,7 @@ msgstr ""
 "показують ще й свої теки. У параметрах можна відкривати кожен документ в "
 "окремому вікні."
 
-#: data/io.github.sachesi.blink.metainfo.xml:45
+#: data/io.github.sachesi.blink.metainfo.xml:52
 msgid ""
 "Documents export to PDF, set on A4 pages with page numbers, links and an "
 "outline, and the HTML export is laid out like the preview, with its images "
@@ -184,7 +230,7 @@ msgstr ""
 "редактора й перегляду. Редактор затіняє кожен другий рядок і підсвічує "
 "поточний."
 
-#: data/io.github.sachesi.blink.metainfo.xml:46
+#: data/io.github.sachesi.blink.metainfo.xml:53
 msgid ""
 "Text can be copied from code blocks and table cells in the preview, wide "
 "tables scroll instead of breaking words, and the header row of a table is "
@@ -202,7 +248,7 @@ msgstr ""
 "вибрано. Файли, перетягнуті на текст документа, відкриваються, а відновлені "
 "резервні копії зберігаються знову перед вилученням старої копії."
 
-#: data/io.github.sachesi.blink.metainfo.xml:47
+#: data/io.github.sachesi.blink.metainfo.xml:54
 msgid ""
 "A font picked in Preferences that is no longer installed gives way to the "
 "system font, and backups left by a crash are offered even when another "
@@ -213,11 +259,11 @@ msgstr ""
 "навіть тоді, коли ідентифікатор процесу, що аварійно завершився, зайняв "
 "інший процес."
 
-#: data/io.github.sachesi.blink.metainfo.xml:48
+#: data/io.github.sachesi.blink.metainfo.xml:55
 msgid "Blink is translated into Russian."
 msgstr "Blink перекладено російською."
 
-#: data/io.github.sachesi.blink.metainfo.xml:53
+#: data/io.github.sachesi.blink.metainfo.xml:60
 msgid ""
 "The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
 "the split view are three toggles in the header bar, and the split view can "
@@ -233,7 +279,7 @@ msgstr ""
 "налаштувань редактора. Налаштування зберігаються в GSettings; налаштування "
 "попередніх версій не переносяться."
 
-#: data/io.github.sachesi.blink.metainfo.xml:54
+#: data/io.github.sachesi.blink.metainfo.xml:61
 msgid ""
 "Backups of unsaved work can be recovered after a crash every time: about "
 "half of them used to be lost, because their record could not be written. "
@@ -254,7 +300,7 @@ msgstr ""
 "кольору акценту, а кнопка розділеного вигляду показує значок, що є в темі "
 "значків Adwaita."
 
-#: data/io.github.sachesi.blink.metainfo.xml:59
+#: data/io.github.sachesi.blink.metainfo.xml:66
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
@@ -262,7 +308,7 @@ msgstr ""
 "Виправлення відтворення в перегляді: зображення, тематичні розриви, відступи "
 "списків і цитат, вбудований HTML, посилання в таблицях і виноски."
 
-#: data/io.github.sachesi.blink.metainfo.xml:64
+#: data/io.github.sachesi.blink.metainfo.xml:71
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."
@@ -302,7 +348,7 @@ msgstr "sachesi <xsachesi@pm.me>"
 msgid "{} px"
 msgstr "{} пкс"
 
-#: src/document.rs:307 src/document.rs:549 src/document/file.rs:434
+#: src/document.rs:309 src/document.rs:554 src/document/file.rs:434
 #: src/document/file.rs:735 src/document/recovery.rs:103 ui/window.ui:67
 #: ui/window.ui:115
 #, no-c-format
@@ -482,12 +528,12 @@ msgstr "На диску недостатньо вільного місця."
 msgid "The location is read-only."
 msgstr "Розташування доступне лише для читання."
 
-#: src/document/preview.rs:331
+#: src/document/preview.rs:406
 #, no-c-format
 msgid "The linked file does not exist"
 msgstr "Файл, на який вказує посилання, не існує"
 
-#: src/document/preview.rs:483
+#: src/document/preview.rs:582
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
@@ -495,7 +541,7 @@ msgstr[0] "{} слово"
 msgstr[1] "{} слова"
 msgstr[2] "{} слів"
 
-#: src/document/preview.rs:488
+#: src/document/preview.rs:587
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -551,39 +597,39 @@ msgstr "{} збігів"
 
 #. Translators: the titles of the five kinds of alert a document can hold, as GitHub
 #. shows them over a note, a tip, an important note, a warning and a caution.
-#: src/markdown.rs:528
+#: src/markdown.rs:733
 #, no-c-format
 msgid "Note"
 msgstr "Примітка"
 
-#: src/markdown.rs:529
+#: src/markdown.rs:734
 #, no-c-format
 msgid "Tip"
 msgstr "Порада"
 
-#: src/markdown.rs:530
+#: src/markdown.rs:735
 #, no-c-format
 msgid "Important"
 msgstr "Важливо"
 
-#: src/markdown.rs:531
+#: src/markdown.rs:736
 #, no-c-format
 msgid "Warning"
 msgstr "Попередження"
 
-#: src/markdown.rs:532
+#: src/markdown.rs:737
 #, no-c-format
 msgid "Caution"
 msgstr "Обережно"
 
-#: src/markdown.rs:1368
+#: src/markdown.rs:1962
 #, no-c-format
 msgid "Copy Code"
 msgstr "Копіювати код"
 
 #. Translators: the summary of a part of a document that is shown and hidden
 #. by clicking it, when the document gives it none.
-#: src/markdown.rs:1937 src/markdown.rs:2357
+#: src/markdown.rs:2589 src/markdown.rs:3192
 #, no-c-format
 msgid "Details"
 msgstr "Подробиці"

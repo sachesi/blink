@@ -39,6 +39,13 @@
     <mediatype>text/markdown</mediatype>
   </provides>
   <releases>
+    <release version="0.7.0" date="2026-09-16">
+      <description>
+        <p>The preview renders more of GitHub's Markdown. The boxes of task lists can be ticked, changing the source as typing would, and Ctrl+Z in the preview takes it back. Emoji shortcodes show as emoji, footnotes and their references link to each other, alerts are titled and coloured as on GitHub, and a details element opens and closes when its summary is clicked.</p>
+        <p>Math written between dollar signs is typeset in the preview, in table cells, and in both exports, and letters that KaTeX's fonts lack, such as Cyrillic, are drawn in a font of the system. Raw HTML keeps its text styles, the widths of its images and the alignment of its paragraphs and divisions, so a README header centred with a div shows centred.</p>
+        <p>Quotes are rounded boxes in the preview, the PDF and the HTML export alike. Text in table cells and code blocks is copied with Ctrl+C or from their right-click menu. The PDF keeps the words of wide tables whole, breaks Chinese and Japanese text in tables between characters, and keeps code blocks and headings together with what follows across pages. Emoji that no installed font has show as their shortcodes.</p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-09-16">
       <description>
         <p>Documents open in tabs, which can be dragged out into windows of their own or moved with "Move to New Window"; a narrow window shows its tabs in an overview. A file that is already open is brought forward, even when opened through a symbolic link, and two tabs of files of the same name also show their folders. Preferences can open every document in a window of its own instead.</p>
