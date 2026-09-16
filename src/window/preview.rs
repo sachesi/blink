@@ -135,7 +135,12 @@ impl BlinkWindow {
 
     fn render_preview(&self) {
         let imp = self.imp();
+        // This render covers any change still waiting for one.
+        if let Some(id) = imp.preview.render_timer.take() {
+            id.remove();
+        }
         let text = buffer_text(&*imp.edit_buffer);
+        self.update_status(&text);
         let hadj = imp.preview_scroll.hadjustment();
         let base = imp
             .document
@@ -186,9 +191,8 @@ impl BlinkWindow {
         imp.preview.render_timer.replace(Some(id));
     }
 
-    fn render_tick(&self) {
-        let imp = self.imp();
-        let text = buffer_text(&*imp.edit_buffer);
+    /// The word and character count in the status bar.
+    fn update_status(&self, text: &str) {
         let chars = text.chars().count();
         let words = text.split_whitespace().count();
         let status = format!(
@@ -204,8 +208,11 @@ impl BlinkWindow {
                 1
             )
         );
-        imp.status_label.set_label(&status);
+        self.imp().status_label.set_label(&status);
+    }
 
+    fn render_tick(&self) {
+        let imp = self.imp();
         if self.preview_visible() {
             // Rendering replaces the whole buffer, so the preview is briefly much shorter
             // and its position is clamped. The editor must not follow that, and the preview
@@ -225,6 +232,7 @@ impl BlinkWindow {
                 move || win.set_ratio(&vadj, ratio)
             ));
         } else {
+            self.update_status(&buffer_text(&*imp.edit_buffer));
             imp.preview.dirty.set(true);
         }
     }
