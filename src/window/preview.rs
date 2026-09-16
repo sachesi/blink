@@ -5,6 +5,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::ngettext;
 use gtk::{gio, glib};
+use sourceview5::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::time::Duration;
@@ -26,6 +27,8 @@ pub struct State {
     pub links: RefCell<Vec<(i32, i32, String)>>,
     /// Code blocks and table cells, whose text lives outside the preview buffer.
     pub surfaces: RefCell<Vec<markdown::Surface>>,
+    /// The blocks the preview buffer holds, which the next render keeps if unchanged.
+    pub rendered: RefCell<markdown::Rendered>,
 }
 
 impl BlinkWindow {
@@ -97,50 +100,63 @@ impl BlinkWindow {
     }
 
     /// Clear the selections of the preview's code blocks and table cells, except the
-    /// one at `keep`.
-    pub(super) fn clear_surface_selections(&self, keep: Option<usize>) {
-        for (index, surface) in self.imp().preview.surfaces.borrow().iter().enumerate() {
-            if keep == Some(index) {
-                continue;
-            }
+    /// one of `keep`.
+    pub(super) fn clear_surface_selections(&self, keep: Option<&glib::Object>) {
+        for surface in self.imp().preview.surfaces.borrow().iter() {
             match surface {
                 markdown::Surface::Code { buffer, .. } => {
-                    let insert = buffer.iter_at_offset(buffer.cursor_position());
-                    buffer.select_range(&insert, &insert);
+                    if keep != Some(buffer.upcast_ref()) {
+                        let insert = buffer.iter_at_offset(buffer.cursor_position());
+                        buffer.select_range(&insert, &insert);
+                    }
                 }
-                markdown::Surface::Cell { label, .. } => label.select_region(-1, -1),
+                markdown::Surface::Cell { label, .. } => {
+                    if keep != Some(label.upcast_ref()) {
+                        label.select_region(-1, -1);
+                    }
+                }
             }
         }
     }
 
     /// A selection starting in a code block or table cell replaces every other one.
-    fn watch_surface_selections(&self) {
-        for (index, surface) in self.imp().preview.surfaces.borrow().iter().enumerate() {
+    fn watch_surface_selections(&self, surfaces: &[markdown::Surface]) {
+        for surface in surfaces {
             let select = glib::clone!(
                 #[weak(rename_to = win)]
                 self,
-                move || {
+                move |source: &glib::Object| {
                     let buffer = win.imp().preview_view.buffer();
                     let insert = buffer.iter_at_offset(buffer.cursor_position());
                     buffer.select_range(&insert, &insert);
-                    win.clear_surface_selections(Some(index));
+                    win.clear_surface_selections(Some(source));
                 }
             );
             match surface {
                 markdown::Surface::Code { buffer, .. } => {
                     buffer.connect_has_selection_notify(move |buffer| {
                         if buffer.has_selection() {
-                            select();
+                            select(buffer.upcast_ref());
                         }
                     });
                 }
                 markdown::Surface::Cell { label, .. } => {
                     label.connect_notify_local(Some("selection-bound"), move |label, _| {
                         if label.selection_bounds().is_some() {
-                            select();
+                            select(label.upcast_ref());
                         }
                     });
                 }
+            }
+        }
+    }
+
+    /// Give the code blocks the style scheme of the current light or dark appearance.
+    pub(super) fn restyle_code_blocks(&self) {
+        let scheme = markdown::current_scheme();
+        for surface in self.imp().preview.surfaces.borrow().iter() {
+            if let markdown::Surface::Code { buffer, .. } = surface {
+                buffer.set_style_scheme(scheme.as_ref());
             }
         }
     }
@@ -245,22 +261,19 @@ impl BlinkWindow {
             .as_ref()
             .and_then(|file| file.path())
             .and_then(|path| path.parent().map(Path::to_path_buf));
-        let result = markdown::render_markdown(&imp.preview_view, &text, &hadj, base.as_deref());
+        let result = markdown::render_markdown(
+            &imp.preview_view,
+            &text,
+            &hadj,
+            base.as_deref(),
+            &mut imp.preview.rendered.borrow_mut(),
+        );
         imp.preview.links.replace(result.links);
         imp.preview.surfaces.replace(result.surfaces);
-        self.watch_surface_selections();
+        self.watch_surface_selections(&result.added);
         // Match positions do not survive the rebuilt content.
         self.reset_preview_match();
         imp.preview.dirty.set(false);
-    }
-
-    /// Render now if the preview is on screen, otherwise when it next is.
-    pub(super) fn invalidate_preview(&self) {
-        if self.preview_visible() {
-            self.render_preview();
-        } else {
-            self.imp().preview.dirty.set(true);
-        }
     }
 
     fn flush_preview(&self) {

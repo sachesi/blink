@@ -466,8 +466,7 @@ impl BlinkWindow {
     fn retheme(&self) {
         self.apply_editor_scheme();
         markdown::apply_theme_colors(&self.imp().preview_view.buffer());
-        // Code blocks take their colours when they are built.
-        self.invalidate_preview();
+        self.restyle_code_blocks();
     }
 
     fn setup_recent_menu(&self) {

@@ -1,10 +1,11 @@
 use adw::prelude::*;
 use gettextrs::gettext;
 use gtk::{Grid, Label, TextBuffer, TextView, gio, glib};
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, Parser, RefDefs, Tag, TagEnd};
 use sourceview5::prelude::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -229,6 +230,7 @@ pub fn apply_theme_colors(buffer: &TextBuffer) {
 /// A child widget embedded in the preview whose text lives outside the main
 /// buffer (so the buffer's own search can't see it). `anchor_offset` is the
 /// position of its anchor in the main buffer, used to order and scroll to it.
+#[derive(Clone)]
 pub enum Surface {
     Code {
         anchor_offset: i32,
@@ -240,11 +242,34 @@ pub enum Surface {
     },
 }
 
+impl Surface {
+    /// The same surface with its anchor offset moved by `by`.
+    fn shifted(&self, by: i32) -> Self {
+        match self {
+            Self::Code {
+                anchor_offset,
+                buffer,
+            } => Self::Code {
+                anchor_offset: anchor_offset + by,
+                buffer: buffer.clone(),
+            },
+            Self::Cell {
+                anchor_offset,
+                label,
+            } => Self::Cell {
+                anchor_offset: anchor_offset + by,
+                label: label.clone(),
+            },
+        }
+    }
+}
+
 /// Output of a render pass: clickable link ranges and the searchable child
-/// surfaces (code blocks, table cells).
+/// surfaces (code blocks, table cells), all of them and the ones this pass made.
 pub struct RenderResult {
     pub links: Vec<(i32, i32, String)>,
     pub surfaces: Vec<Surface>,
+    pub added: Vec<Surface>,
 }
 
 pub fn setup_tags(buffer: &TextBuffer) {
@@ -634,26 +659,144 @@ fn list_marker(list_stack: &mut [Option<u64>]) -> String {
     }
 }
 
+/// A top-level block as it was last rendered: its source, where its output starts in the
+/// preview buffer, and what it holds, with offsets from that start.
+struct RenderedBlock {
+    source: String,
+    start: gtk::TextMark,
+    links: Vec<(i32, i32, String)>,
+    surfaces: Vec<Surface>,
+    images: Vec<PathBuf>,
+}
+
+/// What the preview buffer holds, so a render can keep the blocks that did not change.
+#[derive(Default)]
+pub struct Rendered {
+    blocks: Vec<RenderedBlock>,
+    base_dir: Option<PathBuf>,
+    definitions: Vec<String>,
+}
+
+/// The link reference and footnote definitions of a document, in a comparable form. A
+/// block can use either wherever they are defined, so a change to them changes blocks
+/// elsewhere.
+fn definitions(link_definitions: &RefDefs, events: &[(Event, Range<usize>)]) -> Vec<String> {
+    let mut definitions: Vec<String> = link_definitions
+        .iter()
+        .map(|(label, def)| {
+            format!(
+                "[{label}]: {} {}",
+                def.dest,
+                def.title.as_deref().unwrap_or_default()
+            )
+        })
+        .chain(events.iter().filter_map(|(event, _)| match event {
+            Event::Start(Tag::FootnoteDefinition(label)) => Some(format!("[^{label}]")),
+            _ => None,
+        }))
+        .collect();
+    definitions.sort();
+    definitions
+}
+
+/// The top-level blocks of a document, as the range of their events and of their source.
+fn top_level_blocks(events: &[(Event, Range<usize>)]) -> Vec<(Range<usize>, Range<usize>)> {
+    let mut blocks = Vec::new();
+    let mut depth = 0usize;
+    let mut first = 0;
+    for (index, (event, range)) in events.iter().enumerate() {
+        if depth == 0 {
+            first = index;
+        }
+        match event {
+            Event::Start(_) => depth += 1,
+            Event::End(_) => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        if depth == 0 {
+            blocks.push((
+                first..index + 1,
+                events[first].1.start.min(range.start)..range.end,
+            ));
+        }
+    }
+    blocks
+}
+
+/// How many blocks at the start and at the end of `new` are the same as in `old`, without
+/// the two overlapping.
+fn unchanged_ends(old: &[&str], new: &[&str]) -> (usize, usize) {
+    let prefix = old.iter().zip(new).take_while(|(a, b)| a == b).count();
+    let suffix = old[prefix..]
+        .iter()
+        .rev()
+        .zip(new[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    (prefix, suffix)
+}
+
 /// Renders `text` into `view`'s buffer and returns the clickable link ranges and the
-/// searchable child surfaces, for the caller to wire up clicks and search.
+/// searchable child surfaces, for the caller to wire up clicks and search. Only the
+/// top-level blocks that changed since the last render are rebuilt; a document of
+/// thousands of lines would otherwise stall on every pause in typing.
 pub fn render_markdown(
     view: &TextView,
     text: &str,
     hadj: &gtk::Adjustment,
     image_base_dir: Option<&Path>,
+    rendered: &mut Rendered,
 ) -> RenderResult {
     let buffer = view.buffer();
-    let mut iter = buffer.bounds().0;
-    buffer.delete(&mut iter, &mut buffer.bounds().1);
 
     let mut options = pulldown_cmark::Options::empty();
     options.insert(pulldown_cmark::Options::ENABLE_TABLES);
     options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
     options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
     options.insert(pulldown_cmark::Options::ENABLE_FOOTNOTES);
-    let parser = Parser::new_ext(text, options);
+    // The offset iterator keeps the parser, and with it the link definitions.
+    let mut parser = Parser::new_ext(text, options).into_offset_iter();
+    let events: Vec<(Event, Range<usize>)> = parser.by_ref().collect();
+    let definitions = definitions(parser.reference_definitions(), &events);
+    let blocks = top_level_blocks(&events);
+
+    // Images resolve against the document's directory, and links against definitions
+    // any block may hold: when either changes, every block is rendered again.
+    let base_dir = image_base_dir.map(Path::to_path_buf);
+    if rendered.base_dir != base_dir || rendered.definitions != definitions {
+        for block in rendered.blocks.drain(..) {
+            buffer.delete_mark(&block.start);
+        }
+        let (mut start, mut end) = buffer.bounds();
+        buffer.delete(&mut start, &mut end);
+        rendered.base_dir = base_dir;
+        rendered.definitions = definitions;
+    }
+
+    let old_sources: Vec<&str> = rendered.blocks.iter().map(|b| b.source.as_str()).collect();
+    let new_sources: Vec<&str> = blocks
+        .iter()
+        .map(|(_, source)| &text[source.clone()])
+        .collect();
+    let (prefix, suffix) = unchanged_ends(&old_sources, &new_sources);
+    let removed = prefix..rendered.blocks.len() - suffix;
+    let block_start = |index: usize| {
+        rendered.blocks.get(index).map_or_else(
+            || buffer.end_iter(),
+            |block| buffer.iter_at_mark(&block.start),
+        )
+    };
+    let mut iter = block_start(removed.start);
+    let mut removed_end = block_start(removed.end);
+    buffer.delete(&mut iter, &mut removed_end);
+    for block in rendered.blocks.drain(removed) {
+        buffer.delete_mark(&block.start);
+    }
+    let insert_offset = iter.offset();
+    let mut new_blocks = Vec::new();
+    let mut added = Vec::new();
+
     let mut current_tags: Vec<String> = Vec::new();
-    let mut iter = buffer.end_iter();
 
     // One entry per open list. `Some(n)` is an ordered list whose next item
     // number is `n`; `None` is a bullet list. Length doubles as nesting depth.
@@ -683,463 +826,581 @@ pub fn render_markdown(
     let mut link_starts: Vec<(String, i32)> = Vec::new();
     // Searchable child surfaces (code blocks, table cells).
     let mut surfaces: Vec<Surface> = Vec::new();
-    let mut shown_images: HashSet<PathBuf> = HashSet::new();
+    let mut shown_images: Vec<PathBuf> = Vec::new();
 
-    for event in parser {
-        if in_code_block {
-            match event {
-                Event::Text(t) | Event::Code(t) => {
-                    current_code.push_str(&t);
-                }
-                Event::End(TagEnd::CodeBlock) => {
-                    in_code_block = false;
-                    let indent = block_indent(&list_stack, blockquote_depth);
-                    let clean_code = current_code.trim_end_matches('\n');
-                    let (scroll, code_buffer) =
-                        code_block_widget(clean_code, &current_code_lang, indent, hadj);
-
-                    start_line(&buffer, &mut iter);
-                    let anchor_offset = iter.offset();
-                    let anchor = buffer.create_child_anchor(&mut iter);
-                    view.add_child_at_anchor(&scroll, &anchor);
-                    surfaces.push(Surface::Code {
-                        anchor_offset,
-                        buffer: code_buffer,
-                    });
-                    end_widget_block(&buffer, &mut iter, !list_stack.is_empty());
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        if in_table {
-            match event {
-                Event::Start(Tag::TableHead) => {
-                    current_row = Vec::new();
-                }
-                Event::End(TagEnd::TableHead) => {
-                    table_rows.push(current_row.clone());
-                }
-                Event::Start(Tag::TableRow) => current_row = Vec::new(),
-                Event::End(TagEnd::TableRow) => {
-                    table_rows.push(current_row.clone());
-                }
-                Event::Start(Tag::TableCell) => current_cell = String::new(),
-                Event::End(TagEnd::TableCell) => {
-                    current_row.push(current_cell.clone());
-                }
-                Event::Start(Tag::Strong) => current_cell.push_str("<b>"),
-                Event::End(TagEnd::Strong) => current_cell.push_str("</b>"),
-                Event::Start(Tag::Emphasis) => current_cell.push_str("<i>"),
-                Event::End(TagEnd::Emphasis) => current_cell.push_str("</i>"),
-                Event::Start(Tag::Strikethrough) => current_cell.push_str("<s>"),
-                Event::End(TagEnd::Strikethrough) => current_cell.push_str("</s>"),
-                // Cell links become real Pango links, so they keep the theme's
-                // link colour and stay clickable. An unsafe scheme is never put
-                // in an `href`, only underlined, since the label's default
-                // handler would hand it straight to the system launcher.
-                Event::Start(Tag::Link { dest_url, .. }) => {
-                    if is_safe_link(&dest_url) {
-                        current_cell.push_str(&format!(
-                            "<a href=\"{}\">",
-                            glib::markup_escape_text(&dest_url)
-                        ));
-                        cell_link_close.push("</a>");
-                    } else {
-                        current_cell.push_str("<u>");
-                        cell_link_close.push("</u>");
+    let middle = &blocks[prefix..blocks.len() - suffix];
+    let mut events = events
+        .into_iter()
+        .map(|(event, _)| event)
+        .skip(middle.first().map_or(0, |(events, _)| events.start));
+    for (block_events, source) in middle {
+        let start_offset = iter.offset();
+        let start = buffer.create_mark(None, &iter, true);
+        for event in events.by_ref().take(block_events.len()) {
+            if in_code_block {
+                match event {
+                    Event::Text(t) | Event::Code(t) => {
+                        current_code.push_str(&t);
                     }
-                }
-                Event::End(TagEnd::Link) => {
-                    if let Some(close) = cell_link_close.pop() {
-                        current_cell.push_str(close);
-                    }
-                }
-                Event::Code(c) => {
-                    current_cell.push_str(&format!("<tt>{}</tt>", glib::markup_escape_text(&c)));
-                }
-                Event::Text(t) => {
-                    current_cell.push_str(&glib::markup_escape_text(&t));
-                }
-                Event::Html(html) | Event::InlineHtml(html) => {
-                    current_cell.push_str(&glib::markup_escape_text(&strip_html(&html)));
-                }
-                Event::End(TagEnd::Table) => {
-                    in_table = false;
-                    let indent = block_indent(&list_stack, blockquote_depth);
-                    let grid = Grid::builder().hexpand(true).build();
-                    // A table wider than the column scrolls sideways, like a code block,
-                    // rather than squeezing its columns until the words break apart.
-                    let scroll = gtk::ScrolledWindow::builder()
-                        .margin_top(12)
-                        .margin_bottom(12)
-                        .margin_start(indent)
-                        .hexpand(true)
-                        .propagate_natural_height(true)
-                        .hscrollbar_policy(gtk::PolicyType::Automatic)
-                        .vscrollbar_policy(gtk::PolicyType::Never)
-                        .focusable(false)
-                        .child(&grid)
-                        .build();
-                    scroll.add_css_class("card");
-                    bind_width_to_page(&scroll, hadj, indent);
+                    Event::End(TagEnd::CodeBlock) => {
+                        in_code_block = false;
+                        let indent = block_indent(&list_stack, blockquote_depth);
+                        let clean_code = current_code.trim_end_matches('\n');
+                        let (scroll, code_buffer) =
+                            code_block_widget(clean_code, &current_code_lang, indent, hadj);
 
-                    let num_cols = table_rows.first().map_or(1, |r| r.len());
-                    let grid_cols = (num_cols * 2).saturating_sub(1) as i32;
-
-                    let mut cell_labels: Vec<gtk::Label> = Vec::new();
-                    for (row_idx, row) in table_rows.iter().enumerate() {
-                        let text_row = (row_idx * 2) as i32;
-
-                        if row_idx > 0 {
-                            let hsep = gtk::Separator::builder()
-                                .orientation(gtk::Orientation::Horizontal)
-                                .hexpand(true)
-                                .build();
-                            grid.attach(&hsep, 0, text_row - 1, grid_cols, 1);
-                        }
-
-                        for (col_idx, cell_text) in row.iter().enumerate() {
-                            let text_col = (col_idx * 2) as i32;
-
-                            let xalign = match table_alignments.get(col_idx) {
-                                Some(Alignment::Right) => 1.0_f32,
-                                Some(Alignment::Center) => 0.5,
-                                _ => 0.0,
-                            };
-
-                            let label = Label::builder()
-                                .margin_top(10)
-                                .margin_bottom(10)
-                                .margin_start(12)
-                                .margin_end(12)
-                                .wrap(true)
-                                .wrap_mode(gtk::pango::WrapMode::Word)
-                                .max_width_chars(CELL_WRAP_CHARS)
-                                .xalign(xalign)
-                                .hexpand(true)
-                                // Selectable so table text can be copied.
-                                .selectable(true)
-                                .build();
-                            label.set_markup(cell_text);
-                            // A cell is only as narrow as its text up to the wrapping width,
-                            // so short cells never wrap and long ones wrap at that width.
-                            let chars = label.text().chars().count();
-                            label.set_width_chars(
-                                i32::try_from(chars)
-                                    .unwrap_or(CELL_WRAP_CHARS)
-                                    .min(CELL_WRAP_CHARS),
-                            );
-                            // Selectable labels take focus by default; keep
-                            // them out of the focus chain so a click never
-                            // makes the preview scroll the table into view.
-                            label.set_focusable(false);
-                            if row_idx == 0 {
-                                label.add_css_class("heading");
-                            }
-                            grid.attach(&label, text_col, text_row, 1, 1);
-                            cell_labels.push(label);
-
-                            if col_idx > 0 {
-                                let vsep = gtk::Separator::builder()
-                                    .orientation(gtk::Orientation::Vertical)
-                                    .vexpand(true)
-                                    .build();
-                                grid.attach(&vsep, text_col - 1, text_row, 1, 1);
-                            }
-                        }
-                    }
-                    start_line(&buffer, &mut iter);
-                    let anchor_offset = iter.offset();
-                    let anchor = buffer.create_child_anchor(&mut iter);
-                    view.add_child_at_anchor(&scroll, &anchor);
-                    for label in cell_labels {
-                        surfaces.push(Surface::Cell {
-                            anchor_offset,
-                            label,
-                        });
-                    }
-                    end_widget_block(&buffer, &mut iter, !list_stack.is_empty());
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        match event {
-            Event::Start(tag) => match tag {
-                Tag::CodeBlock(kind) => {
-                    in_code_block = true;
-                    current_code.clear();
-                    current_code_lang = match kind {
-                        CodeBlockKind::Fenced(info) => info.to_string(),
-                        CodeBlockKind::Indented => String::new(),
-                    };
-                }
-                Tag::Table(alignments) => {
-                    in_table = true;
-                    table_rows.clear();
-                    table_alignments = alignments;
-                }
-                Tag::Heading { level, .. } => {
-                    let level_num = level as u8;
-                    current_tags.push(
-                        match level_num {
-                            1 => "h1",
-                            2 => "h2",
-                            3 => "h3",
-                            _ => "h4",
-                        }
-                        .to_string(),
-                    );
-                }
-                Tag::Strong => current_tags.push("bold".to_string()),
-                Tag::Emphasis => current_tags.push("italic".to_string()),
-                Tag::Strikethrough => current_tags.push("strikethrough".to_string()),
-                Tag::Link { dest_url, .. } => {
-                    current_tags.push("link".to_string());
-                    link_starts.push((dest_url.to_string(), iter.offset()));
-                }
-                Tag::Image { dest_url, .. } => {
-                    current_image = Some((None, String::new()));
-                    let path = local_image_path(dest_url.as_ref(), image_base_dir);
-                    if let Some(path) = &path {
-                        shown_images.insert(path.clone());
-                    }
-                    if let Some(picture) = path.and_then(|path| image_picture(&path, hadj)) {
-                        current_image = Some((Some(picture.clone()), String::new()));
-                        picture.set_focusable(false);
-                        picture.set_margin_top(12);
-                        picture.set_margin_bottom(12);
-                        picture.set_hexpand(false);
-                        picture.set_halign(gtk::Align::Center);
-
+                        start_line(&buffer, &mut iter);
+                        let anchor_offset = iter.offset();
                         let anchor = buffer.create_child_anchor(&mut iter);
-                        view.add_child_at_anchor(&picture, &anchor);
+                        view.add_child_at_anchor(&scroll, &anchor);
+                        surfaces.push(Surface::Code {
+                            anchor_offset,
+                            buffer: code_buffer,
+                        });
+                        end_widget_block(&buffer, &mut iter, !list_stack.is_empty());
                     }
+                    _ => {}
                 }
-                Tag::BlockQuote(_) => {
-                    blockquote_depth += 1;
-                    let name = ensure_blockquote_tag(&buffer, blockquote_depth);
-                    current_tags.push(name);
-                }
-                Tag::List(first) => {
-                    // A nested list opens while the parent item's line is still
-                    // open, which ran its first marker on after the item text.
-                    if !iter.starts_line() {
-                        buffer.insert(&mut iter, "\n");
+                continue;
+            }
+
+            if in_table {
+                match event {
+                    Event::Start(Tag::TableHead) => {
+                        current_row = Vec::new();
                     }
-                    list_stack.push(first);
-                    let name = ensure_list_tag(&buffer, list_stack.len() - 1);
-                    current_tags.push(name);
+                    Event::End(TagEnd::TableHead) => {
+                        table_rows.push(current_row.clone());
+                    }
+                    Event::Start(Tag::TableRow) => current_row = Vec::new(),
+                    Event::End(TagEnd::TableRow) => {
+                        table_rows.push(current_row.clone());
+                    }
+                    Event::Start(Tag::TableCell) => current_cell = String::new(),
+                    Event::End(TagEnd::TableCell) => {
+                        current_row.push(current_cell.clone());
+                    }
+                    Event::Start(Tag::Strong) => current_cell.push_str("<b>"),
+                    Event::End(TagEnd::Strong) => current_cell.push_str("</b>"),
+                    Event::Start(Tag::Emphasis) => current_cell.push_str("<i>"),
+                    Event::End(TagEnd::Emphasis) => current_cell.push_str("</i>"),
+                    Event::Start(Tag::Strikethrough) => current_cell.push_str("<s>"),
+                    Event::End(TagEnd::Strikethrough) => current_cell.push_str("</s>"),
+                    // Cell links become real Pango links, so they keep the theme's
+                    // link colour and stay clickable. An unsafe scheme is never put
+                    // in an `href`, only underlined, since the label's default
+                    // handler would hand it straight to the system launcher.
+                    Event::Start(Tag::Link { dest_url, .. }) => {
+                        if is_safe_link(&dest_url) {
+                            current_cell.push_str(&format!(
+                                "<a href=\"{}\">",
+                                glib::markup_escape_text(&dest_url)
+                            ));
+                            cell_link_close.push("</a>");
+                        } else {
+                            current_cell.push_str("<u>");
+                            cell_link_close.push("</u>");
+                        }
+                    }
+                    Event::End(TagEnd::Link) => {
+                        if let Some(close) = cell_link_close.pop() {
+                            current_cell.push_str(close);
+                        }
+                    }
+                    Event::Code(c) => {
+                        current_cell
+                            .push_str(&format!("<tt>{}</tt>", glib::markup_escape_text(&c)));
+                    }
+                    Event::Text(t) => {
+                        current_cell.push_str(&glib::markup_escape_text(&t));
+                    }
+                    Event::Html(html) | Event::InlineHtml(html) => {
+                        current_cell.push_str(&glib::markup_escape_text(&strip_html(&html)));
+                    }
+                    Event::End(TagEnd::Table) => {
+                        in_table = false;
+                        let indent = block_indent(&list_stack, blockquote_depth);
+                        let grid = Grid::builder().hexpand(true).build();
+                        // A table wider than the column scrolls sideways, like a code block,
+                        // rather than squeezing its columns until the words break apart.
+                        let scroll = gtk::ScrolledWindow::builder()
+                            .margin_top(12)
+                            .margin_bottom(12)
+                            .margin_start(indent)
+                            .hexpand(true)
+                            .propagate_natural_height(true)
+                            .hscrollbar_policy(gtk::PolicyType::Automatic)
+                            .vscrollbar_policy(gtk::PolicyType::Never)
+                            .focusable(false)
+                            .child(&grid)
+                            .build();
+                        scroll.add_css_class("card");
+                        bind_width_to_page(&scroll, hadj, indent);
+
+                        let num_cols = table_rows.first().map_or(1, |r| r.len());
+                        let grid_cols = (num_cols * 2).saturating_sub(1) as i32;
+
+                        let mut cell_labels: Vec<gtk::Label> = Vec::new();
+                        for (row_idx, row) in table_rows.iter().enumerate() {
+                            let text_row = (row_idx * 2) as i32;
+
+                            if row_idx > 0 {
+                                let hsep = gtk::Separator::builder()
+                                    .orientation(gtk::Orientation::Horizontal)
+                                    .hexpand(true)
+                                    .build();
+                                grid.attach(&hsep, 0, text_row - 1, grid_cols, 1);
+                            }
+
+                            for (col_idx, cell_text) in row.iter().enumerate() {
+                                let text_col = (col_idx * 2) as i32;
+
+                                let xalign = match table_alignments.get(col_idx) {
+                                    Some(Alignment::Right) => 1.0_f32,
+                                    Some(Alignment::Center) => 0.5,
+                                    _ => 0.0,
+                                };
+
+                                let label = Label::builder()
+                                    .margin_top(10)
+                                    .margin_bottom(10)
+                                    .margin_start(12)
+                                    .margin_end(12)
+                                    .wrap(true)
+                                    .wrap_mode(gtk::pango::WrapMode::Word)
+                                    .max_width_chars(CELL_WRAP_CHARS)
+                                    .xalign(xalign)
+                                    .hexpand(true)
+                                    // Selectable so table text can be copied.
+                                    .selectable(true)
+                                    .build();
+                                label.set_markup(cell_text);
+                                // A cell is only as narrow as its text up to the wrapping width,
+                                // so short cells never wrap and long ones wrap at that width.
+                                let chars = label.text().chars().count();
+                                label.set_width_chars(
+                                    i32::try_from(chars)
+                                        .unwrap_or(CELL_WRAP_CHARS)
+                                        .min(CELL_WRAP_CHARS),
+                                );
+                                // Selectable labels take focus by default; keep
+                                // them out of the focus chain so a click never
+                                // makes the preview scroll the table into view.
+                                label.set_focusable(false);
+                                if row_idx == 0 {
+                                    label.add_css_class("heading");
+                                }
+                                grid.attach(&label, text_col, text_row, 1, 1);
+                                cell_labels.push(label);
+
+                                if col_idx > 0 {
+                                    let vsep = gtk::Separator::builder()
+                                        .orientation(gtk::Orientation::Vertical)
+                                        .vexpand(true)
+                                        .build();
+                                    grid.attach(&vsep, text_col - 1, text_row, 1, 1);
+                                }
+                            }
+                        }
+                        start_line(&buffer, &mut iter);
+                        let anchor_offset = iter.offset();
+                        let anchor = buffer.create_child_anchor(&mut iter);
+                        view.add_child_at_anchor(&scroll, &anchor);
+                        for label in cell_labels {
+                            surfaces.push(Surface::Cell {
+                                anchor_offset,
+                                label,
+                            });
+                        }
+                        end_widget_block(&buffer, &mut iter, !list_stack.is_empty());
+                    }
+                    _ => {}
                 }
-                Tag::Item => {
-                    let marker = list_marker(&mut list_stack);
+                continue;
+            }
+
+            match event {
+                Event::Start(tag) => match tag {
+                    Tag::CodeBlock(kind) => {
+                        in_code_block = true;
+                        current_code.clear();
+                        current_code_lang = match kind {
+                            CodeBlockKind::Fenced(info) => info.to_string(),
+                            CodeBlockKind::Indented => String::new(),
+                        };
+                    }
+                    Tag::Table(alignments) => {
+                        in_table = true;
+                        table_rows.clear();
+                        table_alignments = alignments;
+                    }
+                    Tag::Heading { level, .. } => {
+                        let level_num = level as u8;
+                        current_tags.push(
+                            match level_num {
+                                1 => "h1",
+                                2 => "h2",
+                                3 => "h3",
+                                _ => "h4",
+                            }
+                            .to_string(),
+                        );
+                    }
+                    Tag::Strong => current_tags.push("bold".to_string()),
+                    Tag::Emphasis => current_tags.push("italic".to_string()),
+                    Tag::Strikethrough => current_tags.push("strikethrough".to_string()),
+                    Tag::Link { dest_url, .. } => {
+                        current_tags.push("link".to_string());
+                        link_starts.push((dest_url.to_string(), iter.offset()));
+                    }
+                    Tag::Image { dest_url, .. } => {
+                        current_image = Some((None, String::new()));
+                        let path = local_image_path(dest_url.as_ref(), image_base_dir);
+                        if let Some(path) = &path {
+                            shown_images.push(path.clone());
+                        }
+                        if let Some(picture) = path.and_then(|path| image_picture(&path, hadj)) {
+                            current_image = Some((Some(picture.clone()), String::new()));
+                            picture.set_focusable(false);
+                            picture.set_margin_top(12);
+                            picture.set_margin_bottom(12);
+                            picture.set_hexpand(false);
+                            picture.set_halign(gtk::Align::Center);
+
+                            let anchor = buffer.create_child_anchor(&mut iter);
+                            view.add_child_at_anchor(&picture, &anchor);
+                        }
+                    }
+                    Tag::BlockQuote(_) => {
+                        blockquote_depth += 1;
+                        let name = ensure_blockquote_tag(&buffer, blockquote_depth);
+                        current_tags.push(name);
+                    }
+                    Tag::List(first) => {
+                        // A nested list opens while the parent item's line is still
+                        // open, which ran its first marker on after the item text.
+                        if !iter.starts_line() {
+                            buffer.insert(&mut iter, "\n");
+                        }
+                        list_stack.push(first);
+                        let name = ensure_list_tag(&buffer, list_stack.len() - 1);
+                        current_tags.push(name);
+                    }
+                    Tag::Item => {
+                        let marker = list_marker(&mut list_stack);
+                        let start_offset = iter.offset();
+                        buffer.insert(&mut iter, &marker);
+                        let start_iter = buffer.iter_at_offset(start_offset);
+                        buffer.apply_tag_by_name("bold", &start_iter, &iter);
+                        // The marker opens the line, and GTK takes a paragraph's
+                        // margins from its first characters, so the indenting tags
+                        // have to cover the marker as well as the item text.
+                        for tag in &current_tags {
+                            buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                        }
+                    }
+                    Tag::FootnoteDefinition(label) => {
+                        end_block(&buffer, &mut iter);
+                        let start_offset = iter.offset();
+                        buffer.insert(&mut iter, &format!("[{label}]: "));
+                        let start_iter = buffer.iter_at_offset(start_offset);
+                        buffer.apply_tag_by_name("bold", &start_iter, &iter);
+                    }
+                    _ => {}
+                },
+                Event::End(tag_end) => match tag_end {
+                    TagEnd::Heading(_) => {
+                        // Headings cannot nest, so every open heading tag is this one.
+                        current_tags.retain(|t| !matches!(t.as_str(), "h1" | "h2" | "h3" | "h4"));
+                        end_block(&buffer, &mut iter);
+                    }
+                    TagEnd::Strong => close_tag(&mut current_tags, "bold"),
+                    TagEnd::Emphasis => close_tag(&mut current_tags, "italic"),
+                    TagEnd::Strikethrough => close_tag(&mut current_tags, "strikethrough"),
+                    TagEnd::Link => {
+                        close_tag(&mut current_tags, "link");
+                        if let Some((url, start)) = link_starts.pop() {
+                            links.push((start, iter.offset(), url));
+                        }
+                    }
+                    TagEnd::Image => {
+                        if let Some((picture, alt)) = current_image.take() {
+                            match picture {
+                                Some(picture) if !alt.is_empty() => {
+                                    picture.set_alternative_text(Some(&alt))
+                                }
+                                Some(_) => {}
+                                // The reference did not resolve: a remote URL, a
+                                // missing file, or a path outside the document's
+                                // own directory. Show the alt text so the document
+                                // does not silently lose the content.
+                                None if !alt.is_empty() => {
+                                    let start_offset = iter.offset();
+                                    buffer.insert(&mut iter, &alt);
+                                    let start_iter = buffer.iter_at_offset(start_offset);
+                                    buffer.apply_tag_by_name("image-alt", &start_iter, &iter);
+                                    for tag in &current_tags {
+                                        buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                                    }
+                                }
+                                None => {}
+                            }
+                        }
+                    }
+                    TagEnd::BlockQuote(_) => {
+                        let name = format!("blockquote-{blockquote_depth}");
+                        current_tags.retain(|t| t != &name);
+                        blockquote_depth = (blockquote_depth - 1).max(0);
+                        end_block(&buffer, &mut iter);
+                    }
+                    TagEnd::List(_) => {
+                        let depth = list_stack.len().saturating_sub(1);
+                        let name = format!("list-{depth}");
+                        current_tags.retain(|t| t != &name);
+                        list_stack.pop();
+                        // A nested list ends inside its parent item; the outermost one is a
+                        // block of its own, followed by a blank line like any other.
+                        if list_stack.is_empty() {
+                            end_block(&buffer, &mut iter);
+                        }
+                    }
+                    TagEnd::Item => {
+                        // A loose item ends with its paragraph's blank line already.
+                        if !iter.starts_line() {
+                            buffer.insert(&mut iter, "\n");
+                        }
+                    }
+                    TagEnd::Paragraph => end_block(&buffer, &mut iter),
+                    _ => {}
+                },
+                Event::Text(t) => {
+                    if let Some((_, alt)) = current_image.as_mut() {
+                        alt.push_str(&t);
+                        continue;
+                    }
                     let start_offset = iter.offset();
-                    buffer.insert(&mut iter, &marker);
+                    buffer.insert(&mut iter, &t);
                     let start_iter = buffer.iter_at_offset(start_offset);
-                    buffer.apply_tag_by_name("bold", &start_iter, &iter);
-                    // The marker opens the line, and GTK takes a paragraph's
-                    // margins from its first characters, so the indenting tags
-                    // have to cover the marker as well as the item text.
                     for tag in &current_tags {
                         buffer.apply_tag_by_name(tag, &start_iter, &iter);
                     }
                 }
-                Tag::FootnoteDefinition(label) => {
-                    end_block(&buffer, &mut iter);
+                Event::Code(c) => {
+                    if let Some((_, alt)) = current_image.as_mut() {
+                        alt.push_str(&c);
+                        continue;
+                    }
                     let start_offset = iter.offset();
-                    buffer.insert(&mut iter, &format!("[{label}]: "));
+                    buffer.insert(&mut iter, &c);
+                    let start_iter = buffer.iter_at_offset(start_offset);
+                    buffer.apply_tag_by_name("code", &start_iter, &iter);
+                    for tag in &current_tags {
+                        buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                    }
+                }
+                // A block chunk holding nothing but markup — a comment, or a lone
+                // opening tag on its own line — is dropped, or it would leave a
+                // stray blank line behind. An inline chunk is kept as it comes,
+                // since a `<br>` legitimately reduces to just a newline.
+                Event::Html(html) if strip_html(&html).trim().is_empty() => {}
+                Event::Html(html) | Event::InlineHtml(html) => {
+                    let text = strip_html(&html);
+                    if text.is_empty() {
+                        continue;
+                    }
+                    if let Some((_, alt)) = current_image.as_mut() {
+                        alt.push_str(&text);
+                        continue;
+                    }
+                    let start_offset = iter.offset();
+                    buffer.insert(&mut iter, &text);
+                    let start_iter = buffer.iter_at_offset(start_offset);
+                    for tag in &current_tags {
+                        buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                    }
+                }
+                Event::FootnoteReference(name) => {
+                    let start_offset = iter.offset();
+                    buffer.insert(&mut iter, &format!("[{name}]"));
+                    let start_iter = buffer.iter_at_offset(start_offset);
+                    buffer.apply_tag_by_name("footnote", &start_iter, &iter);
+                }
+                Event::TaskListMarker(checked) => {
+                    let start_offset = iter.offset();
+                    // Squares rather than the ballot-box characters: no font in a
+                    // default install covers U+2610/U+2611, which would show as
+                    // missing-glyph boxes.
+                    buffer.insert(&mut iter, if checked { "■ " } else { "□ " });
                     let start_iter = buffer.iter_at_offset(start_offset);
                     buffer.apply_tag_by_name("bold", &start_iter, &iter);
+                    for tag in &current_tags {
+                        buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                    }
                 }
-                _ => {}
-            },
-            Event::End(tag_end) => match tag_end {
-                TagEnd::Heading(_) => {
-                    // Headings cannot nest, so every open heading tag is this one.
-                    current_tags.retain(|t| !matches!(t.as_str(), "h1" | "h2" | "h3" | "h4"));
+                Event::Rule => {
+                    let sep = gtk::Separator::builder()
+                        .orientation(gtk::Orientation::Horizontal)
+                        .hexpand(true)
+                        .margin_top(8)
+                        .margin_bottom(8)
+                        .focusable(false)
+                        .can_focus(false)
+                        .build();
+                    // Anchored children are allocated at their minimum width, and a
+                    // separator's is one pixel, so without this the rule would be a
+                    // stub.
+                    bind_width_to_page(&sep, hadj, 0);
+                    let anchor = buffer.create_child_anchor(&mut iter);
+                    view.add_child_at_anchor(&sep, &anchor);
                     end_block(&buffer, &mut iter);
                 }
-                TagEnd::Strong => close_tag(&mut current_tags, "bold"),
-                TagEnd::Emphasis => close_tag(&mut current_tags, "italic"),
-                TagEnd::Strikethrough => close_tag(&mut current_tags, "strikethrough"),
-                TagEnd::Link => {
-                    close_tag(&mut current_tags, "link");
-                    if let Some((url, start)) = link_starts.pop() {
-                        links.push((start, iter.offset(), url));
+                Event::SoftBreak | Event::HardBreak => {
+                    if let Some((_, alt)) = current_image.as_mut() {
+                        alt.push(' ');
+                        continue;
+                    }
+                    // A single line break in the source only wraps the source; the paragraph
+                    // reflows to the width of the preview, as it does in the HTML export.
+                    let separator = if matches!(event, Event::SoftBreak) {
+                        " "
+                    } else {
+                        "\n"
+                    };
+                    let start_offset = iter.offset();
+                    buffer.insert(&mut iter, separator);
+                    let start_iter = buffer.iter_at_offset(start_offset);
+                    for tag in &current_tags {
+                        buffer.apply_tag_by_name(tag, &start_iter, &iter);
                     }
                 }
-                TagEnd::Image => {
-                    if let Some((picture, alt)) = current_image.take() {
-                        match picture {
-                            Some(picture) if !alt.is_empty() => {
-                                picture.set_alternative_text(Some(&alt))
-                            }
-                            Some(_) => {}
-                            // The reference did not resolve: a remote URL, a
-                            // missing file, or a path outside the document's
-                            // own directory. Show the alt text so the document
-                            // does not silently lose the content.
-                            None if !alt.is_empty() => {
-                                let start_offset = iter.offset();
-                                buffer.insert(&mut iter, &alt);
-                                let start_iter = buffer.iter_at_offset(start_offset);
-                                buffer.apply_tag_by_name("image-alt", &start_iter, &iter);
-                                for tag in &current_tags {
-                                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
-                                }
-                            }
-                            None => {}
-                        }
-                    }
-                }
-                TagEnd::BlockQuote(_) => {
-                    let name = format!("blockquote-{blockquote_depth}");
-                    current_tags.retain(|t| t != &name);
-                    blockquote_depth = (blockquote_depth - 1).max(0);
-                    end_block(&buffer, &mut iter);
-                }
-                TagEnd::List(_) => {
-                    let depth = list_stack.len().saturating_sub(1);
-                    let name = format!("list-{depth}");
-                    current_tags.retain(|t| t != &name);
-                    list_stack.pop();
-                    // A nested list ends inside its parent item; the outermost one is a
-                    // block of its own, followed by a blank line like any other.
-                    if list_stack.is_empty() {
-                        end_block(&buffer, &mut iter);
-                    }
-                }
-                TagEnd::Item => {
-                    // A loose item ends with its paragraph's blank line already.
-                    if !iter.starts_line() {
-                        buffer.insert(&mut iter, "\n");
-                    }
-                }
-                TagEnd::Paragraph => end_block(&buffer, &mut iter),
                 _ => {}
-            },
-            Event::Text(t) => {
-                if let Some((_, alt)) = current_image.as_mut() {
-                    alt.push_str(&t);
-                    continue;
-                }
-                let start_offset = iter.offset();
-                buffer.insert(&mut iter, &t);
-                let start_iter = buffer.iter_at_offset(start_offset);
-                for tag in &current_tags {
-                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
-                }
             }
-            Event::Code(c) => {
-                if let Some((_, alt)) = current_image.as_mut() {
-                    alt.push_str(&c);
-                    continue;
-                }
-                let start_offset = iter.offset();
-                buffer.insert(&mut iter, &c);
-                let start_iter = buffer.iter_at_offset(start_offset);
-                buffer.apply_tag_by_name("code", &start_iter, &iter);
-                for tag in &current_tags {
-                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
-                }
-            }
-            // A block chunk holding nothing but markup — a comment, or a lone
-            // opening tag on its own line — is dropped, or it would leave a
-            // stray blank line behind. An inline chunk is kept as it comes,
-            // since a `<br>` legitimately reduces to just a newline.
-            Event::Html(html) if strip_html(&html).trim().is_empty() => {}
-            Event::Html(html) | Event::InlineHtml(html) => {
-                let text = strip_html(&html);
-                if text.is_empty() {
-                    continue;
-                }
-                if let Some((_, alt)) = current_image.as_mut() {
-                    alt.push_str(&text);
-                    continue;
-                }
-                let start_offset = iter.offset();
-                buffer.insert(&mut iter, &text);
-                let start_iter = buffer.iter_at_offset(start_offset);
-                for tag in &current_tags {
-                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
-                }
-            }
-            Event::FootnoteReference(name) => {
-                let start_offset = iter.offset();
-                buffer.insert(&mut iter, &format!("[{name}]"));
-                let start_iter = buffer.iter_at_offset(start_offset);
-                buffer.apply_tag_by_name("footnote", &start_iter, &iter);
-            }
-            Event::TaskListMarker(checked) => {
-                let start_offset = iter.offset();
-                // Squares rather than the ballot-box characters: no font in a
-                // default install covers U+2610/U+2611, which would show as
-                // missing-glyph boxes.
-                buffer.insert(&mut iter, if checked { "■ " } else { "□ " });
-                let start_iter = buffer.iter_at_offset(start_offset);
-                buffer.apply_tag_by_name("bold", &start_iter, &iter);
-                for tag in &current_tags {
-                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
-                }
-            }
-            Event::Rule => {
-                let sep = gtk::Separator::builder()
-                    .orientation(gtk::Orientation::Horizontal)
-                    .hexpand(true)
-                    .margin_top(8)
-                    .margin_bottom(8)
-                    .focusable(false)
-                    .can_focus(false)
-                    .build();
-                // Anchored children are allocated at their minimum width, and a
-                // separator's is one pixel, so without this the rule would be a
-                // stub.
-                bind_width_to_page(&sep, hadj, 0);
-                let anchor = buffer.create_child_anchor(&mut iter);
-                view.add_child_at_anchor(&sep, &anchor);
-                end_block(&buffer, &mut iter);
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                if let Some((_, alt)) = current_image.as_mut() {
-                    alt.push(' ');
-                    continue;
-                }
-                // A single line break in the source only wraps the source; the paragraph
-                // reflows to the width of the preview, as it does in the HTML export.
-                let separator = if matches!(event, Event::SoftBreak) {
-                    " "
-                } else {
-                    "\n"
-                };
-                let start_offset = iter.offset();
-                buffer.insert(&mut iter, separator);
-                let start_iter = buffer.iter_at_offset(start_offset);
-                for tag in &current_tags {
-                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
-                }
-            }
-            _ => {}
         }
+        // Every block ends with the same blank line, so that what a block renders to never
+        // depends on the block before it.
+        end_block(&buffer, &mut iter);
+        added.extend(surfaces.iter().cloned());
+        new_blocks.push(RenderedBlock {
+            source: text[source.clone()].to_owned(),
+            start,
+            links: links
+                .drain(..)
+                .map(|(link_start, end, url)| (link_start - start_offset, end - start_offset, url))
+                .collect(),
+            surfaces: surfaces
+                .drain(..)
+                .map(|surface| surface.shifted(-start_offset))
+                .collect(),
+            images: std::mem::take(&mut shown_images),
+        });
     }
 
-    IMAGES.with(|cache| {
-        cache
-            .borrow_mut()
-            .retain(|path, _| shown_images.contains(path))
-    });
+    // The marks of the blocks after the rebuilt ones stay where the rebuilt output was
+    // inserted, before it.
+    if iter.offset() != insert_offset {
+        for block in &rendered.blocks[prefix..] {
+            if buffer.iter_at_mark(&block.start).offset() != insert_offset {
+                break;
+            }
+            buffer.move_mark(&block.start, &iter);
+        }
+    }
+    rendered.blocks.splice(prefix..prefix, new_blocks);
 
-    RenderResult { links, surfaces }
+    let mut result = RenderResult {
+        links: Vec::new(),
+        surfaces: Vec::new(),
+        added,
+    };
+    let mut images = HashSet::new();
+    for block in &rendered.blocks {
+        let offset = buffer.iter_at_mark(&block.start).offset();
+        result.links.extend(
+            block
+                .links
+                .iter()
+                .map(|(start, end, url)| (start + offset, end + offset, url.clone())),
+        );
+        result
+            .surfaces
+            .extend(block.surfaces.iter().map(|surface| surface.shifted(offset)));
+        images.extend(block.images.iter());
+    }
+    IMAGES.with(|cache| cache.borrow_mut().retain(|path, _| images.contains(path)));
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        close_tag, is_safe_link, lang_candidates, list_marker, local_image_path, strip_html,
+        close_tag, definitions, is_safe_link, lang_candidates, list_marker, local_image_path,
+        strip_html, top_level_blocks, unchanged_ends,
     };
+    use pulldown_cmark::{Event, Options, Parser};
     use std::fs;
+    use std::ops::Range;
+
+    fn offset_events(text: &str) -> Vec<(Event<'_>, Range<usize>)> {
+        Parser::new_ext(text, Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES)
+            .into_offset_iter()
+            .collect()
+    }
+
+    #[test]
+    fn top_level_blocks_cover_whole_blocks() {
+        let text = "# Title\n\nOne\ntwo\n\n- a\n  - b\n\n---\n\n```\ncode\n```\n";
+        let events = offset_events(text);
+        let sources: Vec<&str> = top_level_blocks(&events)
+            .into_iter()
+            .map(|(_, source)| text[source].trim_end())
+            .collect();
+        assert_eq!(
+            sources,
+            vec!["# Title", "One\ntwo", "- a\n  - b", "---", "```\ncode\n```"]
+        );
+    }
+
+    #[test]
+    fn top_level_blocks_partition_the_events() {
+        let text = "Para\n\n> quote\n>\n> more\n\n| a |\n|---|\n| 1 |\n";
+        let events = offset_events(text);
+        let blocks = top_level_blocks(&events);
+        assert_eq!(blocks.first().map(|(events, _)| events.start), Some(0));
+        for pair in blocks.windows(2) {
+            assert_eq!(pair[0].0.end, pair[1].0.start);
+        }
+        assert_eq!(
+            blocks.last().map(|(events, _)| events.end),
+            Some(events.len())
+        );
+    }
+
+    #[test]
+    fn unchanged_ends_do_not_overlap() {
+        assert_eq!(unchanged_ends(&["a", "b", "c"], &["a", "x", "c"]), (1, 1));
+        assert_eq!(unchanged_ends(&["a", "b"], &["a", "b"]), (2, 0));
+        // A repeated block counts once, at the start or at the end.
+        assert_eq!(unchanged_ends(&["a", "a"], &["a", "a", "a"]), (2, 0));
+        assert_eq!(unchanged_ends(&["a", "b", "c"], &["a", "c"]), (1, 1));
+        assert_eq!(unchanged_ends(&[], &["a"]), (0, 0));
+    }
+
+    #[test]
+    fn definitions_track_links_and_footnotes() {
+        let events = |text| {
+            let mut parser = Parser::new_ext(text, Options::ENABLE_FOOTNOTES).into_offset_iter();
+            let events: Vec<_> = parser.by_ref().collect();
+            definitions(parser.reference_definitions(), &events)
+        };
+        assert_eq!(
+            events("[a]: https://example.invalid\n\n[^n]: note\n"),
+            vec!["[^n]", "[a]: https://example.invalid "]
+        );
+        assert_ne!(
+            events("[a]: https://example.invalid/1\n"),
+            events("[a]: https://example.invalid/2\n")
+        );
+    }
 
     #[test]
     fn list_marker_orders_and_alternates_bullets() {
