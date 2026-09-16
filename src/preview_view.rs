@@ -2,7 +2,7 @@
 
 use adw::subclass::prelude::*;
 use gtk::prelude::*;
-use gtk::{glib, graphene, gsk};
+use gtk::{gdk, gio, glib, graphene, gsk};
 use std::cell::RefCell;
 
 use crate::markdown::{self, Quote};
@@ -22,6 +22,8 @@ mod imp {
     #[derive(Default)]
     pub struct BlinkPreviewView {
         pub quotes: RefCell<Vec<Quote>>,
+        /// The menu of a code block or table cell, which cannot show a menu of its own.
+        pub menu: RefCell<Option<gtk::PopoverMenu>>,
     }
 
     #[glib::object_subclass]
@@ -31,9 +33,24 @@ mod imp {
         type ParentType = gtk::TextView;
     }
 
-    impl ObjectImpl for BlinkPreviewView {}
+    impl ObjectImpl for BlinkPreviewView {
+        fn dispose(&self) {
+            if let Some(menu) = self.menu.take() {
+                menu.unparent();
+            }
+        }
+    }
 
-    impl WidgetImpl for BlinkPreviewView {}
+    impl WidgetImpl for BlinkPreviewView {
+        // A popover is placed by the widget it belongs to when that widget is allocated,
+        // as a text view places its own menu.
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(width, height, baseline);
+            if let Some(menu) = self.menu.borrow().as_ref() {
+                menu.present();
+            }
+        }
+    }
 
     impl TextViewImpl for BlinkPreviewView {
         fn snapshot_layer(&self, layer: gtk::TextViewLayer, snapshot: gtk::Snapshot) {
@@ -96,6 +113,29 @@ glib::wrapper! {
 }
 
 impl BlinkPreviewView {
+    /// Show `model` as a menu pointing at `(x, y)` in the view.
+    ///
+    /// The menu of a widget in the preview's text gets no height and closes at once, while
+    /// one of the view itself shows.
+    pub fn popup_menu(&self, model: &gio::MenuModel, x: f64, y: f64) {
+        let menu = self
+            .imp()
+            .menu
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
+                menu.set_parent(self);
+                menu.set_position(gtk::PositionType::Bottom);
+                menu.set_has_arrow(false);
+                menu.set_halign(gtk::Align::Start);
+                menu
+            })
+            .clone();
+        menu.set_menu_model(Some(model));
+        menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        menu.popup();
+    }
+
     /// Draw the boxes of `quotes` from now on.
     pub fn set_quotes(&self, quotes: Vec<Quote>) {
         self.imp().quotes.replace(quotes);

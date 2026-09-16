@@ -183,6 +183,26 @@ impl BlinkDocument {
                     document.clear_surface_selections(Some(source));
                 }
             );
+            let widget: gtk::Widget = match surface {
+                markdown::Surface::Code { view, .. } => view.clone().upcast(),
+                markdown::Surface::Cell { label, .. } => label.clone().upcast(),
+            };
+            // Taken before the block's own menu, which the preview cannot show.
+            let menu_click = gtk::GestureClick::builder()
+                .button(gtk::gdk::BUTTON_SECONDARY)
+                .propagation_phase(gtk::PropagationPhase::Capture)
+                .build();
+            menu_click.connect_pressed(glib::clone!(
+                #[weak(rename_to = document)]
+                self,
+                #[strong]
+                surface,
+                move |gesture, _, x, y| {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    document.popup_surface_menu(&surface, x, y);
+                }
+            ));
+            widget.add_controller(menu_click);
             match surface {
                 markdown::Surface::Code { buffer, .. } => {
                     buffer.connect_has_selection_notify(move |buffer| {
@@ -200,6 +220,62 @@ impl BlinkDocument {
                 }
             }
         }
+    }
+
+    /// Show the menu of a code block or table cell at `(x, y)` in it: copying its selection,
+    /// and selecting all of it. Its entries are named as GTK names them in its own menus.
+    fn popup_surface_menu(&self, surface: &markdown::Surface, x: f64, y: f64) {
+        let view = &self.imp().preview_view;
+        let (widget, selected): (gtk::Widget, bool) = match surface {
+            markdown::Surface::Code { buffer, view, .. } => {
+                (view.clone().upcast(), buffer.has_selection())
+            }
+            markdown::Surface::Cell { label, .. } => {
+                (label.clone().upcast(), label.selection_bounds().is_some())
+            }
+        };
+        let Some(point) =
+            widget.compute_point(&**view, &gtk::graphene::Point::new(x as f32, y as f32))
+        else {
+            return;
+        };
+        let copy = gio::SimpleAction::new("copy", None);
+        copy.set_enabled(selected);
+        copy.connect_activate(glib::clone!(
+            #[weak]
+            view,
+            move |_, _| view.emit_copy_clipboard()
+        ));
+        let select_all = gio::SimpleAction::new("select-all", None);
+        select_all.connect_activate(glib::clone!(
+            #[strong]
+            surface,
+            move |_, _| match &surface {
+                markdown::Surface::Code { buffer, .. } => {
+                    let (start, end) = buffer.bounds();
+                    buffer.select_range(&start, &end);
+                }
+                markdown::Surface::Cell { label, .. } => label.select_region(0, -1),
+            }
+        ));
+        let actions = gio::SimpleActionGroup::new();
+        actions.add_action(&copy);
+        actions.add_action(&select_all);
+        view.insert_action_group("surface", Some(&actions));
+
+        let gtk_text = |text: &str| gettextrs::dgettext("gtk40", text);
+        let menu = gio::Menu::new();
+        let section = gio::Menu::new();
+        section.append(Some(&gtk_text("_Copy")), Some("surface.copy"));
+        menu.append_section(None, &section);
+        let section = gio::Menu::new();
+        section.append(Some(&gtk_text("Select _All")), Some("surface.select-all"));
+        menu.append_section(None, &section);
+        view.popup_menu(
+            menu.upcast_ref(),
+            f64::from(point.x()),
+            f64::from(point.y()),
+        );
     }
 
     /// Give the code blocks the style scheme of the current light or dark appearance.

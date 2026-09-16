@@ -82,7 +82,8 @@ The box of a task list item can be ticked in the preview. It changes the `[ ]` o
 the source, as typing it would. Ctrl+Z takes it back and Shift+Ctrl+Z does it again, in the
 preview as in the source; in the preview they undo and redo any change to the source.
 
-Text in code blocks and table cells is selected and copied like the rest of the preview. A
+Text in code blocks and table cells is selected and copied like the rest of the preview, and
+their right-click menu copies the selection or selects all of the block or cell. A
 code block also has a button that copies all of it, shown while the pointer is over the
 block. A table wider than the preview scrolls sideways.
 
