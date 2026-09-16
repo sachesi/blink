@@ -66,7 +66,11 @@ impl BlinkDocument {
                     document.follow_link(target);
                 } else if let Some(details) = document.details_at(x, y) {
                     let open = details.tag.is_invisible();
-                    markdown::set_details_open(&document.imp().preview_view, &details, open);
+                    markdown::set_details_open(
+                        document.imp().preview_view.upcast_ref(),
+                        &details,
+                        open,
+                    );
                 }
             }
         ));
@@ -367,7 +371,10 @@ impl BlinkDocument {
             Some("[x]" | "[X]") => true,
             // The box shows what the source no longer says: show the source again.
             _ => {
-                imp.preview.rendered.borrow_mut().clear(&imp.preview_view);
+                imp.preview
+                    .rendered
+                    .borrow_mut()
+                    .clear(imp.preview_view.upcast_ref());
                 self.render_tick();
                 return;
             }
@@ -411,7 +418,7 @@ impl BlinkDocument {
         let hadj = imp.preview_scroll.hadjustment();
         let base = self.base_dir();
         let result = markdown::render_markdown(
-            &imp.preview_view,
+            imp.preview_view.upcast_ref(),
             &text,
             &hadj,
             base.as_deref(),
@@ -421,6 +428,7 @@ impl BlinkDocument {
         imp.preview.surfaces.replace(result.surfaces);
         imp.preview.tasks.replace(result.tasks);
         imp.preview.headings.replace(result.headings);
+        imp.preview_view.set_quotes(result.quotes);
         imp.preview.details.replace(result.details);
         for task in &result.added_tasks {
             task.check.connect_toggled(glib::clone!(

@@ -10,6 +10,7 @@ mod math;
 mod math_view;
 mod pdf;
 mod preferences;
+mod preview_view;
 mod window;
 
 use adw::prelude::*;

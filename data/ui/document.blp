@@ -139,7 +139,7 @@ template $BlinkDocument: Adw.Bin {
 
           // Read-only but focusable, so its text and tables can be selected and
           // copied.
-          child: Gtk.TextView preview_view {
+          child: $BlinkPreviewView preview_view {
             editable: false;
             cursor-visible: false;
             wrap-mode: word;

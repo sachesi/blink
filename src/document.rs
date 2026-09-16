@@ -15,6 +15,7 @@ use std::cell::{Cell, OnceCell, RefCell};
 use crate::config;
 use crate::editor_view::BlinkEditorView;
 use crate::markdown;
+use crate::preview_view::BlinkPreviewView;
 use crate::window::BlinkWindow;
 
 mod file;
@@ -84,7 +85,7 @@ mod imp {
         #[template_child]
         pub preview_scroll: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
-        pub preview_view: TemplateChild<gtk::TextView>,
+        pub preview_view: TemplateChild<BlinkPreviewView>,
         #[template_child]
         pub status_label: TemplateChild<gtk::Label>,
 
@@ -137,6 +138,7 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             BlinkEditorView::ensure_type();
+            BlinkPreviewView::ensure_type();
             klass.bind_template();
             klass.bind_template_callbacks();
         }
@@ -438,7 +440,10 @@ impl BlinkDocument {
         let imp = self.imp();
         let buffer = imp.preview_view.buffer();
         markdown::set_monospace_family(&buffer, &config::font_family(self.settings(), true));
-        imp.preview.rendered.borrow_mut().clear(&imp.preview_view);
+        imp.preview
+            .rendered
+            .borrow_mut()
+            .clear(imp.preview_view.upcast_ref());
         self.render_tick();
     }
 

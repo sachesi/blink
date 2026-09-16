@@ -158,8 +158,10 @@ pub const TEXT_MARGIN: i32 = 32;
 
 /// How far each level of list nesting indents its items.
 const LIST_INDENT: i32 = 20;
-/// How far each level of blockquote nesting indents its text.
+/// How far each level of blockquote nesting indents its text, from the left edge of its box.
 const QUOTE_INDENT: i32 = 24;
+/// The space between the text of a blockquote and the right edge of its box.
+const QUOTE_PADDING: i32 = 16;
 
 /// Characters after which the text of a table cell wraps.
 const CELL_WRAP_CHARS: i32 = 40;
@@ -323,6 +325,24 @@ pub struct RenderResult {
     pub added_tasks: Vec<Task>,
     pub headings: Vec<(i32, String)>,
     pub details: Vec<Details>,
+    pub quotes: Vec<Quote>,
+}
+
+/// A blockquote in the preview, whose box is drawn behind its text: the offsets of its first
+/// and past its last character, and the left and right edges of the box, from the edges of
+/// the view.
+#[derive(Clone, Copy, Debug)]
+pub struct Quote {
+    pub start: i32,
+    pub end: i32,
+    pub left: i32,
+    pub right: i32,
+    pub alert: Option<BlockQuoteKind>,
+}
+
+/// The colour of the title and the bar of an alert of `kind`, in the light or the dark style.
+pub fn alert_color(kind: BlockQuoteKind, dark: bool) -> gtk::gdk::RGBA {
+    ALERT_COLORS[alert_index(kind)].1.to_standalone_rgba(dark)
 }
 
 pub fn setup_tags(buffer: &TextBuffer) {
@@ -412,14 +432,17 @@ const ALERT_COLORS: [(&str, adw::AccentColor); 5] = [
 
 /// The name of the text tag of the title of an alert of `kind`.
 fn alert_tag(kind: BlockQuoteKind) -> &'static str {
-    let index = match kind {
+    ALERT_COLORS[alert_index(kind)].0
+}
+
+fn alert_index(kind: BlockQuoteKind) -> usize {
+    match kind {
         BlockQuoteKind::Note => 0,
         BlockQuoteKind::Tip => 1,
         BlockQuoteKind::Important => 2,
         BlockQuoteKind::Warning => 3,
         BlockQuoteKind::Caution => 4,
-    };
-    ALERT_COLORS[index].0
+    }
 }
 
 /// Close the innermost open `name` tag, so that when the same inline tag nests
@@ -1411,6 +1434,7 @@ fn code_block_widget(
     code: &str,
     info: &str,
     indent: i32,
+    padding: i32,
     hadj: &gtk::Adjustment,
 ) -> (gtk::Overlay, sourceview5::View, sourceview5::Buffer) {
     let src_buffer = sourceview5::Buffer::new(None);
@@ -1480,7 +1504,7 @@ fn code_block_widget(
         .build();
     overlay.add_css_class("code-block");
     overlay.add_overlay(&copy_box);
-    bind_width_to_page(&overlay, hadj, indent);
+    bind_width_to_page(&overlay, hadj, indent + padding);
     (overlay, src_view, src_buffer)
 }
 
@@ -1498,38 +1522,42 @@ fn dim_foreground() -> &'static str {
 /// The indent is a `left-margin` rather than the `indent` property, which
 /// only moves a paragraph's first line and so left every wrapped line back at
 /// the page margin.
-fn ensure_blockquote_tag(buffer: &TextBuffer, depth: i32) -> String {
+fn ensure_blockquote_tag(buffer: &TextBuffer, depth: i32, list_depth: usize) -> String {
     let name = format!("blockquote-{depth}");
-    if buffer.tag_table().lookup(&name).is_none() {
+    let tag_name = format!("{name}-{list_depth}");
+    if buffer.tag_table().lookup(&tag_name).is_none() {
         buffer.create_tag(
-            Some(&name),
+            Some(&tag_name),
             &[
-                ("left-margin", &(TEXT_MARGIN + depth * QUOTE_INDENT)),
-                // The same as the view's, which it replaces; set on the tag, it also ends
-                // the paragraph background at the column instead of the edge of the view.
-                ("right-margin", &TEXT_MARGIN),
+                (
+                    "left-margin",
+                    &(TEXT_MARGIN + list_depth as i32 * LIST_INDENT + depth * QUOTE_INDENT),
+                ),
+                // The box of the quote, which the preview draws behind it, ends before the
+                // right edge of the column, and the text ends before the right edge of the
+                // box.
+                ("right-margin", &(TEXT_MARGIN + depth * QUOTE_PADDING)),
                 ("style", &gtk::pango::Style::Italic),
                 ("foreground", &dim_foreground()),
-                ("paragraph-background", &"rgba(128, 128, 128, 0.04)"),
             ],
         );
     }
-    name
+    tag_name
 }
 
 /// Per-depth list tag, created on demand so nested lists indent correctly.
 /// The negative `indent` hangs the marker: GTK keeps the first line at the
 /// left margin and shifts the wrapped lines right by that amount, so
 /// continuation text lines up under the item text instead of under the bullet.
-fn ensure_list_tag(buffer: &TextBuffer, depth: usize) -> String {
-    let name = format!("list-{depth}");
+fn ensure_list_tag(buffer: &TextBuffer, depth: usize, quote_depth: i32) -> String {
+    let name = format!("list-{depth}-{quote_depth}");
     if buffer.tag_table().lookup(&name).is_none() {
         buffer.create_tag(
             Some(&name),
             &[
                 (
                     "left-margin",
-                    &(TEXT_MARGIN + (depth as i32 + 1) * LIST_INDENT),
+                    &(TEXT_MARGIN + quote_depth * QUOTE_INDENT + (depth as i32 + 1) * LIST_INDENT),
                 ),
                 ("indent", &-LIST_INDENT),
             ],
@@ -1609,6 +1637,7 @@ struct RenderedBlock {
     tasks: Vec<Task>,
     headings: Vec<(i32, String)>,
     details: Vec<Details>,
+    quotes: Vec<Quote>,
 }
 
 impl RenderedBlock {
@@ -2032,6 +2061,10 @@ pub fn render_markdown(
     let mut shown_images: Vec<PathBuf> = Vec::new();
     let mut tasks: Vec<Task> = Vec::new();
     let mut headings: Vec<(i32, String)> = Vec::new();
+    // The blockquotes being rendered, where each started, the depth of the lists around it and
+    // its kind of alert, and those rendered.
+    let mut quote_starts: Vec<(i32, usize, Option<BlockQuoteKind>)> = Vec::new();
+    let mut quotes: Vec<Quote> = Vec::new();
     // The offsets of the bullet of the item just started, which the box of a task takes the
     // place of.
     let mut item_bullet: Option<(i32, i32)> = None;
@@ -2070,8 +2103,14 @@ pub fn render_markdown(
                         in_code_block = false;
                         let indent = block_indent(&list_stack, blockquote_depth);
                         let clean_code = shown_code(&current_code);
-                        let (scroll, code_view, code_buffer) =
-                            code_block_widget(clean_code, &current_code_lang, indent, hadj);
+                        // A block in a quote ends inside the quote's box.
+                        let (scroll, code_view, code_buffer) = code_block_widget(
+                            clean_code,
+                            &current_code_lang,
+                            indent,
+                            blockquote_depth * QUOTE_PADDING,
+                            hadj,
+                        );
 
                         start_line(&buffer, &mut iter);
                         let anchor_offset = iter.offset();
@@ -2172,7 +2211,11 @@ pub fn render_markdown(
                         // Clipped to the card's rounded corners, which the header's tint
                         // would otherwise square off.
                         scroll.set_overflow(gtk::Overflow::Hidden);
-                        bind_width_to_page(&scroll, hadj, indent);
+                        bind_width_to_page(
+                            &scroll,
+                            hadj,
+                            indent + blockquote_depth * QUOTE_PADDING,
+                        );
 
                         let num_cols = table_rows.first().map_or(1, |r| r.len());
                         let grid_cols = (num_cols * 2).saturating_sub(1) as i32;
@@ -2312,8 +2355,11 @@ pub fn render_markdown(
                     }
                     Tag::BlockQuote(kind) => {
                         blockquote_depth += 1;
-                        let name = ensure_blockquote_tag(&buffer, blockquote_depth);
+                        let name =
+                            ensure_blockquote_tag(&buffer, blockquote_depth, list_stack.len());
                         current_tags.push(name);
+                        start_line(&buffer, &mut iter);
+                        quote_starts.push((iter.offset(), list_stack.len(), kind));
                         if let Some(kind) = kind {
                             let table = buffer.tag_table();
                             // Over the colour of the quote, whose tag may be newer.
@@ -2333,7 +2379,7 @@ pub fn render_markdown(
                             buffer.insert(&mut iter, "\n");
                         }
                         list_stack.push(first);
-                        let name = ensure_list_tag(&buffer, list_stack.len() - 1);
+                        let name = ensure_list_tag(&buffer, list_stack.len() - 1, blockquote_depth);
                         current_tags.push(name);
                     }
                     Tag::Item => {
@@ -2436,15 +2482,43 @@ pub fn render_markdown(
                         }
                     }
                     TagEnd::BlockQuote(_) => {
-                        let name = format!("blockquote-{blockquote_depth}");
-                        current_tags.retain(|t| t != &name);
+                        let name = format!("blockquote-{blockquote_depth}-");
+                        if let Some(index) = current_tags.iter().rposition(|t| t.starts_with(&name))
+                        {
+                            current_tags.remove(index);
+                        }
+                        // The box ends with the last line of the quote, not the blank line
+                        // after it.
+                        if let Some((start, list_depth, kind)) = quote_starts.pop() {
+                            let mut end = iter;
+                            while end.offset() > start {
+                                let mut before = end;
+                                before.backward_char();
+                                if before.char() != '\n' {
+                                    break;
+                                }
+                                end = before;
+                            }
+                            quotes.push(Quote {
+                                start: start - start_offset,
+                                end: end.offset() - start_offset,
+                                left: TEXT_MARGIN
+                                    + i32::try_from(list_depth).unwrap_or(0) * LIST_INDENT
+                                    + (blockquote_depth - 1) * QUOTE_INDENT,
+                                right: TEXT_MARGIN + (blockquote_depth - 1) * QUOTE_PADDING,
+                                alert: kind,
+                            });
+                        }
                         blockquote_depth = (blockquote_depth - 1).max(0);
                         end_block(&buffer, &mut iter);
                     }
                     TagEnd::List(_) => {
                         let depth = list_stack.len().saturating_sub(1);
-                        let name = format!("list-{depth}");
-                        current_tags.retain(|t| t != &name);
+                        let name = format!("list-{depth}-");
+                        if let Some(index) = current_tags.iter().rposition(|t| t.starts_with(&name))
+                        {
+                            current_tags.remove(index);
+                        }
                         list_stack.pop();
                         // A nested list ends inside its parent item; the outermost one is a
                         // block of its own, followed by a blank line like any other.
@@ -2718,6 +2792,7 @@ pub fn render_markdown(
             images: std::mem::take(&mut shown_images),
             tasks: std::mem::take(&mut tasks),
             headings: std::mem::take(&mut headings),
+            quotes: std::mem::take(&mut quotes),
             details: std::mem::take(&mut details),
         });
     }
@@ -2765,6 +2840,7 @@ pub fn render_markdown(
         added_tasks,
         headings: Vec::new(),
         details: Vec::new(),
+        quotes: Vec::new(),
     };
     let mut images = HashSet::new();
     // The rendered blocks are the blocks of the text, in order.
@@ -2783,6 +2859,11 @@ pub fn render_markdown(
         result
             .details
             .extend(block.details.iter().map(|details| details.shifted(offset)));
+        result.quotes.extend(block.quotes.iter().map(|quote| Quote {
+            start: quote.start + offset,
+            end: quote.end + offset,
+            ..*quote
+        }));
         result.links.extend(
             block
                 .links
