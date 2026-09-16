@@ -511,14 +511,48 @@ fn parser_options() -> pulldown_cmark::Options {
     options
 }
 
-/// The events of `text` as the preview and the exports read them, with their source ranges.
+/// The events of `text` as the exports read them, with their source ranges, with every emoji
+/// shortcode made an emoji.
 pub fn events(text: &str) -> Vec<(Event<'_>, Range<usize>)> {
+    events_with_emoji(text, |_| true)
+}
+
+/// The events of `text`, with the emoji shortcodes made emoji that `emoji` accepts.
+pub fn events_with_emoji(text: &str, emoji: EmojiFilter) -> Vec<(Event<'_>, Range<usize>)> {
     extend_events(
         text,
         Parser::new_ext(text, parser_options())
             .into_offset_iter()
             .collect(),
+        emoji,
     )
+}
+
+/// Whether an emoji is shown for its shortcode.
+pub type EmojiFilter = fn(&str) -> bool;
+
+/// Whether a font here has `emoji`, which is shown for its shortcode only then: a missing
+/// glyph box says less than the shortcode. Asked once for each emoji.
+pub fn font_has_emoji(emoji: &str) -> bool {
+    thread_local! {
+        static COVERED: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    }
+    COVERED.with_borrow_mut(|covered| {
+        *covered.entry(emoji.to_owned()).or_insert_with(|| {
+            let context = pangocairo::FontMap::default().create_context();
+            let description = gtk::pango::FontDescription::from_string("sans");
+            let Some(fontset) =
+                context.load_fontset(&description, &gtk::pango::Language::default())
+            else {
+                return false;
+            };
+            // The joiners and selectors of a sequence are not drawn themselves.
+            emoji
+                .chars()
+                .filter(|c| !matches!(c, '\u{200d}' | '\u{fe0e}' | '\u{fe0f}'))
+                .all(|c| fontset.font(u32::from(c)).has_char(c))
+        })
+    })
 }
 
 /// The title GitHub gives an alert of `kind`.
@@ -547,6 +581,7 @@ fn alert_title(kind: BlockQuoteKind) -> String {
 fn extend_events<'a>(
     text: &'a str,
     events: Vec<(Event<'a>, Range<usize>)>,
+    emoji: EmojiFilter,
 ) -> Vec<(Event<'a>, Range<usize>)> {
     let mut out = Vec::with_capacity(events.len());
     // Addresses are not made links inside links, image descriptions and code.
@@ -679,7 +714,10 @@ fn extend_events<'a>(
                     continue;
                 }
                 if in_link > 0 {
-                    out.push((Event::Text(replace_shortcodes(&merged).into()), source));
+                    out.push((
+                        Event::Text(replace_shortcodes(&merged, emoji).into()),
+                        source,
+                    ));
                     continue;
                 }
                 // Only text as written in the source has ranges within it; the rest keeps
@@ -695,7 +733,7 @@ fn extend_events<'a>(
                 let mut last = 0;
                 for (link, url) in bare_links(&merged) {
                     if link.start > last {
-                        let before = replace_shortcodes(&merged[last..link.start]);
+                        let before = replace_shortcodes(&merged[last..link.start], emoji);
                         out.push((Event::Text(before.into()), part(last..link.start)));
                     }
                     let tag = Tag::Link {
@@ -711,7 +749,7 @@ fn extend_events<'a>(
                     last = link.end;
                 }
                 if last < merged.len() {
-                    let rest = replace_shortcodes(&merged[last..]);
+                    let rest = replace_shortcodes(&merged[last..], emoji);
                     out.push((Event::Text(rest.into()), part(last..merged.len())));
                 }
             }
@@ -972,6 +1010,11 @@ pub enum HtmlPart {
 /// The pieces of a raw HTML chunk: its `<details>` and `<summary>` tags, and the text around
 /// them. A chunk without either tag is text alone.
 pub fn html_parts(chunk: &str) -> Vec<HtmlPart> {
+    html_parts_with_emoji(chunk, |_| true)
+}
+
+/// The pieces of a raw HTML chunk, with the emoji shortcodes made emoji that `emoji` accepts.
+pub fn html_parts_with_emoji(chunk: &str, emoji: EmojiFilter) -> Vec<HtmlPart> {
     let mut tags: Vec<(Range<usize>, HtmlPart)> = html_tags(chunk, "details")
         .into_iter()
         .map(|(range, attributes)| {
@@ -997,7 +1040,7 @@ pub fn html_parts(chunk: &str) -> Vec<HtmlPart> {
     tags.sort_by_key(|(range, _)| range.start);
     let mut parts = Vec::new();
     let mut last = 0;
-    let text = |chunk: &str| replace_shortcodes(&strip_html(chunk));
+    let text = |chunk: &str| replace_shortcodes(&strip_html(chunk), emoji);
     for (range, part) in tags {
         // A tag inside another, as in an attribute value, is not one.
         if range.start < last {
@@ -1029,8 +1072,9 @@ fn details_depth_change(chunk: &str) -> isize {
         .sum()
 }
 
-/// `text` with GitHub's emoji shortcodes, such as `:tada:`, replaced by their emoji.
-fn replace_shortcodes(text: &str) -> String {
+/// `text` with GitHub's emoji shortcodes, such as `:tada:`, replaced by their emoji where
+/// `emoji` accepts them.
+fn replace_shortcodes(text: &str, emoji: EmojiFilter) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find(':') {
@@ -1040,10 +1084,11 @@ fn replace_shortcodes(text: &str) -> String {
             .unwrap_or(after.len());
         if length > 0
             && after[length..].starts_with(':')
-            && let Some(emoji) = emojis::get_by_shortcode(&after[..length])
+            && let Some(found) = emojis::get_by_shortcode(&after[..length])
+            && emoji(found.as_str())
         {
             out.push_str(&rest[..start]);
-            out.push_str(emoji.as_str());
+            out.push_str(found.as_str());
             rest = &after[length + 1..];
         } else {
             out.push_str(&rest[..=start]);
@@ -1878,7 +1923,7 @@ pub fn render_markdown(
 
     // The offset iterator keeps the parser, and with it the link definitions.
     let mut parser = Parser::new_ext(text, parser_options()).into_offset_iter();
-    let events = extend_events(text, parser.by_ref().collect());
+    let events = extend_events(text, parser.by_ref().collect(), font_has_emoji);
     let definitions = definitions(parser.reference_definitions(), &events);
     let blocks = top_level_blocks(&events);
 
@@ -2440,7 +2485,7 @@ pub fn render_markdown(
                             .iter()
                             .any(|part| !matches!(part, HtmlPart::Text(_))) =>
                 {
-                    for part in html_parts(html) {
+                    for part in html_parts_with_emoji(html, font_has_emoji) {
                         if awaiting_summary
                             && !matches!(&part, HtmlPart::SummaryStart)
                             && !matches!(&part, HtmlPart::Text(text) if text.trim().is_empty())
@@ -3084,12 +3129,20 @@ mod tests {
 
     #[test]
     fn shortcodes_become_emoji() {
-        assert_eq!(replace_shortcodes("Done :tada: :+1:"), "Done 🎉 👍");
         assert_eq!(
-            replace_shortcodes("at 10:30:45 :nope: a:b"),
+            replace_shortcodes("Done :tada: :+1:", |_| true),
+            "Done 🎉 👍"
+        );
+        assert_eq!(
+            replace_shortcodes("at 10:30:45 :nope: a:b", |_| true),
             "at 10:30:45 :nope: a:b"
         );
-        assert_eq!(replace_shortcodes("::smile::"), ":😄:");
+        assert_eq!(replace_shortcodes("::smile::", |_| true), ":😄:");
+        // An emoji no font has keeps its shortcode.
+        assert_eq!(
+            replace_shortcodes(":tada: :+1:", |emoji| emoji == "👍"),
+            ":tada: 👍"
+        );
         let events = events("`:tada:` :tada:");
         assert!(
             events

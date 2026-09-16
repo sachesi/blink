@@ -49,7 +49,8 @@ The preview renders CommonMark with tables, strikethrough, task lists and footno
 more of what GitHub renders:
 
 - Web addresses written out in the text, such as `https://example.com` or
-  `www.example.com`, are links, and emoji shortcodes such as `:tada:` are emoji.
+  `www.example.com`, are links, and emoji shortcodes such as `:tada:` are emoji when a
+  font has them, here and in the PDF; the HTML export always has the emoji.
 - Alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`) start with
   their title in its colour.
 - Front matter, the YAML between `---` lines or the TOML between `+++` lines at the top of a

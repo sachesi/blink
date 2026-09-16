@@ -315,7 +315,7 @@ impl<'a> Reader<'a> {
     }
 
     fn read(mut self, text: &str) -> Vec<Block> {
-        for (event, _) in markdown::events(text) {
+        for (event, _) in markdown::events_with_emoji(text, markdown::font_has_emoji) {
             self.event(event);
         }
         self.flush(PARAGRAPH_GAP);
@@ -358,7 +358,7 @@ impl<'a> Reader<'a> {
             }
             // A `<details>` element is set open, its summary as text.
             Event::Html(html) | Event::InlineHtml(html) => {
-                for part in markdown::html_parts(&html) {
+                for part in markdown::html_parts_with_emoji(&html, markdown::font_has_emoji) {
                     if let markdown::HtmlPart::Text(text) = part {
                         self.push_text(&text);
                     }
