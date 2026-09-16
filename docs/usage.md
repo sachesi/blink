@@ -5,9 +5,10 @@
 Documents open as tabs of the window they are opened from: a new document, a file from the
 Open dialog or Open Recent, a file dropped on the window, and a file passed to `blink` while
 it is running. The tab bar shows once a window holds more than one document. A file that is
-already open is brought to the front instead of being opened a second time, and a file
-opened while the window shows an untitled document that was never typed in takes its place.
-For the same reason "Save As" refuses a file that is open in another tab or window.
+already open, under its own name or through a symbolic link, is brought to the front
+instead of being opened a second time, and a file opened while the window shows an untitled
+document that was never typed in takes its place. For the same reason "Save As" refuses a
+file that is open in another tab or window.
 
 A tab dragged out of its window and dropped outside every window opens in a window of its
 own, and dropped on another window's tab bar joins it. "Move to New Window" in a tab's
