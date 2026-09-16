@@ -514,7 +514,9 @@ code {{ font-size: 0.9em; padding: 0.1em 0.3em; border-radius: 4px; background: 
 pre {{ padding: 12px; border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 12px; overflow-x: auto; line-height: 1.4; }}
 pre code {{ padding: 0; background: none; }}
 pre span {{ color: var(--light); }}
-blockquote {{ margin: 1em 0; padding: 0.25em 1em; border-left: 3px solid rgba(128, 128, 128, 0.3); background: rgba(128, 128, 128, 0.04); color: rgba(0, 0, 0, 0.6); font-style: italic; }}
+blockquote {{ margin: 1em 0; padding: 0.75em 1.25em; border-radius: 12px; background: rgba(128, 128, 128, 0.1); color: rgba(0, 0, 0, 0.6); font-style: italic; }}
+blockquote > :first-child {{ margin-top: 0; }}
+blockquote > :last-child {{ margin-bottom: 0; }}
 .table {{ margin: 1em 0; overflow-x: auto; border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 12px; }}
 table {{ min-width: 100%; border-collapse: collapse; }}
 th, td {{ padding: 10px 12px; border-top: 1px solid rgba(128, 128, 128, 0.25); border-left: 1px solid rgba(128, 128, 128, 0.25); text-align: left; vertical-align: top; }}
@@ -534,6 +536,11 @@ dd {{ margin: 0 0 0.5em 20px; }}
 .markdown-alert-important > p:first-child {{ color: #8939a4; }}
 .markdown-alert-warning > p:first-child {{ color: #905300; }}
 .markdown-alert-caution > p:first-child {{ color: #c00023; }}
+.markdown-alert-note {{ border-left: 4px solid #0461be; }}
+.markdown-alert-tip {{ border-left: 4px solid #15772e; }}
+.markdown-alert-important {{ border-left: 4px solid #8939a4; }}
+.markdown-alert-warning {{ border-left: 4px solid #905300; }}
+.markdown-alert-caution {{ border-left: 4px solid #c00023; }}
 .footnote-definition {{ margin: 0.5em 0; }}
 .footnote-definition p {{ display: inline; }}
 svg.math {{ overflow: visible; }}
@@ -549,6 +556,11 @@ svg.math {{ overflow: visible; }}
   .markdown-alert-important > p:first-child {{ color: #fba7ff; }}
   .markdown-alert-warning > p:first-child {{ color: #ffc057; }}
   .markdown-alert-caution > p:first-child {{ color: #ff888c; }}
+  .markdown-alert-note {{ border-left-color: #81d0ff; }}
+  .markdown-alert-tip {{ border-left-color: #8de698; }}
+  .markdown-alert-important {{ border-left-color: #fba7ff; }}
+  .markdown-alert-warning {{ border-left-color: #ffc057; }}
+  .markdown-alert-caution {{ border-left-color: #ff888c; }}
 }}
 @media print {{
   body {{ padding: 0; }}

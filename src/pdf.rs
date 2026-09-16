@@ -36,7 +36,14 @@ const PARAGRAPH_GAP: f64 = 8.0;
 const ITEM_GAP: f64 = 3.0;
 const LIST_INDENT: f64 = 16.0;
 const QUOTE_INDENT: f64 = 16.0;
-const QUOTE_BAR_WIDTH: f64 = 2.5;
+/// How far the text of a quote, and the box of a quote in it, keep from the right of its box.
+const QUOTE_RIGHT_PADDING: f64 = 10.0;
+/// How far the box of a quote reaches above its first line and below its last.
+const QUOTE_PADDING: f64 = 6.0;
+/// How rounded the corners of the box of a quote are, as those of a code block's.
+const QUOTE_RADIUS: f64 = CORNER_RADIUS;
+/// The bar at the left of the box of an alert.
+const ALERT_BAR_WIDTH: f64 = 3.0;
 const CODE_PADDING: f64 = 10.0;
 /// Padding of a table cell, as in the preview.
 const CELL_PADDING_X: f64 = 9.0;
@@ -59,27 +66,51 @@ const DIM_COLOR: Rgb = (0.4, 0.4, 0.42);
 const LINK_COLOR: Rgb = (0.11, 0.44, 0.85);
 const LINE_COLOR: Rgb = (0.82, 0.82, 0.84);
 const TINT_COLOR: Rgb = (0.955, 0.955, 0.96);
+/// The box of a quote: grey let through, so that the box of a quote in a quote is darker.
+const QUOTE_TINT: (f64, f64, f64, f64) = (0.45, 0.45, 0.48, 0.08);
 
 /// The blockquotes a block is in: how many, and for each of them, from the outermost, which
-/// quote of the document it is and whether it is an alert of some kind.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// quote of the document it is, whether it is an alert of some kind and how far its box is
+/// indented.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Quote {
     depth: usize,
     numbers: [usize; 8],
     alerts: [Option<BlockQuoteKind>; 8],
+    indents: [f64; 8],
 }
 
 impl Quote {
-    /// Enter the quote numbered `number`, an alert of `kind` or not.
-    fn enter(&mut self, number: usize, kind: Option<BlockQuoteKind>) {
-        if let (Some(slot), Some(alert)) = (
+    /// Enter the quote numbered `number`, an alert of `kind` or not, with its box `indent`
+    /// points in.
+    fn enter(&mut self, number: usize, kind: Option<BlockQuoteKind>, indent: f64) {
+        if let (Some(slot), Some(alert), Some(slot_indent)) = (
             self.numbers.get_mut(self.depth),
             self.alerts.get_mut(self.depth),
+            self.indents.get_mut(self.depth),
         ) {
             *slot = number;
             *alert = kind;
+            *slot_indent = indent;
         }
         self.depth += 1;
+    }
+
+    /// How far the text in the quotes keeps from the right of the column.
+    fn right(self) -> f64 {
+        self.depth as f64 * QUOTE_RIGHT_PADDING
+    }
+
+    /// The outermost level of these quotes that `next`, the quotes of the block after, is not
+    /// in, or the depth if it is in all of them.
+    fn ending(self, next: Option<Self>) -> usize {
+        (0..self.depth)
+            .find(|&level| {
+                next.is_none_or(|next| {
+                    next.depth <= level || next.numbers[level] != self.numbers[level]
+                })
+            })
+            .unwrap_or(self.depth)
     }
 
     fn leave(&mut self) {
@@ -603,7 +634,8 @@ impl<'a> Reader<'a> {
             Tag::BlockQuote(kind) => {
                 self.flush(PARAGRAPH_GAP);
                 self.quotes += 1;
-                self.quote.enter(self.quotes, kind);
+                let indent = self.indent();
+                self.quote.enter(self.quotes, kind, indent);
                 // The title of an alert is in its colour.
                 self.style.alert = kind;
             }
@@ -845,9 +877,11 @@ struct Typesetter<'a> {
     outline: Vec<(usize, i32)>,
     /// The identifiers of the headings of the document.
     headings: HashSet<String>,
-    /// Where the bar of each level of blockquote last ended: the quote's number, the page and
+    /// Where the box of each level of blockquote last ended: the quote's number, the page and
     /// the bottom.
     bars: RefCell<Vec<(usize, u32, f64)>>,
+    /// The outermost level of blockquote that ends with the block being set.
+    quote_ending: usize,
 }
 
 impl<'a> Typesetter<'a> {
@@ -873,6 +907,7 @@ impl<'a> Typesetter<'a> {
             outline: Vec::new(),
             headings: HashSet::new(),
             bars: RefCell::new(Vec::new()),
+            quote_ending: 0,
         })
     }
 
@@ -1022,7 +1057,7 @@ impl<'a> Typesetter<'a> {
         padding: f64,
         paragraph: &Paragraph,
         size: f64,
-        decorate: &dyn Fn(&Self, f64, f64),
+        decorate: &dyn Fn(&Self, f64, f64, bool),
     ) -> Result<(), cairo::Error> {
         let mut start = 0;
         while start < lines.len() {
@@ -1046,7 +1081,7 @@ impl<'a> Typesetter<'a> {
             }
             let height = lines[end - 1].top + lines[end - 1].height - offset;
             let top = self.y;
-            decorate(self, top, top + height + 2.0 * padding);
+            decorate(self, top, top + height + 2.0 * padding, end == lines.len());
             for line in &lines[start..end] {
                 let line_top = top + padding + line.top - offset;
                 self.set_color(TEXT_COLOR);
@@ -1130,35 +1165,58 @@ impl<'a> Typesetter<'a> {
         }
     }
 
-    /// Paint the bars of `quote` levels of blockquote from `top` to `bottom`.
-    /// The bar of an alert is in its colour. A bar goes on from the last one of its level on
-    /// the page, so that the bar of a quote runs past the gaps between its blocks.
-    fn quote_bars(&self, quote: Quote, top: f64, bottom: f64) {
+    /// Paint the boxes of the `quote` levels of blockquote behind a part of a block from `top`
+    /// to `bottom`, the `last` part of the block or not, and the bar of an alert in its colour.
+    /// A box goes on from where it last ended on the page, so that it runs past the gaps
+    /// between the blocks of its quote. Its corners are rounded where the quote starts and ends,
+    /// and not where a page breaks it.
+    fn quote_boxes(&self, quote: Quote, top: f64, bottom: f64, last: bool) {
         let mut bars = self.bars.borrow_mut();
         bars.truncate(quote.depth);
         for level in 0..quote.depth {
-            let x = MARGIN + level as f64 * QUOTE_INDENT + (QUOTE_INDENT - QUOTE_BAR_WIDTH) / 2.0;
-            let number = quote.numbers.get(level).copied().unwrap_or_default();
-            let from = match bars.get(level) {
+            let number = quote.numbers[level];
+            let (from, starts) = match bars.get(level) {
                 Some((last, page, end)) if *last == number && *page == self.page && *end <= top => {
-                    *end
+                    (*end, false)
                 }
-                _ => top,
+                Some((last, ..)) if *last == number => (top, false),
+                _ => (top - QUOTE_PADDING, true),
             };
-            self.set_color(
-                quote
-                    .alerts
-                    .get(level)
-                    .copied()
-                    .flatten()
-                    .map_or(LINE_COLOR, alert_color),
+            let ends = last && level >= self.quote_ending;
+            let to = if ends { bottom + QUOTE_PADDING } else { bottom };
+            let x = MARGIN + quote.indents[level];
+            let width = COLUMN_WIDTH - quote.indents[level] - level as f64 * QUOTE_RIGHT_PADDING;
+            let (red, green, blue, alpha) = QUOTE_TINT;
+            self.cr.set_source_rgba(red, green, blue, alpha);
+            corner_path(
+                &self.cr,
+                (x, from, width, to - from),
+                QUOTE_RADIUS,
+                starts,
+                ends,
             );
-            self.cr.rectangle(x, from, QUOTE_BAR_WIDTH, bottom - from);
             let _ = self.cr.fill();
+            if let Some(kind) = quote.alerts[level] {
+                // Over the end of the part before, so that no seam shows between them.
+                let from = if starts { from } else { from - 1.0 };
+                let _ = self.cr.save();
+                corner_path(
+                    &self.cr,
+                    (x, from, width, to - from),
+                    QUOTE_RADIUS,
+                    starts,
+                    ends,
+                );
+                self.cr.clip();
+                self.set_color(alert_color(kind));
+                self.cr.rectangle(x, from, ALERT_BAR_WIDTH, to - from);
+                let _ = self.cr.fill();
+                let _ = self.cr.restore();
+            }
             if let Some(bar) = bars.get_mut(level) {
-                *bar = (number, self.page, bottom);
+                *bar = (number, self.page, to);
             } else {
-                bars.push((number, self.page, bottom));
+                bars.push((number, self.page, to));
             }
         }
     }
@@ -1181,7 +1239,14 @@ impl<'a> Typesetter<'a> {
             })
             .flatten()
             .collect();
-        for block in blocks {
+        for (index, block) in blocks.iter().enumerate() {
+            let quote = block_quote(block).unwrap_or_default();
+            let previous = index.checked_sub(1).and_then(|index| blocks.get(index));
+            // Room for the boxes of quotes, which reach above and below their text.
+            if quote.ending(previous.and_then(block_quote)) < quote.depth {
+                self.y += QUOTE_PADDING;
+            }
+            self.quote_ending = quote.ending(blocks.get(index + 1).and_then(block_quote));
             match block {
                 Block::Text {
                     paragraph,
@@ -1217,6 +1282,9 @@ impl<'a> Typesetter<'a> {
                 } => self.image(path, alt, (*width, *align), *indent, *quote)?,
                 Block::Rule => self.rule()?,
             }
+            if self.quote_ending < quote.depth {
+                self.y += QUOTE_PADDING;
+            }
         }
         Ok(())
     }
@@ -1235,7 +1303,7 @@ impl<'a> Typesetter<'a> {
             HEADING_SCALES[level.clamp(1, HEADING_SCALES.len()) - 1]
         });
         let layout = self.layout(&self.options.text_font, BODY_SIZE * scale);
-        layout.set_width(saturating_i32_points(COLUMN_WIDTH - indent));
+        layout.set_width(saturating_i32_points(COLUMN_WIDTH - indent - quote.right()));
         layout.set_wrap(pango::WrapMode::WordChar);
         layout.set_line_spacing(LINE_SPACING);
         layout.set_text(&paragraph.text);
@@ -1309,7 +1377,7 @@ impl<'a> Typesetter<'a> {
             0.0,
             paragraph,
             BODY_SIZE * scale,
-            &|setter, top, bottom| setter.quote_bars(quote, top, bottom),
+            &|setter, top, bottom, last| setter.quote_boxes(quote, top, bottom, last),
         )?;
         self.y += gap;
         Ok(())
@@ -1340,7 +1408,7 @@ impl<'a> Typesetter<'a> {
         indent: f64,
         quote: Quote,
     ) -> Result<(), cairo::Error> {
-        let width = COLUMN_WIDTH - indent;
+        let width = COLUMN_WIDTH - indent - quote.right();
         let layout = self.layout(&self.options.monospace_font, CODE_SIZE);
         layout.set_width(saturating_i32_points(width - 2.0 * CODE_PADDING));
         // Code cannot scroll on paper, so a long line wraps wherever it has to.
@@ -1382,8 +1450,8 @@ impl<'a> Typesetter<'a> {
             &Paragraph::default(),
             CODE_SIZE,
             // Framed like a table, as the preview frames code blocks.
-            &|setter, top, bottom| {
-                setter.quote_bars(quote, top, bottom);
+            &|setter, top, bottom, last| {
+                setter.quote_boxes(quote, top, bottom, last);
                 setter.set_color(LINE_COLOR);
                 setter.cr.set_line_width(0.6);
                 setter.rounded_rectangle(x, top, width, bottom - top);
@@ -1405,7 +1473,7 @@ impl<'a> Typesetter<'a> {
         if columns == 0 {
             return Ok(());
         }
-        let available = COLUMN_WIDTH - indent;
+        let available = COLUMN_WIDTH - indent - quote.right();
         let cell_layout = |row: usize, column: usize, size: f64| {
             let layout = self.layout(&self.options.text_font, size);
             layout.set_wrap(pango::WrapMode::WordChar);
@@ -1574,7 +1642,7 @@ impl<'a> Typesetter<'a> {
         quote: Quote,
     ) -> Result<(), cairo::Error> {
         let top = self.y;
-        self.quote_bars(quote, top, top + height);
+        self.quote_boxes(quote, top, top + height, row + 1 == rows.len());
         if row == 0 {
             // The header opens each part of the table, so its tint follows the rounded
             // top corners of the frame.
@@ -1639,7 +1707,7 @@ impl<'a> Typesetter<'a> {
         indent: f64,
         quote: Quote,
     ) -> Result<(), cairo::Error> {
-        let available = COLUMN_WIDTH - indent;
+        let available = COLUMN_WIDTH - indent - quote.right();
         let Some((_, pixel_width, pixel_height)) = gdk_pixbuf::Pixbuf::file_info(path) else {
             return self.image_alt(alt, indent, quote);
         };
@@ -1674,7 +1742,7 @@ impl<'a> Typesetter<'a> {
                 Some(HtmlAlign::Right) => available - width,
                 _ => (available - width) / 2.0,
             };
-        self.quote_bars(quote, self.y, self.y + height);
+        self.quote_boxes(quote, self.y, self.y + height, true);
         self.cr.save()?;
         self.cr.translate(x, self.y);
         self.cr.scale(
@@ -1827,6 +1895,52 @@ fn alert_color(kind: BlockQuoteKind) -> Rgb {
     };
     let channel = |value: u8| f64::from(value) / 255.0;
     (channel(red), channel(green), channel(blue))
+}
+
+/// Add the rectangle `(x, y, width, height)` to the path of `cr`, with its top corners rounded
+/// by `radius` if `top`, and its bottom corners if `bottom`, or less for a small one.
+fn corner_path(
+    cr: &cairo::Context,
+    (x, y, width, height): (f64, f64, f64, f64),
+    radius: f64,
+    top: bool,
+    bottom: bool,
+) {
+    let radius = radius.min(width / 2.0).min(height / 2.0);
+    let degrees = std::f64::consts::PI / 180.0;
+    let (top, bottom) = (
+        if top { radius } else { 0.0 },
+        if bottom { radius } else { 0.0 },
+    );
+    cr.new_sub_path();
+    cr.arc(x + width - top, y + top, top, -90.0 * degrees, 0.0);
+    cr.arc(
+        x + width - bottom,
+        y + height - bottom,
+        bottom,
+        0.0,
+        90.0 * degrees,
+    );
+    cr.arc(
+        x + bottom,
+        y + height - bottom,
+        bottom,
+        90.0 * degrees,
+        180.0 * degrees,
+    );
+    cr.arc(x + top, y + top, top, 180.0 * degrees, 270.0 * degrees);
+    cr.close_path();
+}
+
+/// The quotes `block` is in, if it can be in any.
+fn block_quote(block: &Block) -> Option<Quote> {
+    match block {
+        Block::Text { quote, .. }
+        | Block::Code { quote, .. }
+        | Block::Table { quote, .. }
+        | Block::Image { quote, .. } => Some(*quote),
+        Block::Rule => None,
+    }
 }
 
 /// Add a rectangle with corners rounded by `radius`, or less for a small one, to the path of
@@ -2070,6 +2184,22 @@ mod tests {
             column_widths(&[100.0, 300.0], &[200.0, 400.0], 200.0),
             [50.0, 150.0]
         );
+    }
+
+    #[test]
+    fn quotes_end_where_the_next_block_leaves_them() {
+        let mut outer = Quote::default();
+        outer.enter(1, None, 0.0);
+        let mut inner = outer;
+        inner.enter(2, None, QUOTE_INDENT);
+        let mut other = Quote::default();
+        other.enter(3, None, 0.0);
+        assert_eq!(inner.ending(Some(inner)), 2);
+        assert_eq!(inner.ending(Some(outer)), 1);
+        assert_eq!(inner.ending(Some(other)), 0);
+        assert_eq!(outer.ending(None), 0);
+        assert_eq!(Quote::default().ending(None), 0);
+        assert!((inner.right() - 2.0 * QUOTE_RIGHT_PADDING).abs() < f64::EPSILON);
     }
 
     #[test]
