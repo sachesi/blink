@@ -1,12 +1,13 @@
 //! HTML export. The document may come from anyone and the file may be opened in a browser,
-//! so raw HTML is dropped and link and image addresses are limited to safe schemes.
+//! so raw HTML is written again only as its text, its `<details>` elements and the styles it
+//! gives text, and link and image addresses are limited to safe schemes.
 
 use gtk::{gio, glib};
 use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::markdown::{self, CodeRun, CodeStyle};
+use crate::markdown::{self, CodeRun, CodeStyle, HtmlPart, HtmlStyle};
 use crate::math;
 
 /// True when `url` carries an explicit URI scheme (`scheme:`), per the RFC 3986
@@ -58,6 +59,15 @@ fn escape_html(text: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// The end tags of the styles raw HTML left open, innermost first.
+fn close_styles(styles: &mut Vec<HtmlStyle>) -> String {
+    styles
+        .drain(..)
+        .rev()
+        .map(|style| format!("</{}>", style.element()))
+        .collect()
 }
 
 /// `text` as a quoted CSS string, which cannot end the string or the stylesheet around it.
@@ -163,7 +173,30 @@ pub fn render_html(text: &str, options: &Options) -> String {
     let mut footnote_numbers: HashMap<String, usize> = HashMap::new();
     let mut referenced: HashSet<String> = HashSet::new();
     let mut footnotes: Vec<String> = Vec::new();
+    // The styles raw HTML opened and has not closed.
+    let mut html_styles: Vec<HtmlStyle> = Vec::new();
+    // An image an `<img>` tag gave a width: its address, its width and its alternative text.
+    let mut sized_image: Option<(String, i32, String)> = None;
     for (event, _) in markdown::events(text) {
+        if let Some((source, width, alt)) = sized_image.as_mut() {
+            match event {
+                Event::Text(text) | Event::Code(text) => alt.push_str(&text),
+                Event::End(TagEnd::Image) => {
+                    images.pop();
+                    events.push(Event::InlineHtml(
+                        format!(
+                            "<img src=\"{}\" alt=\"{}\" width=\"{width}\" />",
+                            escape_html(source),
+                            escape_html(alt)
+                        )
+                        .into(),
+                    ));
+                    sized_image = None;
+                }
+                _ => {}
+            }
+            continue;
+        }
         if let Some((info, block)) = code.as_mut() {
             match event {
                 Event::Text(text) => block.push_str(&text),
@@ -187,34 +220,79 @@ pub fn render_html(text: &str, options: &Options) -> String {
         }
         match event {
             // Untrusted document content is exported to a file that may be opened in a
-            // browser. Raw HTML is dropped (no `<script>`/`onerror=` passthrough) and link
-            // and image URLs are scheme-filtered, mirroring the in-app preview's own
-            // allow-list. pulldown-cmark performs no sanitization of its own. Only `<details>`
-            // and `<summary>` are written again, without their attributes but `open`, with
-            // the text around them.
-            Event::Html(chunk) | Event::InlineHtml(chunk) => {
-                let parts = markdown::html_parts(&chunk);
-                if parts
-                    .iter()
-                    .any(|part| !matches!(part, markdown::HtmlPart::Text(_)))
-                {
-                    let html: String = parts
-                        .iter()
-                        .map(|part| match part {
-                            markdown::HtmlPart::Text(text) => escape_html(text),
-                            markdown::HtmlPart::DetailsStart { open: true } => {
-                                String::from("<details open>")
+            // browser. Raw HTML is not passed through (no `<script>`/`onerror=`), and link and
+            // image URLs are scheme-filtered, mirroring the in-app preview's own allow-list.
+            // pulldown-cmark performs no sanitization of its own. The text of raw HTML is
+            // written escaped, and only `<details>`, `<summary>` and the elements of text
+            // styles are written again, without their attributes but `open`.
+            Event::Html(ref chunk) | Event::InlineHtml(ref chunk) => {
+                let block = matches!(event, Event::Html(_));
+                let parts = markdown::html_parts(chunk);
+                let mut html = String::new();
+                for part in &parts {
+                    match part {
+                        HtmlPart::Text(text) => {
+                            html.push_str(&escape_html(text).replace('\n', "<br>\n"));
+                        }
+                        HtmlPart::DetailsStart { open: true } => html.push_str("<details open>"),
+                        HtmlPart::DetailsStart { open: false } => html.push_str("<details>"),
+                        HtmlPart::DetailsEnd => html.push_str("</details>"),
+                        HtmlPart::SummaryStart => html.push_str("<summary>"),
+                        HtmlPart::SummaryEnd => html.push_str("</summary>"),
+                        HtmlPart::StyleStart(style) => {
+                            html.push_str(&format!("<{}>", style.element()));
+                            html_styles.push(*style);
+                        }
+                        // Elements have to nest: the styles opened inside the one that ends
+                        // are ended with it and started again.
+                        HtmlPart::StyleEnd(style) => {
+                            if let Some(index) = html_styles.iter().rposition(|open| open == style)
+                            {
+                                let inner = html_styles.split_off(index);
+                                for open in inner.iter().rev() {
+                                    html.push_str(&format!("</{}>", open.element()));
+                                }
+                                for open in &inner[1..] {
+                                    html.push_str(&format!("<{}>", open.element()));
+                                    html_styles.push(*open);
+                                }
                             }
-                            markdown::HtmlPart::DetailsStart { open: false } => {
-                                String::from("<details>")
-                            }
-                            markdown::HtmlPart::DetailsEnd => String::from("</details>"),
-                            markdown::HtmlPart::SummaryStart => String::from("<summary>"),
-                            markdown::HtmlPart::SummaryEnd => String::from("</summary>"),
-                        })
-                        .collect();
-                    events.push(Event::Html(format!("{html}\n").into()));
+                        }
+                    }
                 }
+                if block {
+                    html.push_str(&close_styles(&mut html_styles));
+                    // The text of a block of its own is a paragraph, as in the preview.
+                    let text = parts.iter().any(
+                        |part| matches!(part, HtmlPart::Text(text) if !text.trim().is_empty()),
+                    );
+                    let structure = parts.iter().any(|part| {
+                        !matches!(
+                            part,
+                            HtmlPart::Text(_) | HtmlPart::StyleStart(_) | HtmlPart::StyleEnd(_)
+                        )
+                    });
+                    if text && !structure {
+                        html = format!("<p>{html}</p>");
+                    }
+                }
+                if !html.is_empty() {
+                    events.push(if block {
+                        Event::Html(format!("{html}\n").into())
+                    } else {
+                        Event::InlineHtml(html.into())
+                    });
+                }
+            }
+            // As the end of a paragraph closes them in a browser.
+            Event::End(
+                end @ (TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::TableCell | TagEnd::Item),
+            ) => {
+                let close = close_styles(&mut html_styles);
+                if !close.is_empty() {
+                    events.push(Event::InlineHtml(close.into()));
+                }
+                events.push(Event::End(end));
             }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let info = match kind {
@@ -260,12 +338,15 @@ pub fn render_html(text: &str, options: &Options) -> String {
                 };
                 images.push(source.is_some());
                 if let Some(source) = source {
-                    events.push(Event::Start(Tag::Image {
-                        link_type,
-                        dest_url: source.into(),
-                        title,
-                        id,
-                    }));
+                    match markdown::image_width(link_type, &id) {
+                        Some(width) => sized_image = Some((source, width, String::new())),
+                        None => events.push(Event::Start(Tag::Image {
+                            link_type,
+                            dest_url: source.into(),
+                            title,
+                            id,
+                        })),
+                    }
                 }
             }
             Event::End(TagEnd::Image) => {
@@ -545,11 +626,24 @@ mod tests {
     }
 
     #[test]
+    fn export_keeps_the_text_and_styles_of_raw_html() {
+        let html = render(
+            "<div align=\"center\" onclick=\"x()\">\n  <b>Bold <i>both</b> italic</i><br>\n  next\n</div>\n\nA <sup>b</sup> <mark>c\n\n<img src=\"https://example.com/a.png\" alt=\"A\" width=\"40px\">\n",
+        );
+        assert!(
+            html.contains("<p><strong>Bold <em>both</em></strong><em> italic</em><br>\nnext</p>")
+        );
+        assert!(html.contains("<p>A <sup>b</sup> <mark>c</mark></p>"));
+        assert!(html.contains("<img src=\"https://example.com/a.png\" alt=\"A\" width=\"40\" />"));
+        assert!(!html.contains("onclick") && !html.contains("<div"));
+    }
+
+    #[test]
     fn export_keeps_details_and_emoji() {
         let html = render(
             "<details open onclick=\"x()\"><summary>More <b>info</b></summary>\n\nHidden :tada:\n\n</details>\n",
         );
-        assert!(html.contains("<details open><summary>More info</summary>"));
+        assert!(html.contains("<details open><summary>More <strong>info</strong></summary>"));
         assert!(html.contains("<p>Hidden 🎉</p>"));
         assert!(html.contains("</details>"));
         assert!(!html.contains("onclick"));

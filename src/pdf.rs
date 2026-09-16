@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::export::Options;
-use crate::markdown::{self, CodeRun};
+use crate::markdown::{self, CodeRun, HtmlStyle};
 use crate::math;
 
 /// A4, in points.
@@ -94,7 +94,11 @@ struct Inline {
     bold: bool,
     italic: bool,
     strikethrough: bool,
+    underline: bool,
     code: bool,
+    superscript: bool,
+    subscript: bool,
+    mark: bool,
     link: bool,
     footnote: bool,
     /// The kind of the alert whose title the text is.
@@ -235,6 +239,8 @@ enum Block {
     Image {
         path: PathBuf,
         alt: String,
+        /// The width in pixels an `<img>` tag gave the image.
+        width: Option<i32>,
         indent: f64,
         quote: Quote,
     },
@@ -257,6 +263,8 @@ struct Reader<'a> {
     heading: Option<usize>,
     heading_id: Option<String>,
     style: Inline,
+    /// The styles raw HTML opened, which it may never close.
+    html_styles: Vec<HtmlStyle>,
     lists: Vec<Option<u64>>,
     /// How many definitions of definition lists are open.
     definitions: usize,
@@ -287,6 +295,7 @@ impl<'a> Reader<'a> {
             heading: None,
             heading_id: None,
             style: Inline::default(),
+            html_styles: Vec::new(),
             lists: Vec::new(),
             definitions: 0,
             quote: Quote::default(),
@@ -353,6 +362,24 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// The style of text read now: that of the Markdown around it, and of the raw HTML.
+    fn text_style(&self) -> Inline {
+        let mut style = self.style;
+        for html_style in &self.html_styles {
+            match html_style {
+                HtmlStyle::Bold => style.bold = true,
+                HtmlStyle::Italic => style.italic = true,
+                HtmlStyle::Strikethrough => style.strikethrough = true,
+                HtmlStyle::Underline => style.underline = true,
+                HtmlStyle::Code | HtmlStyle::Keyboard => style.code = true,
+                HtmlStyle::Superscript => style.superscript = true,
+                HtmlStyle::Subscript => style.subscript = true,
+                HtmlStyle::Mark => style.mark = true,
+            }
+        }
+        style
+    }
+
     fn push_text(&mut self, text: &str) {
         if let Some(shown) = self.images.last() {
             // Kept for an image that turns out not to decode.
@@ -364,12 +391,12 @@ impl<'a> Reader<'a> {
             }
             let style = Inline {
                 italic: true,
-                ..self.style
+                ..self.text_style()
             };
             self.paragraph.push(text, style);
             return;
         }
-        self.paragraph.push(text, self.style);
+        self.paragraph.push(text, self.text_style());
     }
 
     fn read(mut self, text: &str) -> Vec<Block> {
@@ -415,8 +442,8 @@ impl<'a> Reader<'a> {
                 self.style = style;
             }
             // A `<details>` element is set open, its summary in bold on a line of its own.
-            Event::Html(html) | Event::InlineHtml(html) => {
-                for part in markdown::html_parts_with_emoji(&html, markdown::font_has_emoji) {
+            Event::Html(ref html) | Event::InlineHtml(ref html) => {
+                for part in markdown::html_parts_with_emoji(html, markdown::font_has_emoji) {
                     match part {
                         markdown::HtmlPart::Text(text) => {
                             // A line break is not set at the start of a line, nor twice.
@@ -444,7 +471,18 @@ impl<'a> Reader<'a> {
                         | markdown::HtmlPart::DetailsEnd => {
                             self.flush(PARAGRAPH_GAP);
                         }
+                        markdown::HtmlPart::StyleStart(style) => self.html_styles.push(style),
+                        markdown::HtmlPart::StyleEnd(style) => {
+                            if let Some(index) = self.html_styles.iter().rposition(|s| *s == style)
+                            {
+                                self.html_styles.remove(index);
+                            }
+                        }
                     }
+                }
+                // As the end of a paragraph closes them in a browser.
+                if matches!(event, Event::Html(_)) {
+                    self.html_styles.clear();
                 }
             }
             Event::InlineMath(ref latex) | Event::DisplayMath(ref latex) => {
@@ -585,7 +623,12 @@ impl<'a> Reader<'a> {
                     .push((dest_url.to_string(), self.paragraph.text.len()));
                 self.style.link = true;
             }
-            Tag::Image { dest_url, .. } => {
+            Tag::Image {
+                link_type,
+                dest_url,
+                id,
+                ..
+            } => {
                 let path = markdown::local_image_path(&dest_url, self.options.base_dir.as_deref());
                 self.images.push(path.is_some());
                 if let Some(path) = path {
@@ -593,6 +636,7 @@ impl<'a> Reader<'a> {
                     self.blocks.push(Block::Image {
                         path,
                         alt: String::new(),
+                        width: markdown::image_width(link_type, &id),
                         indent: self.indent(),
                         quote: self.quote,
                     });
@@ -607,10 +651,15 @@ impl<'a> Reader<'a> {
             // The title of an alert sits right over its text, as in the preview.
             TagEnd::Paragraph if self.style.alert.is_some() => {
                 self.style.alert = None;
+                self.html_styles.clear();
                 self.flush(ITEM_GAP);
             }
-            TagEnd::Paragraph => self.flush(PARAGRAPH_GAP),
+            TagEnd::Paragraph => {
+                self.html_styles.clear();
+                self.flush(PARAGRAPH_GAP);
+            }
             TagEnd::Heading(_) => {
+                self.html_styles.clear();
                 self.flush(PARAGRAPH_GAP);
                 self.heading = None;
                 self.heading_id = None;
@@ -657,6 +706,7 @@ impl<'a> Reader<'a> {
                 }
             }
             TagEnd::TableCell => {
+                self.html_styles.clear();
                 let cell = std::mem::take(&mut self.paragraph);
                 if let Some((_, _, row)) = self.table.as_mut() {
                     row.push(cell);
@@ -869,6 +919,18 @@ impl<'a> Typesetter<'a> {
             }
             if style.strikethrough {
                 attributes.push(pango::AttrInt::new_strikethrough(true).upcast());
+            }
+            if style.underline {
+                attributes.push(pango::AttrInt::new_underline(pango::Underline::Single).upcast());
+            }
+            if style.superscript || style.subscript {
+                let rise = if style.superscript { 0.35 } else { -0.18 };
+                attributes.push(pango::AttrInt::new_rise(units(rise * size)).upcast());
+                attributes.push(pango::AttrFloat::new_scale(0.8).upcast());
+            }
+            if style.mark {
+                attributes.push(pango::AttrColor::new_background(0xffff, 0xc8c8, 0).upcast());
+                attributes.push(pango::AttrInt::new_background_alpha(channel(0.3)).upcast());
             }
             if style.code {
                 attributes
@@ -1097,9 +1159,10 @@ impl<'a> Typesetter<'a> {
                 Block::Image {
                     path,
                     alt,
+                    width,
                     indent,
                     quote,
-                } => self.image(path, alt, *indent, *quote)?,
+                } => self.image(path, alt, *width, *indent, *quote)?,
                 Block::Rule => self.rule()?,
             }
         }
@@ -1493,6 +1556,7 @@ impl<'a> Typesetter<'a> {
         &mut self,
         path: &std::path::Path,
         alt: &str,
+        shown_width: Option<i32>,
         indent: f64,
         quote: Quote,
     ) -> Result<(), cairo::Error> {
@@ -1500,12 +1564,14 @@ impl<'a> Typesetter<'a> {
         let Some((_, pixel_width, pixel_height)) = gdk_pixbuf::Pixbuf::file_info(path) else {
             return self.image_alt(alt, indent, quote);
         };
+        let (shown_width, shown_height) =
+            markdown::shown_size((pixel_width, pixel_height), shown_width);
         let (pixel_width, pixel_height) = (
             f64::from(pixel_width.max(1)),
             f64::from(pixel_height.max(1)),
         );
-        let mut width = (pixel_width * POINTS_PER_PIXEL).min(available);
-        let mut height = width * pixel_height / pixel_width;
+        let mut width = (f64::from(shown_width.max(1)) * POINTS_PER_PIXEL).min(available);
+        let mut height = width * f64::from(shown_height.max(1)) / f64::from(shown_width.max(1));
         let page_height = Self::bottom() - MARGIN;
         if height > page_height {
             height = page_height;

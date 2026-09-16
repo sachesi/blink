@@ -2,8 +2,8 @@ use adw::prelude::*;
 use gettextrs::gettext;
 use gtk::{Grid, Label, TextBuffer, TextView, gio, glib};
 use pulldown_cmark::{
-    Alignment, BlockQuoteKind, CodeBlockKind, Event, LinkType, MetadataBlockKind, Parser, RefDefs,
-    Tag, TagEnd,
+    Alignment, BlockQuoteKind, CodeBlockKind, CowStr, Event, LinkType, MetadataBlockKind, Parser,
+    RefDefs, Tag, TagEnd,
 };
 use sourceview5::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -28,7 +28,12 @@ struct CachedImage {
     /// `None` until decoded, and for good if the file could not be decoded.
     image: Option<(gtk::gdk::Texture, (i32, i32))>,
     decoded: bool,
-    waiting: Vec<(glib::WeakRef<gtk::Picture>, glib::WeakRef<gtk::Adjustment>)>,
+    /// The pictures, the adjustments they are sized to and the widths they are shown at.
+    waiting: Vec<(
+        glib::WeakRef<gtk::Picture>,
+        glib::WeakRef<gtk::Adjustment>,
+        Option<i32>,
+    )>,
 }
 
 thread_local! {
@@ -37,12 +42,13 @@ thread_local! {
     static IMAGES: RefCell<HashMap<PathBuf, CachedImage>> = RefCell::new(HashMap::new());
 }
 
-/// A picture of the image at `path`, sized to the reading column, or `None` for a file
+/// A picture of the image at `path`, `width` pixels wide if given and at most as wide as the
+/// reading column, or `None` for a file
 /// that could not be decoded. Rendering runs after every pause in typing, so an image is
 /// decoded once, until the file changes, and in the background, so that a document with
 /// large images opens without freezing the window. The picture takes its size when the
 /// decoding is done.
-fn image_picture(path: &Path, hadj: &gtk::Adjustment) -> Option<gtk::Picture> {
+fn image_picture(path: &Path, hadj: &gtk::Adjustment, width: Option<i32>) -> Option<gtk::Picture> {
     let mtime = std::fs::metadata(path).ok()?.modified().ok()?;
     IMAGES.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -58,13 +64,27 @@ fn image_picture(path: &Path, hadj: &gtk::Adjustment) -> Option<gtk::Picture> {
         match &entry.image {
             Some((texture, size)) => {
                 picture.set_paintable(Some(texture));
-                bind_image_to_page(&picture, hadj, *size);
+                bind_image_to_page(&picture, hadj, shown_size(*size, width));
             }
             None if entry.decoded => return None,
-            None => entry.waiting.push((picture.downgrade(), hadj.downgrade())),
+            None => entry
+                .waiting
+                .push((picture.downgrade(), hadj.downgrade(), width)),
         }
         Some(picture)
     })
+}
+
+/// The size an image of `size` is shown at: `width` wide if given, in proportion.
+pub fn shown_size((image_width, image_height): (i32, i32), width: Option<i32>) -> (i32, i32) {
+    match width {
+        Some(width) => (
+            width,
+            (f64::from(width) * f64::from(image_height) / f64::from(image_width.max(1))).round()
+                as i32,
+        ),
+        None => (image_width, image_height),
+    }
 }
 
 impl CachedImage {
@@ -140,10 +160,10 @@ fn load_image(path: PathBuf, mtime: SystemTime) {
                 image.stride,
             )
             .upcast::<gtk::gdk::Texture>();
-            for (picture, hadj) in &waiting {
+            for (picture, hadj, width) in &waiting {
                 if let (Some(picture), Some(hadj)) = (picture.upgrade(), hadj.upgrade()) {
                     picture.set_paintable(Some(&texture));
-                    bind_image_to_page(&picture, &hadj, image.size);
+                    bind_image_to_page(&picture, &hadj, shown_size(image.size, *width));
                 }
             }
             entry.image = Some((texture, image.size));
@@ -391,6 +411,13 @@ pub fn setup_tags(buffer: &TextBuffer) {
     buffer.create_tag(Some("italic"), &[("style", &gtk::pango::Style::Italic)]);
     buffer.create_tag(Some("strikethrough"), &[("strikethrough", &true)]);
     buffer.create_tag(
+        Some("underline"),
+        &[("underline", &gtk::pango::Underline::Single)],
+    );
+    buffer.create_tag(Some("superscript"), &[("rise", &4000), ("scale", &0.8)]);
+    buffer.create_tag(Some("subscript"), &[("rise", &-2000), ("scale", &0.8)]);
+    buffer.create_tag(Some("mark"), &[("background", &"rgba(255, 200, 0, 0.3)")]);
+    buffer.create_tag(
         Some("link"),
         &[("underline", &gtk::pango::Underline::Single)],
     );
@@ -455,6 +482,92 @@ fn alert_index(kind: BlockQuoteKind) -> usize {
 fn close_tag(tags: &mut Vec<String>, name: &str) {
     if let Some(index) = tags.iter().rposition(|tag| tag == name) {
         tags.remove(index);
+    }
+}
+
+/// Close the tags of the styles raw HTML opened in `html_styles` and left open, as the end of
+/// a paragraph closes them in a browser.
+fn close_html_styles(tags: &mut Vec<String>, html_styles: &mut Vec<&'static str>) {
+    for name in html_styles.drain(..).rev() {
+        close_tag(tags, name);
+    }
+}
+
+/// Markup open in a table cell: how it starts and ends, and the style of raw HTML it is, if
+/// it is one.
+struct CellMarkup {
+    start: String,
+    end: &'static str,
+    html: Option<HtmlStyle>,
+}
+
+impl CellMarkup {
+    fn new(start: impl Into<String>, end: &'static str) -> Self {
+        Self {
+            start: start.into(),
+            end,
+            html: None,
+        }
+    }
+
+    /// The markup of `style`.
+    fn html(style: HtmlStyle) -> Self {
+        let (start, end) = match style {
+            HtmlStyle::Bold => (String::from("<b>"), "</b>"),
+            HtmlStyle::Italic => (String::from("<i>"), "</i>"),
+            HtmlStyle::Strikethrough => (String::from("<s>"), "</s>"),
+            HtmlStyle::Underline => (String::from("<u>"), "</u>"),
+            HtmlStyle::Superscript => (String::from("<sup>"), "</sup>"),
+            HtmlStyle::Subscript => (String::from("<sub>"), "</sub>"),
+            HtmlStyle::Code | HtmlStyle::Keyboard => (monospace_markup(), "</span>"),
+            HtmlStyle::Mark => (
+                String::from("<span background=\"#ffc800\" bgalpha=\"30%\">"),
+                "</span>",
+            ),
+        };
+        Self {
+            start,
+            end,
+            html: Some(style),
+        }
+    }
+}
+
+/// The markup that starts text in the monospace family in a table cell.
+fn monospace_markup() -> String {
+    MONOSPACE_FAMILY.with_borrow(|family| {
+        format!(
+            "<span font_family=\"{}\">",
+            glib::markup_escape_text(family)
+        )
+    })
+}
+
+/// Start `markup` in `cell`, and keep it in `open` until it ends.
+fn start_cell_markup(cell: &mut String, open: &mut Vec<CellMarkup>, markup: CellMarkup) {
+    cell.push_str(&markup.start);
+    open.push(markup);
+}
+
+/// End the innermost markup of `open` that `ends` picks in `cell`. Markup has to nest, as raw
+/// HTML may not, so the markup started inside it is ended with it and started again.
+fn end_cell_markup(
+    cell: &mut String,
+    open: &mut Vec<CellMarkup>,
+    ends: impl Fn(&CellMarkup) -> bool,
+) {
+    let Some(index) = open.iter().rposition(ends) else {
+        return;
+    };
+    let inner = open.split_off(index + 1);
+    for markup in inner.iter().rev() {
+        cell.push_str(markup.end);
+    }
+    if let Some(ended) = open.pop() {
+        cell.push_str(ended.end);
+    }
+    for markup in inner {
+        start_cell_markup(cell, open, markup);
     }
 }
 
@@ -610,6 +723,8 @@ fn alert_title(kind: BlockQuoteKind) -> String {
 /// - front matter becomes a code block, and so does math standing alone in a paragraph that
 ///   does not typeset, and other such math inline code;
 /// - web addresses written out become links, and emoji shortcodes emoji, as on GitHub;
+/// - the lines of a raw HTML block, which the parser gives one by one, become one chunk, so
+///   that a tag or a script over several lines is read whole;
 /// - `<img>` tags in raw HTML become images, held to the same rules as Markdown images;
 /// - an alert starts with its title in bold;
 /// - headings get the identifiers GitHub gives them, which links to `#section` point at;
@@ -619,6 +734,7 @@ fn extend_events<'a>(
     events: Vec<(Event<'a>, Range<usize>)>,
     emoji: EmojiFilter,
 ) -> Vec<(Event<'a>, Range<usize>)> {
+    let events = join_html_blocks(events);
     let mut out = Vec::with_capacity(events.len());
     // Addresses are not made links inside links, image descriptions and code.
     let mut in_link = 0usize;
@@ -810,7 +926,7 @@ fn extend_events<'a>(
                     }
                 };
                 let mut last = 0;
-                for (tag, source, alt) in images {
+                for (tag, source, alt, width) in images {
                     if tag.start > last {
                         out.push((html(&chunk[last..tag.start]), range.clone()));
                     }
@@ -818,7 +934,10 @@ fn extend_events<'a>(
                         link_type: LinkType::Inline,
                         dest_url: source.into(),
                         title: "".into(),
-                        id: "".into(),
+                        id: width
+                            .map(|width| width.to_string())
+                            .unwrap_or_default()
+                            .into(),
                     };
                     out.push((Event::Start(image), range.clone()));
                     if !alt.is_empty() {
@@ -835,6 +954,31 @@ fn extend_events<'a>(
         }
     }
     out
+}
+
+/// `events` with the lines of each raw HTML block joined into one chunk.
+fn join_html_blocks(events: Vec<(Event<'_>, Range<usize>)>) -> Vec<(Event<'_>, Range<usize>)> {
+    let mut out: Vec<(Event, Range<usize>)> = Vec::with_capacity(events.len());
+    for (event, range) in events {
+        if let Event::Html(chunk) = &event
+            && let Some((Event::Html(last), last_range)) = out.last_mut()
+        {
+            *last = CowStr::from(format!("{last}{chunk}"));
+            last_range.end = range.end;
+            continue;
+        }
+        out.push((event, range));
+    }
+    out
+}
+
+/// The width in pixels an image is shown at, which an `<img>` tag may give. The width is
+/// carried as the identifier of the image, which otherwise only an image by reference has.
+pub fn image_width(link_type: LinkType, id: &str) -> Option<i32> {
+    (link_type == LinkType::Inline)
+        .then(|| id.parse().ok())
+        .flatten()
+        .filter(|width| *width > 0)
 }
 
 /// The identifier GitHub gives a heading titled `title`, before a number is added to tell
@@ -939,8 +1083,9 @@ fn bare_links(text: &str) -> Vec<(Range<usize>, String)> {
     links
 }
 
-/// The `<img>` tags of a raw HTML chunk: the byte range of each, its `src` and its `alt`.
-fn html_images(chunk: &str) -> Vec<(Range<usize>, String, String)> {
+/// The `<img>` tags of a raw HTML chunk: the byte range of each, its `src`, its `alt` and
+/// its `width` in pixels, if it has one.
+fn html_images(chunk: &str) -> Vec<(Range<usize>, String, String, Option<i32>)> {
     html_tags(chunk, "img")
         .into_iter()
         .map(|(range, attributes)| {
@@ -951,7 +1096,14 @@ fn html_images(chunk: &str) -> Vec<(Range<usize>, String, String)> {
                     .map(|(_, value)| value.clone())
                     .unwrap_or_default()
             };
-            (range, attribute("src"), attribute("alt"))
+            let width = attribute("width");
+            let width = width
+                .strip_suffix("px")
+                .unwrap_or(&width)
+                .trim()
+                .parse()
+                .ok();
+            (range, attribute("src"), attribute("alt"), width)
         })
         .collect()
 }
@@ -1016,25 +1168,6 @@ fn html_tags(chunk: &str, name: &str) -> Vec<(Range<usize>, Attributes)> {
     tags
 }
 
-/// The byte ranges of the closing tags named `name` in a raw HTML chunk.
-fn html_closing_tags(chunk: &str, name: &str) -> Vec<Range<usize>> {
-    let lower = chunk.to_ascii_lowercase();
-    let closing = format!("</{name}");
-    let mut tags = Vec::new();
-    let mut from = 0;
-    while let Some(at) = lower[from..].find(&closing) {
-        let start = from + at;
-        from = start + closing.len();
-        let rest = &lower[from..];
-        let spaces = rest.len() - rest.trim_start().len();
-        if rest[spaces..].starts_with('>') {
-            from += spaces + 1;
-            tags.push(start..from);
-        }
-    }
-    tags
-}
-
 /// A piece of a raw HTML chunk, as far as the preview and the exports lay HTML out.
 #[derive(Debug, PartialEq, Eq)]
 pub enum HtmlPart {
@@ -1047,57 +1180,92 @@ pub enum HtmlPart {
     DetailsEnd,
     SummaryStart,
     SummaryEnd,
+    StyleStart(HtmlStyle),
+    StyleEnd(HtmlStyle),
 }
 
-/// The pieces of a raw HTML chunk: its `<details>` and `<summary>` tags, and the text around
-/// them. A chunk without either tag is text alone.
+/// A style that raw HTML gives its text, which the preview and the exports show.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HtmlStyle {
+    Bold,
+    Italic,
+    Strikethrough,
+    Underline,
+    Code,
+    Keyboard,
+    Superscript,
+    Subscript,
+    Mark,
+}
+
+impl HtmlStyle {
+    /// The style of the HTML elements named `name`, in lower case.
+    fn named(name: &str) -> Option<Self> {
+        Some(match name {
+            "b" | "strong" => Self::Bold,
+            "i" | "em" => Self::Italic,
+            "s" | "del" | "strike" => Self::Strikethrough,
+            "u" | "ins" => Self::Underline,
+            "code" | "tt" | "samp" => Self::Code,
+            "kbd" => Self::Keyboard,
+            "sup" => Self::Superscript,
+            "sub" => Self::Subscript,
+            "mark" => Self::Mark,
+            _ => return None,
+        })
+    }
+
+    /// The element the style is written as in HTML.
+    pub fn element(self) -> &'static str {
+        match self {
+            Self::Bold => "strong",
+            Self::Italic => "em",
+            Self::Strikethrough => "del",
+            Self::Underline => "u",
+            Self::Code => "code",
+            Self::Keyboard => "kbd",
+            Self::Superscript => "sup",
+            Self::Subscript => "sub",
+            Self::Mark => "mark",
+        }
+    }
+
+    /// The text tag of the preview the style is shown with.
+    fn text_tag(self) -> &'static str {
+        match self {
+            Self::Bold => "bold",
+            Self::Italic => "italic",
+            Self::Strikethrough => "strikethrough",
+            Self::Underline => "underline",
+            Self::Code | Self::Keyboard => "code",
+            Self::Superscript => "superscript",
+            Self::Subscript => "subscript",
+            Self::Mark => "mark",
+        }
+    }
+}
+
+/// The pieces of a raw HTML chunk: its `<details>` and `<summary>` tags, the tags of the
+/// styles it gives its text, and the text around them. A chunk without any is text alone.
 pub fn html_parts(chunk: &str) -> Vec<HtmlPart> {
     html_parts_with_emoji(chunk, |_| true)
 }
 
 /// The pieces of a raw HTML chunk, with the emoji shortcodes made emoji that `emoji` accepts.
 pub fn html_parts_with_emoji(chunk: &str, emoji: EmojiFilter) -> Vec<HtmlPart> {
-    let mut tags: Vec<(Range<usize>, HtmlPart)> = html_tags(chunk, "details")
-        .into_iter()
-        .map(|(range, attributes)| {
-            let open = attributes.iter().any(|(name, _)| name == "open");
-            (range, HtmlPart::DetailsStart { open })
-        })
-        .chain(
-            html_tags(chunk, "summary")
-                .into_iter()
-                .map(|(range, _)| (range, HtmlPart::SummaryStart)),
-        )
-        .chain(
-            html_closing_tags(chunk, "details")
-                .into_iter()
-                .map(|range| (range, HtmlPart::DetailsEnd)),
-        )
-        .chain(
-            html_closing_tags(chunk, "summary")
-                .into_iter()
-                .map(|range| (range, HtmlPart::SummaryEnd)),
-        )
-        .collect();
-    tags.sort_by_key(|(range, _)| range.start);
+    let mut tags = Vec::new();
+    let text = collapse_spaces(&tag_text(chunk, &mut tags));
+    let mut tags = tags.into_iter();
     let mut parts = Vec::new();
-    let mut last = 0;
-    let text = |chunk: &str| replace_shortcodes(&strip_html(chunk), emoji);
-    for (range, part) in tags {
-        // A tag inside another, as in an attribute value, is not one.
-        if range.start < last {
-            continue;
+    for (index, piece) in text.split(TAG_MARK).enumerate() {
+        if index > 0
+            && let Some(tag) = tags.next()
+        {
+            parts.push(tag);
         }
-        let text = text(&chunk[last..range.start]);
-        if !text.is_empty() {
-            parts.push(HtmlPart::Text(text));
+        if !piece.is_empty() {
+            parts.push(HtmlPart::Text(replace_shortcodes(piece, emoji)));
         }
-        parts.push(part);
-        last = range.end;
-    }
-    let text = text(&chunk[last..]);
-    if !text.is_empty() {
-        parts.push(HtmlPart::Text(text));
     }
     parts
 }
@@ -1224,21 +1392,27 @@ pub fn link_target(url: &str, base_dir: Option<&Path>) -> Option<LinkTarget> {
     (markdown && path.is_relative()).then(|| LinkTarget::Document(base_dir.join(path)))
 }
 
+/// What stands in the text of a raw HTML chunk for a tag that [`html_parts`] keeps, and for
+/// a `<br>`, until the text is cut at it. Noncharacters, which are for such use, and are
+/// dropped from the chunk first.
+const TAG_MARK: char = '\u{FDD0}';
+const BREAK_MARK: char = '\u{FDD1}';
+
 /// The readable text of a raw HTML chunk: tags removed, with the scripts and style sheets
 /// they hold, `<br>` turned into a line break, and spaces run together as a browser runs
-/// them together. This renderer cannot lay out HTML, but dropping the chunk outright lost
-/// the text inside it and ran the surrounding words together.
+/// them together, leaving out the lines of the source that hold no text. This renderer
+/// cannot lay out HTML, but dropping the chunk outright lost the text inside it and ran the
+/// surrounding words together.
 pub fn strip_html(chunk: &str) -> String {
-    tag_text(chunk)
-        .split('\n')
-        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
-        .collect::<Vec<_>>()
-        .join("\n")
+    collapse_spaces(&tag_text(chunk, &mut Vec::new())).replace(TAG_MARK, "")
 }
 
-fn tag_text(chunk: &str) -> String {
+/// The text of a raw HTML chunk with its tags removed, the tags [`html_parts`] keeps marked
+/// and added to `tags`, and a `<br>` marked.
+fn tag_text(chunk: &str, tags: &mut Vec<HtmlPart>) -> String {
+    let chunk = chunk.replace([TAG_MARK, BREAK_MARK], "");
     let mut out = String::new();
-    let mut rest = chunk;
+    let mut rest = chunk.as_str();
     while let Some(start) = rest.find('<') {
         out.push_str(&rest[..start]);
         // A comment ends at `-->`, not at the first `>`, which a comment may
@@ -1257,15 +1431,33 @@ fn tag_text(chunk: &str) -> String {
             out.push_str(&rest[start..]);
             return out;
         };
-        let name = rest[start + 1..start + end]
+        let tag = &rest[start..=start + end];
+        let name = tag[1..tag.len() - 1]
             .trim_matches('/')
             .trim()
             .to_ascii_lowercase();
         let name = name.split_whitespace().next().unwrap_or_default();
-        let opening = !rest[start + 1..].starts_with('/');
+        let opening = !tag[1..].starts_with('/');
         rest = &rest[start + end + 1..];
-        if name == "br" {
-            out.push('\n');
+        let part = match (name, opening) {
+            ("details", true) => Some(HtmlPart::DetailsStart {
+                open: html_tags(tag, "details")
+                    .first()
+                    .is_some_and(|(_, attributes)| {
+                        attributes.iter().any(|(name, _)| name == "open")
+                    }),
+            }),
+            ("details", false) => Some(HtmlPart::DetailsEnd),
+            ("summary", true) => Some(HtmlPart::SummaryStart),
+            ("summary", false) => Some(HtmlPart::SummaryEnd),
+            (name, true) => HtmlStyle::named(name).map(HtmlPart::StyleStart),
+            (name, false) => HtmlStyle::named(name).map(HtmlPart::StyleEnd),
+        };
+        if let Some(part) = part {
+            out.push(TAG_MARK);
+            tags.push(part);
+        } else if name == "br" {
+            out.push(BREAK_MARK);
             // The line break of the source after it is not another one.
             rest = rest.trim_start_matches([' ', '\t']);
             rest = rest.strip_prefix('\n').unwrap_or(rest);
@@ -1278,6 +1470,49 @@ fn tag_text(chunk: &str) -> String {
         }
     }
     out.push_str(rest);
+    out
+}
+
+/// The text of [`tag_text`] with the spaces of each line run together, the line breaks of
+/// the source kept only between lines with text, and each `<br>` a line break. Tag marks are
+/// kept.
+fn collapse_spaces(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    // Whether the line has text so far, whether spaces followed its last word, and whether
+    // a line with text ended in the source since the last text.
+    let (mut words, mut space, mut ended) = (false, false, false);
+    for c in text.chars() {
+        match c {
+            '\n' => {
+                ended |= words;
+                words = false;
+                space = false;
+            }
+            BREAK_MARK => {
+                out.push('\n');
+                (words, space, ended) = (false, false, false);
+            }
+            // A space before a tag stays before it, on the side of the tag it is on in the
+            // source.
+            TAG_MARK => {
+                if space && words {
+                    out.push(' ');
+                    space = false;
+                }
+                out.push(c);
+            }
+            c if c.is_whitespace() => space = true,
+            c => {
+                if ended {
+                    out.push('\n');
+                } else if space && words {
+                    out.push(' ');
+                }
+                (words, space, ended) = (true, false, false);
+                out.push(c);
+            }
+        }
+    }
     out
 }
 
@@ -2054,6 +2289,8 @@ pub fn render_markdown(
     let mut added_tasks = Vec::new();
 
     let mut current_tags: Vec<String> = Vec::new();
+    // The tags of the styles raw HTML opened, which it may never close.
+    let mut html_styles: Vec<&'static str> = Vec::new();
 
     // One entry per open list. `Some(n)` is an ordered list whose next item
     // number is `n`; `None` is a bullet list. Length doubles as nesting depth.
@@ -2066,8 +2303,8 @@ pub fn render_markdown(
     let mut table_alignments: Vec<Alignment> = Vec::new();
     let mut current_row: Vec<String> = Vec::new();
     let mut current_cell = String::new();
-    // Closing markup for the links open in the current cell.
-    let mut cell_link_close: Vec<&'static str> = Vec::new();
+    // The markup open in the current cell.
+    let mut cell_markup: Vec<CellMarkup> = Vec::new();
 
     let mut in_code_block = false;
     let mut current_code = String::new();
@@ -2170,51 +2407,84 @@ pub fn render_markdown(
                     }
                     Event::Start(Tag::TableCell) => current_cell = String::new(),
                     Event::End(TagEnd::TableCell) => {
+                        for markup in cell_markup.drain(..).rev() {
+                            current_cell.push_str(markup.end);
+                        }
                         current_row.push(std::mem::take(&mut current_cell));
                     }
-                    Event::Start(Tag::Strong) => current_cell.push_str("<b>"),
-                    Event::End(TagEnd::Strong) => current_cell.push_str("</b>"),
-                    Event::Start(Tag::Emphasis) => current_cell.push_str("<i>"),
-                    Event::End(TagEnd::Emphasis) => current_cell.push_str("</i>"),
-                    Event::Start(Tag::Strikethrough) => current_cell.push_str("<s>"),
-                    Event::End(TagEnd::Strikethrough) => current_cell.push_str("</s>"),
+                    Event::Start(tag @ (Tag::Strong | Tag::Emphasis | Tag::Strikethrough)) => {
+                        let markup = match tag {
+                            Tag::Strong => CellMarkup::new("<b>", "</b>"),
+                            Tag::Emphasis => CellMarkup::new("<i>", "</i>"),
+                            _ => CellMarkup::new("<s>", "</s>"),
+                        };
+                        start_cell_markup(&mut current_cell, &mut cell_markup, markup);
+                    }
+                    Event::End(
+                        tag @ (TagEnd::Strong | TagEnd::Emphasis | TagEnd::Strikethrough),
+                    ) => {
+                        let end = match tag {
+                            TagEnd::Strong => "</b>",
+                            TagEnd::Emphasis => "</i>",
+                            _ => "</s>",
+                        };
+                        end_cell_markup(&mut current_cell, &mut cell_markup, |markup| {
+                            markup.html.is_none() && markup.end == end
+                        });
+                    }
                     // Cell links become real Pango links, so they keep the theme's
                     // link colour and stay clickable, and the preview follows them as
                     // it follows the others. A link it does not follow is never put in
                     // an `href`, only underlined, since the label's default handler
                     // would hand it straight to the system launcher.
                     Event::Start(Tag::Link { dest_url, .. }) => {
-                        if link_target(&dest_url, image_base_dir).is_some() {
-                            current_cell.push_str(&format!(
-                                "<a href=\"{}\">",
-                                glib::markup_escape_text(&dest_url)
-                            ));
-                            cell_link_close.push("</a>");
+                        let markup = if link_target(&dest_url, image_base_dir).is_some() {
+                            CellMarkup::new(
+                                format!("<a href=\"{}\">", glib::markup_escape_text(&dest_url)),
+                                "</a>",
+                            )
                         } else {
-                            current_cell.push_str("<u>");
-                            cell_link_close.push("</u>");
-                        }
+                            CellMarkup::new("<u>", "</u>")
+                        };
+                        start_cell_markup(&mut current_cell, &mut cell_markup, markup);
                     }
                     Event::End(TagEnd::Link) => {
-                        if let Some(close) = cell_link_close.pop() {
-                            current_cell.push_str(close);
-                        }
+                        end_cell_markup(&mut current_cell, &mut cell_markup, |markup| {
+                            markup.html.is_none() && matches!(markup.end, "</a>" | "</u>")
+                        });
                     }
                     // A label cannot hold a formula, which shows as its source.
                     Event::Code(c) | Event::InlineMath(c) | Event::DisplayMath(c) => {
-                        current_cell.push_str(&MONOSPACE_FAMILY.with_borrow(|family| {
-                            format!(
-                                "<span font_family=\"{}\">{}</span>",
-                                glib::markup_escape_text(family),
-                                glib::markup_escape_text(&c)
-                            )
-                        }));
+                        current_cell.push_str(&format!(
+                            "{}{}</span>",
+                            monospace_markup(),
+                            glib::markup_escape_text(&c)
+                        ));
                     }
                     Event::Text(t) => {
                         current_cell.push_str(&glib::markup_escape_text(&t));
                     }
                     Event::Html(html) | Event::InlineHtml(html) => {
-                        current_cell.push_str(&glib::markup_escape_text(&strip_html(&html)));
+                        for part in html_parts_with_emoji(&html, font_has_emoji) {
+                            match part {
+                                HtmlPart::Text(text) => {
+                                    current_cell.push_str(&glib::markup_escape_text(&text));
+                                }
+                                HtmlPart::StyleStart(style) => start_cell_markup(
+                                    &mut current_cell,
+                                    &mut cell_markup,
+                                    CellMarkup::html(style),
+                                ),
+                                HtmlPart::StyleEnd(style) => {
+                                    end_cell_markup(
+                                        &mut current_cell,
+                                        &mut cell_markup,
+                                        |markup| markup.html == Some(style),
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                     Event::End(TagEnd::Table) => {
                         in_table = false;
@@ -2362,13 +2632,21 @@ pub fn render_markdown(
                         current_tags.push("link".to_string());
                         link_starts.push((dest_url.to_string(), iter.offset()));
                     }
-                    Tag::Image { dest_url, .. } => {
+                    Tag::Image {
+                        link_type,
+                        dest_url,
+                        id,
+                        ..
+                    } => {
                         current_image = Some((None, String::new()));
                         let path = local_image_path(dest_url.as_ref(), image_base_dir);
                         if let Some(path) = &path {
                             shown_images.push(path.clone());
                         }
-                        if let Some(picture) = path.and_then(|path| image_picture(&path, hadj)) {
+                        let width = image_width(link_type, &id);
+                        if let Some(picture) =
+                            path.and_then(|path| image_picture(&path, hadj, width))
+                        {
                             current_image = Some((Some(picture.clone()), String::new()));
                             picture.set_focusable(false);
                             picture.set_margin_top(BLOCK_MARGIN);
@@ -2438,6 +2716,7 @@ pub fn render_markdown(
                 },
                 Event::End(tag_end) => match tag_end {
                     TagEnd::Heading(_) => {
+                        close_html_styles(&mut current_tags, &mut html_styles);
                         // Headings cannot nest, so every open heading tag is this one.
                         current_tags.retain(|t| !matches!(t.as_str(), "h1" | "h2" | "h3" | "h4"));
                         end_block(&buffer, &mut iter);
@@ -2560,6 +2839,7 @@ pub fn render_markdown(
                         }
                     }
                     TagEnd::Paragraph => {
+                        close_html_styles(&mut current_tags, &mut html_styles);
                         // The title of an alert sits right over its text.
                         if let Some(name) = alert_title.take() {
                             close_tag(&mut current_tags, name);
@@ -2669,11 +2949,28 @@ pub fn render_markdown(
                                     end_summary(&buffer, &mut iter, &mut open_details);
                                 }
                             }
+                            HtmlPart::StyleStart(style) => {
+                                current_tags.push(style.text_tag().to_owned());
+                                html_styles.push(style.text_tag());
+                            }
+                            HtmlPart::StyleEnd(style) => {
+                                if let Some(index) = html_styles
+                                    .iter()
+                                    .rposition(|name| *name == style.text_tag())
+                                {
+                                    html_styles.remove(index);
+                                    close_tag(&mut current_tags, style.text_tag());
+                                }
+                            }
                             HtmlPart::Text(text) => {
-                                let text = text.trim();
-                                if text.is_empty() {
+                                if text.trim_matches('\n').is_empty() {
                                     continue;
                                 }
+                                let text = if iter.starts_line() {
+                                    text.trim_start_matches('\n')
+                                } else {
+                                    &text
+                                };
                                 let start_offset = iter.offset();
                                 buffer.insert(&mut iter, text);
                                 let start_iter = buffer.iter_at_offset(start_offset);
@@ -2701,11 +2998,13 @@ pub fn render_markdown(
                             }
                         }
                     }
+                    if matches!(event, Event::Html(_)) {
+                        close_html_styles(&mut current_tags, &mut html_styles);
+                    }
                 }
-                // A block chunk holding nothing but markup — a comment, or a lone
-                // opening tag on its own line — is dropped, or it would leave a
-                // stray blank line behind. An inline chunk is kept as it comes,
-                // since a `<br>` legitimately reduces to just a newline.
+                // A block chunk holding nothing but markup, such as a comment, is dropped,
+                // or it would leave a stray blank line behind. An inline chunk is kept as it
+                // comes, since a `<br>` legitimately reduces to just a newline.
                 Event::Html(html) if strip_html(&html).trim().is_empty() => {}
                 Event::Html(html) | Event::InlineHtml(html) => {
                     let text = strip_html(&html);
@@ -2914,10 +3213,10 @@ pub fn render_markdown(
 #[cfg(test)]
 mod tests {
     use super::{
-        HtmlPart, LinkTarget, bare_links, close_tag, definitions, events, heading_slug,
-        html_images, html_parts, is_safe_link, lang_candidates, link_target, list_marker,
-        local_image_path, replace_shortcodes, strip_html, top_level_blocks, unchanged_ends,
-        wiki_destination, word_count,
+        HtmlPart, HtmlStyle, LinkTarget, bare_links, close_tag, definitions, events, heading_slug,
+        html_images, html_parts, image_width, is_safe_link, lang_candidates, link_target,
+        list_marker, local_image_path, replace_shortcodes, shown_size, strip_html,
+        top_level_blocks, unchanged_ends, wiki_destination, word_count,
     };
     use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
     use std::fs;
@@ -3060,8 +3359,9 @@ mod tests {
         // Scripts and style sheets are not text, and spaces run together.
         assert_eq!(
             strip_html("<div>\n  <b>Bold</b>,  <i>it</i><br>\n  next <!-- c --> word\n</div>\n"),
-            "\nBold, it\nnext word\n\n"
+            "Bold, it\nnext word"
         );
+        assert_eq!(strip_html("a<br><br>b<br>"), "a\n\nb\n");
         assert_eq!(strip_html("<script>alert(\"<b>\")</script>after"), "after");
         assert_eq!(strip_html("<STYLE type=x>p {}</style>"), "");
     }
@@ -3119,9 +3419,11 @@ mod tests {
         let chunk = r#"<p align="center"><img width=200 src="logo.png" alt='A &amp; B'/></p>"#;
         let images = html_images(chunk);
         assert_eq!(images.len(), 1);
-        let (range, source, alt) = &images[0];
+        let (range, source, alt, width) = &images[0];
         assert!(chunk[range.clone()].starts_with("<img") && chunk[range.clone()].ends_with("/>"));
         assert_eq!((source.as_str(), alt.as_str()), ("logo.png", "A & B"));
+        assert_eq!(*width, Some(200));
+        assert_eq!(html_images("<img src=a width='50%'>")[0].3, None);
         assert!(html_images("<imgx src=a>").is_empty());
         assert!(html_images("<img src=a").is_empty());
     }
@@ -3320,19 +3622,65 @@ mod tests {
     }
 
     #[test]
+    fn html_blocks_are_read_whole() {
+        let chunks: Vec<String> = events(
+            "<script>\nalert(1)\n</script>\n\n<p>\n<b>a</b>\n</p>\n\n<img\n  src=\"a.png\" width=\"40\">\n",
+        )
+        .into_iter()
+        .filter_map(|(event, _)| match event {
+            Event::Html(chunk) => Some(chunk.to_string()),
+            Event::Start(Tag::Image { link_type, id, .. }) => {
+                Some(format!("image {:?}", image_width(link_type, &id)))
+            }
+            _ => None,
+        })
+        .collect();
+        assert_eq!(
+            chunks,
+            [
+                "<script>\nalert(1)\n</script>\n",
+                "<p>\n<b>a</b>\n</p>\n",
+                "image Some(40)",
+            ]
+        );
+        assert_eq!(strip_html(&chunks[0]), "");
+        assert_eq!(shown_size((200, 100), Some(50)), (50, 25));
+        assert_eq!(shown_size((200, 100), None), (200, 100));
+    }
+
+    #[test]
     fn details_and_summaries_are_found_in_html() {
         assert_eq!(
             html_parts("<DETAILS open>\n<summary class=x>Title <em>here</em></summary>\n"),
             [
                 HtmlPart::DetailsStart { open: true },
-                HtmlPart::Text("\n".into()),
                 HtmlPart::SummaryStart,
-                HtmlPart::Text("Title here".into()),
+                HtmlPart::Text("Title ".into()),
+                HtmlPart::StyleStart(HtmlStyle::Italic),
+                HtmlPart::Text("here".into()),
+                HtmlPart::StyleEnd(HtmlStyle::Italic),
                 HtmlPart::SummaryEnd,
-                HtmlPart::Text("\n".into()),
             ]
         );
-        assert_eq!(html_parts("<b>x</b>"), [HtmlPart::Text("x".into())]);
+        assert_eq!(
+            html_parts("<B>x</b> <kbd>y</kbd><span>z</span>"),
+            [
+                HtmlPart::StyleStart(HtmlStyle::Bold),
+                HtmlPart::Text("x".into()),
+                HtmlPart::StyleEnd(HtmlStyle::Bold),
+                HtmlPart::Text(" ".into()),
+                HtmlPart::StyleStart(HtmlStyle::Keyboard),
+                HtmlPart::Text("y".into()),
+                HtmlPart::StyleEnd(HtmlStyle::Keyboard),
+                HtmlPart::Text("z".into()),
+            ]
+        );
+        // A tag in a comment or a script is not one, and the marks of the tags cannot be
+        // forged.
+        assert_eq!(
+            html_parts("<!-- <b> --><script><b></script>a\u{FDD0}b"),
+            [HtmlPart::Text("ab".into())]
+        );
         assert_eq!(html_parts("</details >"), [HtmlPart::DetailsEnd]);
         assert!(
             html_parts("<detailsx>")

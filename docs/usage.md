@@ -66,9 +66,11 @@ more of what GitHub renders:
 
 Code blocks are coloured by GtkSourceView when their fence names a language it knows, or a
 common alias of one (`js`, `py`, `sh`, `rs` and so on). Raw HTML is not laid out: its tags
-are dropped and the text inside them is kept, except for `<img>`, which shows like a
-Markdown image, and `<details>`, whose `<summary>` shows and hides the rest of it when
-clicked. It starts closed unless it has the `open` attribute, and stays as it was left while
+are dropped and the text inside them is kept, without scripts and style sheets. The tags of
+text styles still style it: `<b>`, `<strong>`, `<i>`, `<em>`, `<s>`, `<del>`, `<u>`, `<ins>`,
+`<code>`, `<kbd>`, `<sup>`, `<sub>` and `<mark>`. An `<img>` shows like a Markdown image, at
+the pixel width it gives, and a `<details>` element's `<summary>` shows and hides the rest of
+it when clicked. It starts closed unless it has the `open` attribute, and stays as it was left while
 the document is edited.
 
 The box of a task list item can be ticked in the preview. It changes the `[ ]` or `[x]` in
@@ -116,9 +118,9 @@ the link stays.
 column as wide as the window's, the text and monospace fonts, and code coloured for the
 light or the dark style, whichever the browser asks for. Images from the document's folder
 are embedded in the page, web images are left as addresses, and any other image shows its
-alternative text. Raw HTML in the document is left out, except for `<img>`, taken as a
-Markdown image, and for `<details>` and `<summary>`, written without their attributes but
-`open`. Link addresses other than web and mail addresses and relative paths are left out
+alternative text. Of raw HTML in the document only the text is kept, as in the preview, with
+`<img>` taken as a Markdown image, and `<details>`, `<summary>` and the tags of text styles
+written again without their attributes, but for `open` and an image's width. Link addresses other than web and mail addresses and relative paths are left out
 too, so the page runs no script when a browser opens it. Headings carry the names that
 links to `#a-heading` point at.
 
