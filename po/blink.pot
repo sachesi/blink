@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: blink 0.5.0\n"
+"Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 16:17+0300\n"
+"POT-Creation-Date: 2026-09-16 16:27+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -28,7 +28,7 @@ msgid "Markdown Editor"
 msgstr ""
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:364
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:368
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr ""
@@ -148,6 +148,37 @@ msgstr ""
 
 #: data/io.github.sachesi.blink.metainfo.xml:44
 msgid ""
+"Documents open in tabs, which can be dragged out into windows of their own "
+"or moved with \"Move to New Window\"; a narrow window shows its tabs in an "
+"overview. A file that is already open is brought forward, even when opened "
+"through a symbolic link, and two tabs of files of the same name also show "
+"their folders. Preferences can open every document in a window of its own "
+"instead."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:45
+msgid ""
+"Documents export to PDF, set on A4 pages with page numbers, links and an "
+"outline, and the HTML export is laid out like the preview, with its images "
+"embedded and code coloured for the light and the dark style. The fonts of "
+"the preview and of code can be picked, and so can the width of the editor "
+"and the preview. The editor shades every other line and highlights the "
+"current one."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:46
+msgid ""
+"Text can be copied from code blocks and table cells in the preview, wide "
+"tables scroll instead of breaking words, and the header row of a table is "
+"tinted. Only the parts of a document that changed are rendered again, and "
+"images are decoded in the background. Questions about a file now name it, "
+"and a change made on disk to a file in a tab out of sight is asked about "
+"once the tab is selected. Files dropped on the text of a document open, and "
+"restored backups are backed up again before the old backup is removed."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:51
+msgid ""
 "The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
 "the split view are three toggles in the header bar, and the split view can "
 "be picked at the size the window first opens with. Keyboard shortcuts have "
@@ -156,7 +187,7 @@ msgid ""
 "versions are not carried over."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:45
+#: data/io.github.sachesi.blink.metainfo.xml:52
 msgid ""
 "Backups of unsaved work can be recovered after a crash every time: about "
 "half of them used to be lost, because their record could not be written. "
@@ -168,40 +199,40 @@ msgid ""
 "in the Adwaita icon theme."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:50
+#: data/io.github.sachesi.blink.metainfo.xml:57
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:55
+#: data/io.github.sachesi.blink.metainfo.xml:62
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."
 msgstr ""
 
-#: src/application.rs:316
+#: src/application.rs:320
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
 msgstr ""
 
-#: src/application.rs:319
+#: src/application.rs:323
 #, no-c-format
 msgid "Recover Unsaved Document?"
 msgstr ""
 
-#: src/application.rs:322
+#: src/application.rs:326
 #, no-c-format
 msgid "Discard"
 msgstr ""
 
-#: src/application.rs:323
+#: src/application.rs:327
 #, no-c-format
 msgid "Restore"
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:369
+#: src/application.rs:373
 #, no-c-format
 msgid "translator-credits"
 msgstr ""
@@ -212,178 +243,178 @@ msgstr ""
 msgid "{} px"
 msgstr ""
 
-#: src/document.rs:304 src/document.rs:544 src/document/file.rs:428
-#: src/document/file.rs:717 src/document/recovery.rs:103 ui/window.ui:67
+#: src/document.rs:307 src/document.rs:549 src/document/file.rs:434
+#: src/document/file.rs:735 src/document/recovery.rs:103 ui/window.ui:67
 #: ui/window.ui:115
 #, no-c-format
 msgid "Untitled Document"
 msgstr ""
 
-#: src/document/file.rs:163 src/document/file.rs:207
+#: src/document/file.rs:167 src/document/file.rs:212
 #, no-c-format
 msgid "Error Opening File"
 msgstr ""
 
-#: src/document/file.rs:164 src/document/file.rs:234
+#: src/document/file.rs:168 src/document/file.rs:240
 #, no-c-format
 msgid "Only local files are supported"
 msgstr ""
 
-#: src/document/file.rs:210
+#: src/document/file.rs:215
 #, no-c-format
 msgid "Could not open \"{}\""
 msgstr ""
 
-#: src/document/file.rs:233 src/document/file.rs:270 src/document/file.rs:311
+#: src/document/file.rs:239 src/document/file.rs:276 src/document/file.rs:317
 #, no-c-format
 msgid "Error Saving File"
 msgstr ""
 
-#: src/document/file.rs:273
+#: src/document/file.rs:279
 #, no-c-format
 msgid "Could not save \"{}\""
 msgstr ""
 
-#: src/document/file.rs:296
+#: src/document/file.rs:302
 #, no-c-format
 msgid "Untitled.md"
 msgstr ""
 
-#: src/document/file.rs:312
+#: src/document/file.rs:318
 #, no-c-format
 msgid ""
 "\"{}\" is open in another tab or window. Close it there first, or save under "
 "another name."
 msgstr ""
 
-#: src/document/file.rs:352
+#: src/document/file.rs:358
 #, no-c-format
 msgid "Untitled"
 msgstr ""
 
-#: src/document/file.rs:363
+#: src/document/file.rs:369
 #, no-c-format
 msgid "HTML Files"
 msgstr ""
 
-#: src/document/file.rs:379
+#: src/document/file.rs:385
 #, no-c-format
 msgid "Error Exporting HTML"
 msgstr ""
 
-#: src/document/file.rs:382 src/document/file.rs:408
+#: src/document/file.rs:388 src/document/file.rs:414
 #, no-c-format
 msgid "Could not export the file"
 msgstr ""
 
-#: src/document/file.rs:391
+#: src/document/file.rs:397
 #, no-c-format
 msgid "PDF Files"
 msgstr ""
 
-#: src/document/file.rs:405
+#: src/document/file.rs:411
 #, no-c-format
 msgid "Error Exporting PDF"
 msgstr ""
 
-#: src/document/file.rs:444
+#: src/document/file.rs:450
 #, no-c-format
 msgid "Unsaved Changes"
 msgstr ""
 
-#: src/document/file.rs:446
+#: src/document/file.rs:452
 #, no-c-format
 msgid "\"{}\" has unsaved changes. Do you want to close without saving?"
 msgstr ""
 
-#: src/document/file.rs:450
+#: src/document/file.rs:456
 #, no-c-format
 msgid "Cancel"
 msgstr ""
 
-#: src/document/file.rs:451
+#: src/document/file.rs:457
 #, no-c-format
 msgid "Close Without Saving"
 msgstr ""
 
-#: src/document/file.rs:502
+#: src/document/file.rs:508
 #, no-c-format
 msgid "\"{}\" changed on disk — autosave paused"
 msgstr ""
 
-#: src/document/file.rs:510
+#: src/document/file.rs:516
 #, no-c-format
 msgid "\"{}\" no longer exists"
 msgstr ""
 
-#: src/document/file.rs:519
+#: src/document/file.rs:525
 #, no-c-format
 msgid "Autosave of \"{}\" failed"
 msgstr ""
 
-#: src/document/file.rs:650
+#: src/document/file.rs:656
 #, no-c-format
 msgid "\"{}\" was deleted on disk — save to keep your changes"
 msgstr ""
 
-#: src/document/file.rs:664
+#: src/document/file.rs:670
 #, no-c-format
 msgid "File Changed on Disk"
 msgstr ""
 
-#: src/document/file.rs:666
+#: src/document/file.rs:672
 #, no-c-format
 msgid ""
 "\"{}\" was modified by another program. Reload to discard your changes, or "
 "overwrite to keep them."
 msgstr ""
 
-#: src/document/file.rs:669
+#: src/document/file.rs:675
 #, no-c-format
 msgid "Save As…"
 msgstr ""
 
-#: src/document/file.rs:670
+#: src/document/file.rs:676
 #, no-c-format
 msgid "Overwrite"
 msgstr ""
 
-#: src/document/file.rs:671
+#: src/document/file.rs:677
 #, no-c-format
 msgid "Reload"
 msgstr ""
 
-#: src/document/file.rs:700
+#: src/document/file.rs:720
 #, no-c-format
 msgid "OK"
 msgstr ""
 
-#: src/document/file.rs:737
+#: src/document/file.rs:755
 #, no-c-format
 msgid "Markdown Files"
 msgstr ""
 
-#: src/document/file.rs:742
+#: src/document/file.rs:760
 #, no-c-format
 msgid "All Files"
 msgstr ""
 
-#: src/document/file.rs:755
+#: src/document/file.rs:773
 #, no-c-format
 msgid "You do not have permission to access this file."
 msgstr ""
 
-#: src/document/file.rs:756
+#: src/document/file.rs:774
 #, no-c-format
 msgid "The file no longer exists."
 msgstr ""
 
-#: src/document/file.rs:757
+#: src/document/file.rs:775
 #, no-c-format
 msgid "There is not enough space left on the disk."
 msgstr ""
 
-#: src/document/file.rs:758
+#: src/document/file.rs:776
 #, no-c-format
 msgid "The location is read-only."
 msgstr ""
