@@ -617,6 +617,10 @@ impl BlinkWindow {
             gtk::gdk::FileList::static_type(),
             gtk::gdk::DragAction::COPY,
         );
+        // Before the editor and the preview, whose text views take a drop of files as well
+        // and do nothing with it in the preview. A drag of text within the editor offers no
+        // file list, so it still reaches the editor.
+        target.set_propagation_phase(gtk::PropagationPhase::Capture);
         let overlay = imp.drop_overlay.get();
         target.connect_enter(glib::clone!(
             #[weak]
