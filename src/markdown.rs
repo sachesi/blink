@@ -1125,6 +1125,7 @@ pub fn render_markdown(
                         in_table = false;
                         let indent = block_indent(&list_stack, blockquote_depth);
                         let grid = Grid::builder().hexpand(true).build();
+                        grid.add_css_class("preview-table");
                         // A table wider than the column scrolls sideways, like a code block,
                         // rather than squeezing its columns until the words break apart.
                         let scroll = gtk::ScrolledWindow::builder()
@@ -1165,11 +1166,9 @@ pub fn render_markdown(
                                     _ => 0.0,
                                 };
 
+                                // Padded by the stylesheet rather than with margins, so that the
+                                // header's background fills its cells.
                                 let label = Label::builder()
-                                    .margin_top(10)
-                                    .margin_bottom(10)
-                                    .margin_start(12)
-                                    .margin_end(12)
                                     .wrap(true)
                                     .wrap_mode(gtk::pango::WrapMode::Word)
                                     .max_width_chars(CELL_WRAP_CHARS)

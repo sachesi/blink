@@ -48,3 +48,11 @@ textview.editor-view gutter {
 .code-block .code-copy:focus-within {
   opacity: 1;
 }
+
+/* Table cells, and a tint behind the header row as in the exports. */
+.preview-table label {
+  padding: 10px 12px;
+}
+.preview-table label.heading {
+  background-color: alpha(currentColor, 0.05);
+}

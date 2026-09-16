@@ -271,7 +271,7 @@ blockquote {{ margin: 1em 0; padding: 0.25em 1em; border-left: 3px solid rgba(12
 .table {{ margin: 1em 0; overflow-x: auto; border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 12px; }}
 table {{ min-width: 100%; border-collapse: collapse; }}
 th, td {{ padding: 10px 12px; border-top: 1px solid rgba(128, 128, 128, 0.25); border-left: 1px solid rgba(128, 128, 128, 0.25); text-align: left; vertical-align: top; }}
-thead th {{ border-top: none; }}
+thead th {{ border-top: none; background: rgba(128, 128, 128, 0.08); }}
 th:first-child, td:first-child {{ border-left: none; }}
 img {{ display: block; max-width: 100%; height: auto; margin: 12px auto; }}
 hr {{ margin: 1.5em 0; border: none; border-top: 1px solid rgba(128, 128, 128, 0.3); }}
