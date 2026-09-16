@@ -1219,10 +1219,19 @@ pub fn link_target(url: &str, base_dir: Option<&Path>) -> Option<LinkTarget> {
     (markdown && path.is_relative()).then(|| LinkTarget::Document(base_dir.join(path)))
 }
 
-/// The readable text of a raw HTML chunk: tags removed, `<br>` turned into a
-/// line break. This renderer cannot lay out HTML, but dropping the chunk
-/// outright lost the text inside it and ran the surrounding words together.
+/// The readable text of a raw HTML chunk: tags removed, with the scripts and style sheets
+/// they hold, `<br>` turned into a line break, and spaces run together as a browser runs
+/// them together. This renderer cannot lay out HTML, but dropping the chunk outright lost
+/// the text inside it and ran the surrounding words together.
 pub fn strip_html(chunk: &str) -> String {
+    tag_text(chunk)
+        .split('\n')
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn tag_text(chunk: &str) -> String {
     let mut out = String::new();
     let mut rest = chunk;
     while let Some(start) = rest.find('<') {
@@ -1247,10 +1256,21 @@ pub fn strip_html(chunk: &str) -> String {
             .trim_matches('/')
             .trim()
             .to_ascii_lowercase();
+        let name = name.split_whitespace().next().unwrap_or_default();
+        let opening = !rest[start + 1..].starts_with('/');
+        rest = &rest[start + end + 1..];
         if name == "br" {
             out.push('\n');
+            // The line break of the source after it is not another one.
+            rest = rest.trim_start_matches([' ', '\t']);
+            rest = rest.strip_prefix('\n').unwrap_or(rest);
+        } else if opening && matches!(name, "script" | "style") {
+            let closing = format!("</{name}");
+            match rest.to_ascii_lowercase().find(&closing) {
+                Some(at) => rest = &rest[at..],
+                None => return out,
+            }
         }
-        rest = &rest[start + end + 1..];
     }
     out.push_str(rest);
     out
@@ -3025,6 +3045,13 @@ mod tests {
         // Comments go whole, including any `>` inside them.
         assert_eq!(strip_html("a<!-- x > y -->b"), "ab");
         assert_eq!(strip_html("a<!-- unterminated"), "a");
+        // Scripts and style sheets are not text, and spaces run together.
+        assert_eq!(
+            strip_html("<div>\n  <b>Bold</b>,  <i>it</i><br>\n  next <!-- c --> word\n</div>\n"),
+            "\nBold, it\nnext word\n\n"
+        );
+        assert_eq!(strip_html("<script>alert(\"<b>\")</script>after"), "after");
+        assert_eq!(strip_html("<STYLE type=x>p {}</style>"), "");
     }
 
     #[test]
