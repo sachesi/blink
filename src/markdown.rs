@@ -907,15 +907,15 @@ pub fn render_markdown(
                         current_row = Vec::new();
                     }
                     Event::End(TagEnd::TableHead) => {
-                        table_rows.push(current_row.clone());
+                        table_rows.push(std::mem::take(&mut current_row));
                     }
                     Event::Start(Tag::TableRow) => current_row = Vec::new(),
                     Event::End(TagEnd::TableRow) => {
-                        table_rows.push(current_row.clone());
+                        table_rows.push(std::mem::take(&mut current_row));
                     }
                     Event::Start(Tag::TableCell) => current_cell = String::new(),
                     Event::End(TagEnd::TableCell) => {
-                        current_row.push(current_cell.clone());
+                        current_row.push(std::mem::take(&mut current_cell));
                     }
                     Event::Start(Tag::Strong) => current_cell.push_str("<b>"),
                     Event::End(TagEnd::Strong) => current_cell.push_str("</b>"),
