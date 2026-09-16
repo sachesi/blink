@@ -633,27 +633,34 @@ fn block_indent(list_stack: &[Option<u64>], blockquote_depth: i32) -> i32 {
 /// preview still takes the focus, so that copying finds a selection made in the block.
 fn keep_presses(block: &impl IsA<gtk::Widget>, view: &TextView) {
     let click = gtk::GestureClick::new();
-    click.connect_pressed(glib::clone!(
+    click.connect_pressed(|gesture, _, x, y| {
+        let Some(block) = gesture.widget() else {
+            return;
+        };
+        let on_content = block
+            .pick(x, y, gtk::PickFlags::DEFAULT)
+            .is_some_and(|target| {
+                target.is::<gtk::Label>()
+                    || target.is::<gtk::TextView>()
+                    || target.ancestor(gtk::Button::static_type()).is_some()
+            });
+        if !on_content {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
+    });
+    block.add_controller(click);
+    // The focus moves before the label or text view pressed takes the press for its
+    // selection, which would keep it from the gesture above.
+    let focus = gtk::GestureClick::new();
+    focus.set_propagation_phase(gtk::PropagationPhase::Capture);
+    focus.connect_pressed(glib::clone!(
         #[weak]
         view,
-        move |gesture, _, x, y| {
-            let Some(block) = gesture.widget() else {
-                return;
-            };
-            let on_content = block
-                .pick(x, y, gtk::PickFlags::DEFAULT)
-                .is_some_and(|target| {
-                    target.is::<gtk::Label>()
-                        || target.is::<gtk::TextView>()
-                        || target.ancestor(gtk::Button::static_type()).is_some()
-                });
-            if !on_content {
-                gesture.set_state(gtk::EventSequenceState::Claimed);
-            }
+        move |_, _, _, _| {
             view.grab_focus();
         }
     ));
-    block.add_controller(click);
+    block.add_controller(focus);
 }
 
 /// The Markdown the preview and the exports understand: CommonMark with tables,

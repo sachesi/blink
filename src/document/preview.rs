@@ -13,6 +13,7 @@ use std::time::Duration;
 use super::{BlinkDocument, ViewMode, buffer_text, saturating_u32};
 use crate::config;
 use crate::markdown;
+use crate::math_view;
 
 /// How long typing has to pause before the preview is rendered again.
 const RENDER_DELAY: Duration = Duration::from_millis(300);
@@ -224,12 +225,8 @@ impl BlinkDocument {
                     .map(|(start, end)| buffer.text(&start, &end, false).to_string()),
                 markdown::Surface::Cell { label, .. } => {
                     label.selection_bounds().map(|(start, end)| {
-                        label
-                            .text()
-                            .chars()
-                            .skip(start as usize)
-                            .take((end - start) as usize)
-                            .collect()
+                        let index = |offset: i32| usize::try_from(offset).unwrap_or_default();
+                        math_view::label_text(label, index(start)..index(end))
                     })
                 }
             })

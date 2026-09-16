@@ -228,7 +228,9 @@ pub fn label_with_formulas(label: &gtk::Label, formulas: LabelFormulas) -> gtk::
     }
     let text = label.text();
     label.update_property(&[gtk::accessible::Property::Label(&with_sources(
-        &text, &formulas,
+        &text,
+        &formulas,
+        0..usize::MAX,
     ))]);
     let math: BlinkLabelMath = glib::Object::builder()
         .property("can-target", false)
@@ -241,13 +243,30 @@ pub fn label_with_formulas(label: &gtk::Label, formulas: LabelFormulas) -> gtk::
     overlay.upcast()
 }
 
-/// `text` with the source of each of `formulas`, between dollar signs, in the place of its
-/// object replacement character.
-fn with_sources(text: &str, formulas: &[(Rc<Formula>, String)]) -> String {
+/// The characters of the text of `label` in `range`, as copied: with the source of each
+/// formula, between dollar signs, in its place.
+pub fn label_text(label: &gtk::Label, range: std::ops::Range<usize>) -> String {
+    let text = label.text();
+    match label_math(label) {
+        Some(math) => with_sources(&text, &math.imp().formulas.borrow(), range),
+        None => text.chars().skip(range.start).take(range.len()).collect(),
+    }
+}
+
+/// The characters of `text` in `range`, with the source of each of `formulas`, between dollar
+/// signs, in the place of its object replacement character.
+fn with_sources(
+    text: &str,
+    formulas: &[(Rc<Formula>, String)],
+    range: std::ops::Range<usize>,
+) -> String {
     let mut sources = formulas.iter().map(|(_, source)| source);
     let mut out = String::new();
-    for character in text.chars() {
+    for (index, character) in text.chars().enumerate().take(range.end) {
         let source = (character == '\u{FFFC}').then(|| sources.next()).flatten();
+        if index < range.start {
+            continue;
+        }
         match source {
             Some(source) => {
                 out.push('$');
@@ -263,11 +282,7 @@ fn with_sources(text: &str, formulas: &[(Rc<Formula>, String)]) -> String {
 /// Keep room for the formulas of the overlay of `label` in its text, at the size of its text,
 /// and draw them there. A label keeps the attributes of its markup with these.
 fn set_label_formulas(label: &gtk::Label) {
-    let Some(math) = label
-        .parent()
-        .and_then(|overlay| overlay.last_child())
-        .and_downcast::<BlinkLabelMath>()
-    else {
+    let Some(math) = label_math(label) else {
         return;
     };
     let size = font_size(label);
@@ -294,6 +309,14 @@ fn set_label_formulas(label: &gtk::Label) {
     math.queue_draw();
 }
 
+/// The formulas drawn over `label`, if it has any.
+fn label_math(label: &gtk::Label) -> Option<BlinkLabelMath> {
+    label
+        .parent()
+        .and_then(|overlay| overlay.last_child())
+        .and_downcast::<BlinkLabelMath>()
+}
+
 #[cfg(test)]
 mod tests {
     use super::with_sources;
@@ -311,6 +334,11 @@ mod tests {
             })
             .collect();
         let text = "a \u{FFFC} b \u{FFFC}";
-        assert_eq!(with_sources(text, &formulas), "a $x^2$ b $y$");
+        assert_eq!(
+            with_sources(text, &formulas, 0..usize::MAX),
+            "a $x^2$ b $y$"
+        );
+        // A selection after the first formula takes the source of the second.
+        assert_eq!(with_sources(text, &formulas, 4..7), "b $y$");
     }
 }
