@@ -125,15 +125,21 @@ impl BlinkMathView {
     }
 }
 
+/// The formulas in the text of a label, in order, with their sources.
+pub type LabelFormulas = Vec<(Rc<Formula>, String)>;
+
 mod label_imp {
     use super::*;
 
     #[derive(Default)]
     pub struct BlinkLabelMath {
         pub label: glib::WeakRef<gtk::Label>,
-        pub formulas: RefCell<Vec<Rc<Formula>>>,
+        /// The formulas, with their sources.
+        pub formulas: RefCell<LabelFormulas>,
         /// The size of the text of the label the formulas were measured for, in pixels.
         pub size: Cell<f64>,
+        /// Whether the formulas are to be measured again.
+        pub pending: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -153,8 +159,9 @@ mod label_imp {
             };
             // The text changed size, as with the zoom, since the formulas were measured.
             if font_size(&label) != self.size.get() {
-                let formulas = self.formulas.borrow().clone();
-                glib::idle_add_local_once(move || set_label_formulas(&label, formulas));
+                if !self.pending.replace(true) {
+                    glib::idle_add_local_once(move || set_label_formulas(&label));
+                }
                 return;
             }
             let layout = label.layout();
@@ -183,7 +190,7 @@ mod label_imp {
             loop {
                 let index = usize::try_from(iter.index()).unwrap_or(usize::MAX);
                 if text[index.min(text.len())..].starts_with('\u{FFFC}') {
-                    let Some(formula) = formulas.next() else {
+                    let Some((formula, _)) = formulas.next() else {
                         break;
                     };
                     let x = f64::from(iter.char_extents().x()) / scale;
@@ -214,23 +221,48 @@ glib::wrapper! {
 
 /// `label` with `formulas` shown in its text, in order in the places of its object
 /// replacement characters, at the size of its text: the label itself, or an overlay of it.
-pub fn label_with_formulas(label: &gtk::Label, formulas: Vec<Rc<Formula>>) -> gtk::Widget {
+/// A screen reader reads the source of each formula, between dollar signs, in its place.
+pub fn label_with_formulas(label: &gtk::Label, formulas: LabelFormulas) -> gtk::Widget {
     if formulas.is_empty() {
         return label.clone().upcast();
     }
+    let text = label.text();
+    label.update_property(&[gtk::accessible::Property::Label(&with_sources(
+        &text, &formulas,
+    ))]);
     let math: BlinkLabelMath = glib::Object::builder()
         .property("can-target", false)
         .build();
     math.imp().label.set(Some(label));
+    math.imp().formulas.replace(formulas);
     let overlay = gtk::Overlay::builder().child(label).build();
     overlay.add_overlay(&math);
-    set_label_formulas(label, formulas);
+    set_label_formulas(label);
     overlay.upcast()
 }
 
-/// Keep room for `formulas` in the text of `label`, at the size of its text, and draw them
-/// there. A label keeps the attributes of its markup with these.
-fn set_label_formulas(label: &gtk::Label, formulas: Vec<Rc<Formula>>) {
+/// `text` with the source of each of `formulas`, between dollar signs, in the place of its
+/// object replacement character.
+fn with_sources(text: &str, formulas: &[(Rc<Formula>, String)]) -> String {
+    let mut sources = formulas.iter().map(|(_, source)| source);
+    let mut out = String::new();
+    for character in text.chars() {
+        let source = (character == '\u{FFFC}').then(|| sources.next()).flatten();
+        match source {
+            Some(source) => {
+                out.push('$');
+                out.push_str(source);
+                out.push('$');
+            }
+            None => out.push(character),
+        }
+    }
+    out
+}
+
+/// Keep room for the formulas of the overlay of `label` in its text, at the size of its text,
+/// and draw them there. A label keeps the attributes of its markup with these.
+fn set_label_formulas(label: &gtk::Label) {
     let Some(math) = label
         .parent()
         .and_then(|overlay| overlay.last_child())
@@ -242,7 +274,8 @@ fn set_label_formulas(label: &gtk::Label, formulas: Vec<Rc<Formula>>) {
     let units = |pixels: f64| (pixels * f64::from(pango::SCALE)).round() as i32;
     let attributes = pango::AttrList::new();
     let text = label.text();
-    for ((index, _), formula) in text.match_indices('\u{FFFC}').zip(&formulas) {
+    let formulas = math.imp().formulas.borrow();
+    for ((index, _), (formula, _)) in text.match_indices('\u{FFFC}').zip(formulas.iter()) {
         let rectangle = pango::Rectangle::new(
             0,
             units(-formula.ascent * size),
@@ -254,8 +287,30 @@ fn set_label_formulas(label: &gtk::Label, formulas: Vec<Rc<Formula>>) {
         shape.set_end_index(u32::try_from(index + '\u{FFFC}'.len_utf8()).unwrap_or(u32::MAX));
         attributes.insert(shape);
     }
+    drop(formulas);
     math.imp().size.set(size);
-    math.imp().formulas.replace(formulas);
+    math.imp().pending.set(false);
     label.set_attributes(Some(&attributes));
     math.queue_draw();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_sources;
+    use crate::math;
+
+    #[test]
+    fn formulas_read_as_their_sources() {
+        let formulas: Vec<_> = ["x^2", "y"]
+            .into_iter()
+            .map(|source| {
+                (
+                    math::typeset(source, false).expect("formula"),
+                    source.to_owned(),
+                )
+            })
+            .collect();
+        let text = "a \u{FFFC} b \u{FFFC}";
+        assert_eq!(with_sources(text, &formulas), "a $x^2$ b $y$");
+    }
 }

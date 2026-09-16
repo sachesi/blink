@@ -493,6 +493,12 @@ fn close_tag(tags: &mut Vec<String>, name: &str) {
     }
 }
 
+/// `text` escaped for the markup of a table cell, without the object replacement characters
+/// that stand for the formulas of the cell.
+fn cell_text(text: &str) -> glib::GString {
+    glib::markup_escape_text(&text.replace('\u{FFFC}', ""))
+}
+
 /// Close the tags of the styles raw HTML opened in `html_styles` and left open, as the end of
 /// a paragraph closes them in a browser.
 fn close_html_styles(tags: &mut Vec<String>, html_styles: &mut Vec<&'static str>) {
@@ -2509,12 +2515,12 @@ pub fn render_markdown(
     let mut blockquote_depth: i32 = 0;
 
     let mut in_table = false;
-    // The markup of each cell, and the formulas in its text.
-    let mut table_rows: Vec<Vec<(String, Vec<Rc<math::Formula>>)>> = Vec::new();
+    // The markup of each cell, and the formulas in its text with their sources.
+    let mut table_rows: Vec<Vec<(String, math_view::LabelFormulas)>> = Vec::new();
     let mut table_alignments: Vec<Alignment> = Vec::new();
-    let mut current_row: Vec<(String, Vec<Rc<math::Formula>>)> = Vec::new();
+    let mut current_row: Vec<(String, math_view::LabelFormulas)> = Vec::new();
     let mut current_cell = String::new();
-    let mut cell_formulas: Vec<Rc<math::Formula>> = Vec::new();
+    let mut cell_formulas: math_view::LabelFormulas = Vec::new();
     // The markup open in the current cell, and whether the cell has text that is not code.
     let mut cell_markup: Vec<CellMarkup> = Vec::new();
     let mut cell_has_text = false;
@@ -2691,25 +2697,25 @@ pub fn render_markdown(
                         if let Some(formula) = math::typeset(latex, false) =>
                     {
                         current_cell.push('\u{FFFC}');
-                        cell_formulas.push(formula);
+                        cell_formulas.push((formula, latex.to_string()));
                     }
                     Event::Code(c) | Event::InlineMath(c) | Event::DisplayMath(c) => {
                         current_cell.push_str(&format!(
                             "{}{}</span>",
                             monospace_markup(),
-                            glib::markup_escape_text(&c)
+                            cell_text(&c)
                         ));
                     }
                     Event::Text(t) => {
                         cell_has_text |= !t.trim().is_empty();
-                        current_cell.push_str(&glib::markup_escape_text(&t));
+                        current_cell.push_str(&cell_text(&t));
                     }
                     Event::Html(html) | Event::InlineHtml(html) => {
                         for part in html_parts_with_emoji(&html, font_has_emoji) {
                             match part {
                                 HtmlPart::Text(text) => {
                                     cell_has_text |= !text.trim().is_empty();
-                                    current_cell.push_str(&glib::markup_escape_text(&text));
+                                    current_cell.push_str(&cell_text(&text));
                                 }
                                 HtmlPart::StyleStart(style) => start_cell_markup(
                                     &mut current_cell,
