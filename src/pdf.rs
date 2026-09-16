@@ -66,8 +66,9 @@ const DIM_COLOR: Rgb = (0.4, 0.4, 0.42);
 const LINK_COLOR: Rgb = (0.11, 0.44, 0.85);
 const LINE_COLOR: Rgb = (0.82, 0.82, 0.84);
 const TINT_COLOR: Rgb = (0.955, 0.955, 0.96);
-/// The box of a quote: grey let through, so that the box of a quote in a quote is darker.
-const QUOTE_TINT: (f64, f64, f64, f64) = (0.45, 0.45, 0.48, 0.08);
+/// The grey of the box of a quote, and how much of it covers the page: the box of a quote in a
+/// quote is covered once more, so it is darker.
+const QUOTE_TINT: (Rgb, f64) = ((0.45, 0.45, 0.48), 0.08);
 
 /// The blockquotes a block is in: how many, and for each of them, from the outermost, which
 /// quote of the document it is, whether it is an alert of some kind and how far its box is
@@ -119,6 +120,21 @@ impl Quote {
             *alert = None;
         }
     }
+}
+
+/// The box of a level of blockquote, as far as it is painted: which quote it is, the page and
+/// the bottom it last reached, where it is across the page, its kind of alert, and whether
+/// it ended on the page, rounded, as where its quote ends.
+#[derive(Clone, Copy, Debug)]
+struct QuoteBox {
+    number: usize,
+    page: u32,
+    end: f64,
+    x: f64,
+    width: f64,
+    alert: Option<BlockQuoteKind>,
+    ended: bool,
+    level: usize,
 }
 
 /// How a stretch of text looks.
@@ -877,9 +893,8 @@ struct Typesetter<'a> {
     outline: Vec<(usize, i32)>,
     /// The identifiers of the headings of the document.
     headings: HashSet<String>,
-    /// Where the box of each level of blockquote last ended: the quote's number, the page and
-    /// the bottom.
-    bars: RefCell<Vec<(usize, u32, f64)>>,
+    /// The box of each level of blockquote as far as it is painted.
+    quote_boxes: RefCell<Vec<QuoteBox>>,
     /// The outermost level of blockquote that ends with the block being set.
     quote_ending: usize,
 }
@@ -906,7 +921,7 @@ impl<'a> Typesetter<'a> {
             page: 1,
             outline: Vec::new(),
             headings: HashSet::new(),
-            bars: RefCell::new(Vec::new()),
+            quote_boxes: RefCell::new(Vec::new()),
             quote_ending: 0,
         })
     }
@@ -946,6 +961,7 @@ impl<'a> Typesetter<'a> {
     }
 
     fn new_page(&mut self) -> Result<(), cairo::Error> {
+        self.break_quote_boxes();
         self.footer()?;
         self.cr.show_page()?;
         self.page += 1;
@@ -1168,56 +1184,95 @@ impl<'a> Typesetter<'a> {
     /// Paint the boxes of the `quote` levels of blockquote behind a part of a block from `top`
     /// to `bottom`, the `last` part of the block or not, and the bar of an alert in its colour.
     /// A box goes on from where it last ended on the page, so that it runs past the gaps
-    /// between the blocks of its quote. Its corners are rounded where the quote starts and ends,
-    /// and not where a page breaks it.
+    /// between the blocks of its quote. It reaches past the text with rounded corners where
+    /// its quote starts and ends, and where a page breaks it, the farther for each quote in it
+    /// that starts or ends there too.
     fn quote_boxes(&self, quote: Quote, top: f64, bottom: f64, last: bool) {
-        let mut bars = self.bars.borrow_mut();
-        bars.truncate(quote.depth);
+        let mut boxes = self.quote_boxes.borrow_mut();
+        boxes.truncate(quote.depth);
+        // A block that goes on on the next page ends every box on this one.
+        let ending = if last { self.quote_ending } else { 0 };
         for level in 0..quote.depth {
             let number = quote.numbers[level];
-            let (from, starts) = match bars.get(level) {
-                Some((last, page, end)) if *last == number && *page == self.page && *end <= top => {
-                    (*end, false)
+            let padding = QUOTE_PADDING * (quote.depth - level) as f64;
+            let (from, starts) = match boxes.get(level) {
+                Some(open)
+                    if open.number == number
+                        && open.page == self.page
+                        && !open.ended
+                        && open.end <= top =>
+                {
+                    (open.end, false)
                 }
-                Some((last, ..)) if *last == number => (top, false),
-                _ => (top - QUOTE_PADDING, true),
+                _ => (top - padding, true),
             };
-            let ends = last && level >= self.quote_ending;
-            let to = if ends { bottom + QUOTE_PADDING } else { bottom };
-            let x = MARGIN + quote.indents[level];
-            let width = COLUMN_WIDTH - quote.indents[level] - level as f64 * QUOTE_RIGHT_PADDING;
-            let (red, green, blue, alpha) = QUOTE_TINT;
-            self.cr.set_source_rgba(red, green, blue, alpha);
-            corner_path(
-                &self.cr,
-                (x, from, width, to - from),
-                QUOTE_RADIUS,
-                starts,
-                ends,
-            );
-            let _ = self.cr.fill();
-            if let Some(kind) = quote.alerts[level] {
-                // Over the end of the part before, so that no seam shows between them.
-                let from = if starts { from } else { from - 1.0 };
-                let _ = self.cr.save();
-                corner_path(
-                    &self.cr,
-                    (x, from, width, to - from),
-                    QUOTE_RADIUS,
-                    starts,
-                    ends,
-                );
-                self.cr.clip();
-                self.set_color(alert_color(kind));
-                self.cr.rectangle(x, from, ALERT_BAR_WIDTH, to - from);
-                let _ = self.cr.fill();
-                let _ = self.cr.restore();
-            }
-            if let Some(bar) = bars.get_mut(level) {
-                *bar = (number, self.page, to);
+            let ends = level >= ending;
+            // Around the boxes in it that end here, with their padding.
+            let end = bottom + QUOTE_PADDING * (quote.depth - level.max(ending)) as f64;
+            let part = QuoteBox {
+                number,
+                page: self.page,
+                end,
+                x: MARGIN + quote.indents[level],
+                width: COLUMN_WIDTH - quote.indents[level] - level as f64 * QUOTE_RIGHT_PADDING,
+                alert: quote.alerts[level],
+                ended: ends,
+                level,
+            };
+            self.quote_box_part(&part, from, starts);
+            if let Some(open) = boxes.get_mut(level) {
+                *open = part;
             } else {
-                bars.push((number, self.page, to));
+                boxes.push(part);
             }
+        }
+    }
+
+    /// End the boxes of the quotes the page breaks, below where they last ended on it.
+    fn break_quote_boxes(&self) {
+        let boxes = self.quote_boxes.borrow();
+        let broken = boxes
+            .iter()
+            .take_while(|open| open.page == self.page && !open.ended)
+            .count();
+        for (level, open) in boxes.iter().take(broken).enumerate() {
+            let end = QuoteBox {
+                end: open.end + QUOTE_PADDING * (broken - level) as f64,
+                ended: true,
+                ..*open
+            };
+            self.quote_box_part(&end, open.end, false);
+        }
+    }
+
+    /// Paint the part of the box `part` from `from` to its end, with rounded top corners if it
+    /// `starts` there and rounded bottom corners if the box ends.
+    /// A part that does not end the box reaches a point further, into the space the next part
+    /// paints over, so that no seam shows between them.
+    fn quote_box_part(&self, part: &QuoteBox, from: f64, starts: bool) {
+        let to = if part.ended { part.end } else { part.end + 1.0 };
+        // Solid, so that the parts of a box can overlap.
+        let ((red, green, blue), alpha) = QUOTE_TINT;
+        let mut color = (1.0, 1.0, 1.0);
+        for _ in 0..=part.level {
+            color = (
+                color.0 + (red - color.0) * alpha,
+                color.1 + (green - color.1) * alpha,
+                color.2 + (blue - color.2) * alpha,
+            );
+        }
+        self.set_color(color);
+        let bounds = (part.x, from, part.width, to - from);
+        corner_path(&self.cr, bounds, QUOTE_RADIUS, starts, part.ended);
+        let _ = self.cr.fill();
+        if let Some(kind) = part.alert {
+            let _ = self.cr.save();
+            corner_path(&self.cr, bounds, QUOTE_RADIUS, starts, part.ended);
+            self.cr.clip();
+            self.set_color(alert_color(kind));
+            self.cr.rectangle(part.x, from, ALERT_BAR_WIDTH, to - from);
+            let _ = self.cr.fill();
+            let _ = self.cr.restore();
         }
     }
 
@@ -1243,9 +1298,8 @@ impl<'a> Typesetter<'a> {
             let quote = block_quote(block).unwrap_or_default();
             let previous = index.checked_sub(1).and_then(|index| blocks.get(index));
             // Room for the boxes of quotes, which reach above and below their text.
-            if quote.ending(previous.and_then(block_quote)) < quote.depth {
-                self.y += QUOTE_PADDING;
-            }
+            let starting = quote.ending(previous.and_then(block_quote));
+            self.y += QUOTE_PADDING * (quote.depth - starting) as f64;
             self.quote_ending = quote.ending(blocks.get(index + 1).and_then(block_quote));
             match block {
                 Block::Text {
@@ -1282,9 +1336,7 @@ impl<'a> Typesetter<'a> {
                 } => self.image(path, alt, (*width, *align), *indent, *quote)?,
                 Block::Rule => self.rule()?,
             }
-            if self.quote_ending < quote.depth {
-                self.y += QUOTE_PADDING;
-            }
+            self.y += QUOTE_PADDING * (quote.depth - self.quote_ending) as f64;
         }
         Ok(())
     }
@@ -1906,7 +1958,10 @@ fn corner_path(
     top: bool,
     bottom: bool,
 ) {
-    let radius = radius.min(width / 2.0).min(height / 2.0);
+    // Rounded on one side only, a box can round as far as it is tall.
+    let radius = radius
+        .min(width / 2.0)
+        .min(if top && bottom { height / 2.0 } else { height });
     let degrees = std::f64::consts::PI / 180.0;
     let (top, bottom) = (
         if top { radius } else { 0.0 },
