@@ -34,6 +34,8 @@ pub struct State {
     pub tasks: RefCell<Vec<markdown::Task>>,
     /// Where the headings start in the preview buffer, by identifier.
     pub headings: RefCell<Vec<(i32, String)>>,
+    /// The `<details>` elements, whose summaries show and hide their content.
+    pub details: RefCell<Vec<markdown::Details>>,
 }
 
 impl BlinkDocument {
@@ -59,7 +61,15 @@ impl BlinkDocument {
             #[weak(rename_to = document)]
             self,
             move |_, _, x, y| {
-                if let Some(target) = document.link_at(x, y) {
+                if let Some(details) = document.details_at(x, y) {
+                    let imp = document.imp();
+                    let open = details.tag.is_invisible();
+                    imp.preview.rendered.borrow_mut().set_details_open(
+                        &imp.preview_view,
+                        &details,
+                        open,
+                    );
+                } else if let Some(target) = document.link_at(x, y) {
                     document.follow_link(target);
                 }
             }
@@ -71,11 +81,12 @@ impl BlinkDocument {
             #[weak(rename_to = document)]
             self,
             move |_, x, y| {
-                let cursor = if document.link_at(x, y).is_some() {
-                    "pointer"
-                } else {
-                    "text"
-                };
+                let cursor =
+                    if document.details_at(x, y).is_some() || document.link_at(x, y).is_some() {
+                        "pointer"
+                    } else {
+                        "text"
+                    };
                 document
                     .imp()
                     .preview_view
@@ -230,12 +241,29 @@ impl BlinkDocument {
         imp.preview.syncing.set(false);
     }
 
-    /// Where the link under `(x, y)` in the preview goes, if it is followed.
-    fn link_at(&self, x: f64, y: f64) -> Option<markdown::LinkTarget> {
+    /// The offset in the preview buffer of the text under `(x, y)`.
+    fn preview_offset_at(&self, x: f64, y: f64) -> Option<i32> {
         let view = &self.imp().preview_view;
         let (bx, by) =
             view.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
-        let offset = view.iter_at_location(bx, by)?.offset();
+        Some(view.iter_at_location(bx, by)?.offset())
+    }
+
+    /// The `<details>` element whose summary is under `(x, y)` in the preview.
+    fn details_at(&self, x: f64, y: f64) -> Option<markdown::Details> {
+        let offset = self.preview_offset_at(x, y)?;
+        self.imp()
+            .preview
+            .details
+            .borrow()
+            .iter()
+            .find(|details| details.summary.contains(&offset))
+            .cloned()
+    }
+
+    /// Where the link under `(x, y)` in the preview goes, if it is followed.
+    fn link_at(&self, x: f64, y: f64) -> Option<markdown::LinkTarget> {
+        let offset = self.preview_offset_at(x, y)?;
         let links = self.imp().preview.links.borrow();
         let (_, _, url) = links
             .iter()
@@ -365,6 +393,7 @@ impl BlinkDocument {
         imp.preview.surfaces.replace(result.surfaces);
         imp.preview.tasks.replace(result.tasks);
         imp.preview.headings.replace(result.headings);
+        imp.preview.details.replace(result.details);
         for task in &result.added_tasks {
             task.check.connect_toggled(glib::clone!(
                 #[weak(rename_to = document)]

@@ -318,6 +318,7 @@ pub struct RenderResult {
     pub tasks: Vec<Task>,
     pub added_tasks: Vec<Task>,
     pub headings: Vec<(i32, String)>,
+    pub details: Vec<Details>,
 }
 
 pub fn setup_tags(buffer: &TextBuffer) {
@@ -535,7 +536,7 @@ fn alert_title(kind: BlockQuoteKind) -> String {
 ///
 /// - front matter and math standing alone in a paragraph become code blocks, and other math
 ///   inline code;
-/// - web addresses written out become links, as on GitHub;
+/// - web addresses written out become links, and emoji shortcodes emoji, as on GitHub;
 /// - `<img>` tags in raw HTML become images, held to the same rules as Markdown images;
 /// - an alert starts with its title in bold;
 /// - headings get the identifiers GitHub gives them, which links to `#section` point at;
@@ -670,8 +671,12 @@ fn extend_events<'a>(
                     source.end = next_range.end;
                     index += 1;
                 }
-                if in_code || in_link > 0 {
+                if in_code {
                     out.push((Event::Text(merged.into()), source));
+                    continue;
+                }
+                if in_link > 0 {
+                    out.push((Event::Text(replace_shortcodes(&merged).into()), source));
                     continue;
                 }
                 // Only text as written in the source has ranges within it; the rest keeps
@@ -687,7 +692,7 @@ fn extend_events<'a>(
                 let mut last = 0;
                 for (link, url) in bare_links(&merged) {
                     if link.start > last {
-                        let before = merged[last..link.start].to_owned();
+                        let before = replace_shortcodes(&merged[last..link.start]);
                         out.push((Event::Text(before.into()), part(last..link.start)));
                     }
                     let tag = Tag::Link {
@@ -703,7 +708,7 @@ fn extend_events<'a>(
                     last = link.end;
                 }
                 if last < merged.len() {
-                    let rest = merged[last..].to_owned();
+                    let rest = replace_shortcodes(&merged[last..]);
                     out.push((Event::Text(rest.into()), part(last..merged.len())));
                 }
             }
@@ -853,12 +858,34 @@ fn bare_links(text: &str) -> Vec<(Range<usize>, String)> {
 
 /// The `<img>` tags of a raw HTML chunk: the byte range of each, its `src` and its `alt`.
 fn html_images(chunk: &str) -> Vec<(Range<usize>, String, String)> {
+    html_tags(chunk, "img")
+        .into_iter()
+        .map(|(range, attributes)| {
+            let attribute = |wanted: &str| {
+                attributes
+                    .iter()
+                    .find(|(name, _)| name == wanted)
+                    .map(|(_, value)| value.clone())
+                    .unwrap_or_default()
+            };
+            (range, attribute("src"), attribute("alt"))
+        })
+        .collect()
+}
+
+/// The attributes of an HTML tag, as names in lower case and values.
+type Attributes = Vec<(String, String)>;
+
+/// The opening tags named `name` in a raw HTML chunk: the byte range of each, and its
+/// attributes.
+fn html_tags(chunk: &str, name: &str) -> Vec<(Range<usize>, Attributes)> {
     let lower = chunk.to_ascii_lowercase();
-    let mut images = Vec::new();
+    let opening = format!("<{name}");
+    let mut tags = Vec::new();
     let mut from = 0;
-    while let Some(at) = lower[from..].find("<img") {
+    while let Some(at) = lower[from..].find(&opening) {
         let start = from + at;
-        from = start + 4;
+        from = start + opening.len();
         if !lower[from..].starts_with(|c: char| c.is_ascii_whitespace() || c == '/' || c == '>') {
             continue;
         }
@@ -900,17 +927,128 @@ fn html_images(chunk: &str) -> Vec<(Range<usize>, String, String)> {
         let Some(end) = end else {
             break;
         };
-        let attribute = |wanted: &str| {
-            attributes
-                .iter()
-                .find(|(name, _)| name == wanted)
-                .map(|(_, value)| value.clone())
-                .unwrap_or_default()
-        };
-        images.push((start..end, attribute("src"), attribute("alt")));
+        tags.push((start..end, attributes));
         from = end;
     }
-    images
+    tags
+}
+
+/// The byte ranges of the closing tags named `name` in a raw HTML chunk.
+fn html_closing_tags(chunk: &str, name: &str) -> Vec<Range<usize>> {
+    let lower = chunk.to_ascii_lowercase();
+    let closing = format!("</{name}");
+    let mut tags = Vec::new();
+    let mut from = 0;
+    while let Some(at) = lower[from..].find(&closing) {
+        let start = from + at;
+        from = start + closing.len();
+        let rest = &lower[from..];
+        let spaces = rest.len() - rest.trim_start().len();
+        if rest[spaces..].starts_with('>') {
+            from += spaces + 1;
+            tags.push(start..from);
+        }
+    }
+    tags
+}
+
+/// A piece of a raw HTML chunk, as far as the preview and the exports lay HTML out.
+#[derive(Debug, PartialEq, Eq)]
+pub enum HtmlPart {
+    /// Text, as [`strip_html`] leaves it, with emoji for shortcodes.
+    Text(String),
+    /// A `<details>` element starts, open or closed.
+    DetailsStart {
+        open: bool,
+    },
+    DetailsEnd,
+    SummaryStart,
+    SummaryEnd,
+}
+
+/// The pieces of a raw HTML chunk: its `<details>` and `<summary>` tags, and the text around
+/// them. A chunk without either tag is text alone.
+pub fn html_parts(chunk: &str) -> Vec<HtmlPart> {
+    let mut tags: Vec<(Range<usize>, HtmlPart)> = html_tags(chunk, "details")
+        .into_iter()
+        .map(|(range, attributes)| {
+            let open = attributes.iter().any(|(name, _)| name == "open");
+            (range, HtmlPart::DetailsStart { open })
+        })
+        .chain(
+            html_tags(chunk, "summary")
+                .into_iter()
+                .map(|(range, _)| (range, HtmlPart::SummaryStart)),
+        )
+        .chain(
+            html_closing_tags(chunk, "details")
+                .into_iter()
+                .map(|range| (range, HtmlPart::DetailsEnd)),
+        )
+        .chain(
+            html_closing_tags(chunk, "summary")
+                .into_iter()
+                .map(|range| (range, HtmlPart::SummaryEnd)),
+        )
+        .collect();
+    tags.sort_by_key(|(range, _)| range.start);
+    let mut parts = Vec::new();
+    let mut last = 0;
+    let text = |chunk: &str| replace_shortcodes(&strip_html(chunk));
+    for (range, part) in tags {
+        // A tag inside another, as in an attribute value, is not one.
+        if range.start < last {
+            continue;
+        }
+        let text = text(&chunk[last..range.start]);
+        if !text.is_empty() {
+            parts.push(HtmlPart::Text(text));
+        }
+        parts.push(part);
+        last = range.end;
+    }
+    let text = text(&chunk[last..]);
+    if !text.is_empty() {
+        parts.push(HtmlPart::Text(text));
+    }
+    parts
+}
+
+/// How many `<details>` elements a raw HTML chunk opens, less those it closes.
+fn details_depth_change(chunk: &str) -> isize {
+    html_parts(chunk)
+        .iter()
+        .map(|part| match part {
+            HtmlPart::DetailsStart { .. } => 1,
+            HtmlPart::DetailsEnd => -1,
+            _ => 0,
+        })
+        .sum()
+}
+
+/// `text` with GitHub's emoji shortcodes, such as `:tada:`, replaced by their emoji.
+fn replace_shortcodes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(':') {
+        let after = &rest[start + 1..];
+        let length = after
+            .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-')))
+            .unwrap_or(after.len());
+        if length > 0
+            && after[length..].starts_with(':')
+            && let Some(emoji) = emojis::get_by_shortcode(&after[..length])
+        {
+            out.push_str(&rest[..start]);
+            out.push_str(emoji.as_str());
+            rest = &after[length + 1..];
+        } else {
+            out.push_str(&rest[..=start]);
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// `text` with the character references of HTML that addresses and descriptions commonly
@@ -1377,6 +1515,45 @@ struct RenderedBlock {
     /// block's source.
     tasks: Vec<Task>,
     headings: Vec<(i32, String)>,
+    details: Vec<Details>,
+}
+
+impl RenderedBlock {
+    /// Let go of what the block's output leaves in `buffer` once the output is deleted.
+    fn release(self, buffer: &TextBuffer) {
+        buffer.delete_mark(&self.start);
+        for details in self.details {
+            buffer.tag_table().remove(&details.tag);
+        }
+    }
+}
+
+/// A `<details>` element in the preview: its summary, which shows or hides the rest, as
+/// offsets in the preview buffer.
+#[derive(Clone)]
+pub struct Details {
+    /// The triangle before the summary, which points at the content while it shows.
+    pub icon: gtk::Image,
+    /// The summary, from its triangle on.
+    pub summary: Range<i32>,
+    /// What the summary shows and hides, from the end of the summary's line.
+    pub content: Range<i32>,
+    /// The tag that hides the content.
+    pub tag: gtk::TextTag,
+    /// The text of the summary, which the element is known by from one render to the next.
+    pub key: String,
+    /// Whether the element is open until it is opened or closed in the preview.
+    pub open: bool,
+}
+
+impl Details {
+    fn shifted(&self, by: i32) -> Self {
+        Self {
+            summary: self.summary.start + by..self.summary.end + by,
+            content: self.content.start + by..self.content.end + by,
+            ..self.clone()
+        }
+    }
 }
 
 /// What the preview buffer holds, so a render can keep the blocks that did not change.
@@ -1385,18 +1562,145 @@ pub struct Rendered {
     blocks: Vec<RenderedBlock>,
     base_dir: Option<PathBuf>,
     definitions: Vec<String>,
+    /// Whether each `<details>` element was opened or closed in the preview, by its summary.
+    details_open: HashMap<String, bool>,
 }
 
 impl Rendered {
     /// Empty the buffer of `view`, so that the next render builds every block again.
     pub fn clear(&mut self, view: &TextView) {
         let buffer = view.buffer();
-        for block in self.blocks.drain(..) {
-            buffer.delete_mark(&block.start);
-        }
         let (mut start, mut end) = buffer.bounds();
         delete_output(view, &mut start, &mut end);
+        for block in self.blocks.drain(..) {
+            block.release(&buffer);
+        }
     }
+
+    /// Show or hide the content of `details` in `view`, and remember it.
+    pub fn set_details_open(&mut self, view: &TextView, details: &Details, open: bool) {
+        let buffer = view.buffer();
+        details.tag.set_invisible(!open);
+        let start = buffer.iter_at_offset(details.content.start);
+        let end = buffer.iter_at_offset(details.content.end);
+        for_each_widget(&start, &end, |widget| widget.set_visible(open));
+        details.icon.set_icon_name(Some(details_icon(open)));
+        self.details_open.insert(details.key.clone(), open);
+    }
+}
+
+/// The triangle before the summary of an open or a closed `<details>` element. An icon, as
+/// few fonts have the triangles.
+fn details_icon(open: bool) -> &'static str {
+    if open {
+        "pan-down-symbolic"
+    } else {
+        "pan-end-symbolic"
+    }
+}
+
+/// Whether `event` can come between the start of a `<details>` element and its summary.
+fn leads_to_summary(event: &Event) -> bool {
+    match event {
+        Event::Start(Tag::HtmlBlock) | Event::End(TagEnd::HtmlBlock) => true,
+        Event::Html(chunk) | Event::InlineHtml(chunk) => html_parts(chunk)
+            .iter()
+            .find(|part| !matches!(part, HtmlPart::Text(text) if text.trim().is_empty()))
+            .is_none_or(|part| *part == HtmlPart::SummaryStart),
+        _ => false,
+    }
+}
+
+/// Call `f` on each widget anchored between `start` and `end`.
+fn for_each_widget(start: &gtk::TextIter, end: &gtk::TextIter, mut f: impl FnMut(&gtk::Widget)) {
+    let mut from = *start;
+    // Child widgets match the object replacement character.
+    while let Some((anchor_start, anchor_end)) =
+        from.forward_search("\u{FFFC}", gtk::TextSearchFlags::empty(), Some(end))
+    {
+        if let Some(anchor) = anchor_start.child_anchor() {
+            for widget in anchor.widgets() {
+                f(&widget);
+            }
+        }
+        from = anchor_end;
+    }
+}
+
+/// Start the summary of the innermost of `open_details` at `iter` with its triangle, and
+/// end it with `text` unless the summary's text is still to come.
+fn insert_summary(
+    view: &TextView,
+    iter: &mut gtk::TextIter,
+    open_details: &mut [Details],
+    text: Option<&str>,
+) {
+    let buffer = view.buffer();
+    let Some(element) = open_details.last_mut() else {
+        return;
+    };
+    start_line(&buffer, iter);
+    element.summary.start = iter.offset();
+    element.icon.add_css_class("details-icon");
+    let anchor = buffer.create_child_anchor(iter);
+    view.add_child_at_anchor(&element.icon, &anchor);
+    buffer.insert(iter, " ");
+    if let Some(text) = text {
+        buffer.insert(iter, text);
+        element.key.push_str(text);
+        end_summary(&buffer, iter, open_details);
+    }
+}
+
+/// End the summary of the innermost of `open_details` at `iter`; its content follows.
+fn end_summary(buffer: &TextBuffer, iter: &mut gtk::TextIter, open_details: &mut [Details]) {
+    let Some(element) = open_details.last_mut() else {
+        return;
+    };
+    element.summary.end = iter.offset();
+    element.content.start = iter.offset();
+    buffer.insert(iter, "\n");
+}
+
+/// End the innermost of `open_details` at `iter`, open or closed as `rendered` last had it.
+fn end_details(
+    buffer: &TextBuffer,
+    iter: &mut gtk::TextIter,
+    open_details: &mut Vec<Details>,
+    rendered: &Rendered,
+) -> Option<Details> {
+    let mut element = open_details.pop()?;
+    // The content is hidden with the newline that ends it, as a line whose newline shows
+    // takes up a line, and the blank line after it stays, to part the summary from what
+    // follows while the content is hidden.
+    let iter_offset = iter.offset();
+    let mut end = *iter;
+    while end.offset() > element.content.start && {
+        let mut before = end;
+        before.backward_char() && before.char() == '\n'
+    } {
+        end.backward_char();
+    }
+    if end.offset() < iter_offset {
+        end.forward_char();
+    }
+    element.content.end = end.offset();
+    let start = buffer.iter_at_offset(element.content.start);
+    buffer.tag_table().add(&element.tag);
+    buffer.apply_tag(&element.tag, &start, &end);
+    let open = rendered
+        .details_open
+        .get(&element.key)
+        .copied()
+        .unwrap_or(element.open);
+    element.tag.set_invisible(!open);
+    // Applying the tag left the iterators behind.
+    let start = buffer.iter_at_offset(element.content.start);
+    let end = buffer.iter_at_offset(element.content.end);
+    for_each_widget(&start, &end, |widget| widget.set_visible(open));
+    element.icon.set_icon_name(Some(details_icon(open)));
+    *iter = buffer.iter_at_offset(iter_offset);
+    Some(element)
 }
 
 /// Delete the output between `start` and `end` from the buffer of `view`, and the widgets in
@@ -1406,18 +1710,7 @@ impl Rendered {
 /// pointer unmaps it in the middle of the deletion, and GTK then reads the half-changed
 /// buffer to tell the view that the pointer is back over it, and crashes.
 fn delete_output(view: &TextView, start: &mut gtk::TextIter, end: &mut gtk::TextIter) {
-    let mut from = *start;
-    // Child widgets match the object replacement character.
-    while let Some((anchor_start, anchor_end)) =
-        from.forward_search("\u{FFFC}", gtk::TextSearchFlags::empty(), Some(end))
-    {
-        if let Some(anchor) = anchor_start.child_anchor() {
-            for widget in anchor.widgets() {
-                view.remove(&widget);
-            }
-        }
-        from = anchor_end;
-    }
+    for_each_widget(start, end, |widget| view.remove(widget));
     view.buffer().delete(start, end);
 }
 
@@ -1444,20 +1737,25 @@ fn definitions(link_definitions: &RefDefs, events: &[(Event, Range<usize>)]) -> 
 }
 
 /// The top-level blocks of a document, as the range of their events and of their source.
+/// A `<details>` element is one block with all it holds, which is shown or hidden together.
 fn top_level_blocks(events: &[(Event, Range<usize>)]) -> Vec<(Range<usize>, Range<usize>)> {
     let mut blocks = Vec::new();
     let mut depth = 0usize;
+    let mut details = 0isize;
     let mut first = 0;
     for (index, (event, range)) in events.iter().enumerate() {
-        if depth == 0 {
+        if depth == 0 && details == 0 {
             first = index;
         }
         match event {
             Event::Start(_) => depth += 1,
             Event::End(_) => depth = depth.saturating_sub(1),
+            Event::Html(chunk) | Event::InlineHtml(chunk) => {
+                details = (details + details_depth_change(chunk)).max(0);
+            }
             _ => {}
         }
-        if depth == 0 {
+        if depth == 0 && details == 0 {
             blocks.push((
                 first..index + 1,
                 events[first].1.start.min(range.start)..range.end,
@@ -1525,7 +1823,7 @@ pub fn render_markdown(
     let mut removed_end = block_start(removed.end);
     delete_output(view, &mut iter, &mut removed_end);
     for block in rendered.blocks.drain(removed) {
-        buffer.delete_mark(&block.start);
+        block.release(&buffer);
     }
     let insert_offset = iter.offset();
     // Text inserted where a tag starts takes the tag, so the output of the blocks after the
@@ -1587,6 +1885,13 @@ pub fn render_markdown(
     let mut item_bullet: Option<(i32, i32)> = None;
     // The tag of the title of the alert just started, until the title's paragraph ends.
     let mut alert_title: Option<&'static str> = None;
+    let mut details: Vec<Details> = Vec::new();
+    // The `<details>` elements open around the text being rendered, and whether the text is
+    // their summary.
+    let mut open_details: Vec<Details> = Vec::new();
+    let mut in_summary = false;
+    // A `<details>` element started, and its summary may still come.
+    let mut awaiting_summary = false;
 
     let middle = &blocks[prefix..blocks.len() - suffix];
     let mut events = events
@@ -1596,6 +1901,14 @@ pub fn render_markdown(
         let start_offset = iter.offset();
         let start = buffer.create_mark(None, &iter, true);
         for (event, event_range) in events.by_ref().take(block_events.len()) {
+            // Content before any summary is summed up as GitHub sums it up.
+            if awaiting_summary && !leads_to_summary(&event) {
+                awaiting_summary = false;
+                // Translators: the summary of a part of a document that is shown and hidden
+                // by clicking it, when the document gives it none.
+                let summary = gettext("Details");
+                insert_summary(view, &mut iter, &mut open_details, Some(&summary));
+            }
             if in_code_block {
                 match event {
                     Event::Text(t) | Event::Code(t) => {
@@ -2001,6 +2314,75 @@ pub fn render_markdown(
                         buffer.apply_tag_by_name(tag, &start_iter, &iter);
                     }
                 }
+                Event::Html(ref html) | Event::InlineHtml(ref html)
+                    if current_image.is_none()
+                        && html_parts(html)
+                            .iter()
+                            .any(|part| !matches!(part, HtmlPart::Text(_))) =>
+                {
+                    for part in html_parts(html) {
+                        if awaiting_summary
+                            && !matches!(&part, HtmlPart::SummaryStart)
+                            && !matches!(&part, HtmlPart::Text(text) if text.trim().is_empty())
+                        {
+                            awaiting_summary = false;
+                            let summary = gettext("Details");
+                            insert_summary(view, &mut iter, &mut open_details, Some(&summary));
+                        }
+                        match part {
+                            HtmlPart::DetailsStart { open } => {
+                                open_details.push(Details {
+                                    icon: gtk::Image::new(),
+                                    summary: 0..0,
+                                    content: 0..0,
+                                    tag: gtk::TextTag::new(None),
+                                    key: String::new(),
+                                    open,
+                                });
+                                awaiting_summary = true;
+                            }
+                            HtmlPart::SummaryStart => {
+                                if awaiting_summary {
+                                    awaiting_summary = false;
+                                    in_summary = true;
+                                    insert_summary(view, &mut iter, &mut open_details, None);
+                                }
+                            }
+                            HtmlPart::SummaryEnd => {
+                                if in_summary {
+                                    in_summary = false;
+                                    end_summary(&buffer, &mut iter, &mut open_details);
+                                }
+                            }
+                            HtmlPart::Text(text) => {
+                                let text = text.trim();
+                                if text.is_empty() {
+                                    continue;
+                                }
+                                let start_offset = iter.offset();
+                                buffer.insert(&mut iter, text);
+                                let start_iter = buffer.iter_at_offset(start_offset);
+                                for tag in &current_tags {
+                                    buffer.apply_tag_by_name(tag, &start_iter, &iter);
+                                }
+                                if in_summary && let Some(open) = open_details.last_mut() {
+                                    open.key.push_str(text);
+                                }
+                            }
+                            HtmlPart::DetailsEnd => {
+                                if in_summary {
+                                    in_summary = false;
+                                    end_summary(&buffer, &mut iter, &mut open_details);
+                                }
+                                if let Some(element) =
+                                    end_details(&buffer, &mut iter, &mut open_details, rendered)
+                                {
+                                    details.push(element.shifted(-start_offset));
+                                }
+                            }
+                        }
+                    }
+                }
                 // A block chunk holding nothing but markup — a comment, or a lone
                 // opening tag on its own line — is dropped, or it would leave a
                 // stray blank line behind. An inline chunk is kept as it comes,
@@ -2113,6 +2495,7 @@ pub fn render_markdown(
             images: std::mem::take(&mut shown_images),
             tasks: std::mem::take(&mut tasks),
             headings: std::mem::take(&mut headings),
+            details: std::mem::take(&mut details),
         });
     }
 
@@ -2143,6 +2526,7 @@ pub fn render_markdown(
         tasks: Vec::new(),
         added_tasks,
         headings: Vec::new(),
+        details: Vec::new(),
     };
     let mut images = HashSet::new();
     // The rendered blocks are the blocks of the text, in order.
@@ -2158,6 +2542,9 @@ pub fn render_markdown(
                 .iter()
                 .map(|(start, id)| (start + offset, id.clone())),
         );
+        result
+            .details
+            .extend(block.details.iter().map(|details| details.shifted(offset)));
         result.links.extend(
             block
                 .links
@@ -2176,9 +2563,10 @@ pub fn render_markdown(
 #[cfg(test)]
 mod tests {
     use super::{
-        LinkTarget, bare_links, close_tag, definitions, events, heading_slug, html_images,
-        is_safe_link, lang_candidates, link_target, list_marker, local_image_path, strip_html,
-        top_level_blocks, unchanged_ends, wiki_destination,
+        HtmlPart, LinkTarget, bare_links, close_tag, definitions, events, heading_slug,
+        html_images, html_parts, is_safe_link, lang_candidates, link_target, list_marker,
+        local_image_path, replace_shortcodes, strip_html, top_level_blocks, unchanged_ends,
+        wiki_destination,
     };
     use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
     use std::fs;
@@ -2525,6 +2913,67 @@ mod tests {
         assert_eq!(link_target("/etc/notes.md", Some(base)), None);
         assert_eq!(link_target("file:///docs/a.md", Some(base)), None);
         assert_eq!(link_target("a.md", None), None);
+    }
+
+    #[test]
+    fn shortcodes_become_emoji() {
+        assert_eq!(replace_shortcodes("Done :tada: :+1:"), "Done 🎉 👍");
+        assert_eq!(
+            replace_shortcodes("at 10:30:45 :nope: a:b"),
+            "at 10:30:45 :nope: a:b"
+        );
+        assert_eq!(replace_shortcodes("::smile::"), ":😄:");
+        let events = events("`:tada:` :tada:");
+        assert!(
+            events
+                .iter()
+                .any(|(event, _)| *event == Event::Code(":tada:".into()))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|(event, _)| *event == Event::Text(" 🎉".into()))
+        );
+    }
+
+    #[test]
+    fn details_and_summaries_are_found_in_html() {
+        assert_eq!(
+            html_parts("<DETAILS open>\n<summary class=x>Title <em>here</em></summary>\n"),
+            [
+                HtmlPart::DetailsStart { open: true },
+                HtmlPart::Text("\n".into()),
+                HtmlPart::SummaryStart,
+                HtmlPart::Text("Title here".into()),
+                HtmlPart::SummaryEnd,
+                HtmlPart::Text("\n".into()),
+            ]
+        );
+        assert_eq!(html_parts("<b>x</b>"), [HtmlPart::Text("x".into())]);
+        assert_eq!(html_parts("</details >"), [HtmlPart::DetailsEnd]);
+        assert!(
+            html_parts("<detailsx>")
+                .iter()
+                .all(|part| matches!(part, HtmlPart::Text(_)))
+        );
+    }
+
+    #[test]
+    fn a_details_element_is_one_block() {
+        let text = "Before\n\n<details>\n<summary>S</summary>\n\nInside\n\n- item\n\n</details>\n\nAfter\n";
+        let events = super::events(text);
+        let sources: Vec<&str> = top_level_blocks(&events)
+            .into_iter()
+            .map(|(_, source)| text[source].trim_end())
+            .collect();
+        assert_eq!(
+            sources,
+            [
+                "Before",
+                "<details>\n<summary>S</summary>\n\nInside\n\n- item\n\n</details>",
+                "After"
+            ]
+        );
     }
 
     #[test]

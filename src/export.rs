@@ -182,8 +182,33 @@ pub fn render_html(text: &str, options: &Options) -> String {
             // Untrusted document content is exported to a file that may be opened in a
             // browser. Raw HTML is dropped (no `<script>`/`onerror=` passthrough) and link
             // and image URLs are scheme-filtered, mirroring the in-app preview's own
-            // allow-list. pulldown-cmark performs no sanitization of its own.
-            Event::Html(_) | Event::InlineHtml(_) => {}
+            // allow-list. pulldown-cmark performs no sanitization of its own. Only `<details>`
+            // and `<summary>` are written again, without their attributes but `open`, with
+            // the text around them.
+            Event::Html(chunk) | Event::InlineHtml(chunk) => {
+                let parts = markdown::html_parts(&chunk);
+                if parts
+                    .iter()
+                    .any(|part| !matches!(part, markdown::HtmlPart::Text(_)))
+                {
+                    let html: String = parts
+                        .iter()
+                        .map(|part| match part {
+                            markdown::HtmlPart::Text(text) => escape_html(text),
+                            markdown::HtmlPart::DetailsStart { open: true } => {
+                                String::from("<details open>")
+                            }
+                            markdown::HtmlPart::DetailsStart { open: false } => {
+                                String::from("<details>")
+                            }
+                            markdown::HtmlPart::DetailsEnd => String::from("</details>"),
+                            markdown::HtmlPart::SummaryStart => String::from("<summary>"),
+                            markdown::HtmlPart::SummaryEnd => String::from("</summary>"),
+                        })
+                        .collect();
+                    events.push(Event::Html(format!("{html}\n").into()));
+                }
+            }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let info = match kind {
                     CodeBlockKind::Fenced(info) => info.to_string(),
@@ -433,6 +458,17 @@ mod tests {
         assert!(html.contains("class=\"markdown-alert-tip\""));
         assert!(html.contains("<strong>Tip</strong>"));
         assert!(html.contains("href=\"#intro\""));
+    }
+
+    #[test]
+    fn export_keeps_details_and_emoji() {
+        let html = render(
+            "<details open onclick=\"x()\"><summary>More <b>info</b></summary>\n\nHidden :tada:\n\n</details>\n",
+        );
+        assert!(html.contains("<details open><summary>More info</summary>"));
+        assert!(html.contains("<p>Hidden 🎉</p>"));
+        assert!(html.contains("</details>"));
+        assert!(!html.contains("onclick"));
     }
 
     #[test]

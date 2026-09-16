@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 17:38+0300\n"
+"POT-Creation-Date: 2026-09-16 17:53+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -430,19 +430,19 @@ msgstr ""
 msgid "The location is read-only."
 msgstr ""
 
-#: src/document/preview.rs:273
+#: src/document/preview.rs:301
 #, no-c-format
 msgid "The linked file does not exist"
 msgstr ""
 
-#: src/document/preview.rs:421
+#: src/document/preview.rs:451
 #, no-c-format
 msgid "{} word"
 msgid_plural "{} words"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/document/preview.rs:426
+#: src/document/preview.rs:456
 #, no-c-format
 msgid "{} character"
 msgid_plural "{} characters"
@@ -495,34 +495,41 @@ msgstr ""
 
 #. Translators: the titles of the five kinds of alert a document can hold, as GitHub
 #. shows them over a note, a tip, an important note, a warning and a caution.
-#: src/markdown.rs:525
+#: src/markdown.rs:526
 #, no-c-format
 msgid "Note"
 msgstr ""
 
-#: src/markdown.rs:526
+#: src/markdown.rs:527
 #, no-c-format
 msgid "Tip"
 msgstr ""
 
-#: src/markdown.rs:527
+#: src/markdown.rs:528
 #, no-c-format
 msgid "Important"
 msgstr ""
 
-#: src/markdown.rs:528
+#: src/markdown.rs:529
 #, no-c-format
 msgid "Warning"
 msgstr ""
 
-#: src/markdown.rs:529
+#: src/markdown.rs:530
 #, no-c-format
 msgid "Caution"
 msgstr ""
 
-#: src/markdown.rs:1228
+#: src/markdown.rs:1366
 #, no-c-format
 msgid "Copy Code"
+msgstr ""
+
+#. Translators: the summary of a part of a document that is shown and hidden
+#. by clicking it, when the document gives it none.
+#: src/markdown.rs:1909 src/markdown.rs:2329
+#, no-c-format
+msgid "Details"
 msgstr ""
 
 #: src/window.rs:137

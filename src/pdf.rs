@@ -275,8 +275,13 @@ impl<'a> Reader<'a> {
                 self.push_text(&code);
                 self.style = style;
             }
+            // A `<details>` element is set open, its summary as text.
             Event::Html(html) | Event::InlineHtml(html) => {
-                self.push_text(&markdown::strip_html(&html));
+                for part in markdown::html_parts(&html) {
+                    if let markdown::HtmlPart::Text(text) = part {
+                        self.push_text(&text);
+                    }
+                }
             }
             Event::SoftBreak => self.push_text(" "),
             Event::HardBreak => self.push_text("\n"),

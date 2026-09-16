@@ -75,3 +75,8 @@ checkbutton.task-check check {
 checkbutton.task-check check:not(:checked) {
   box-shadow: inset 0 0 0 1.5px alpha(currentColor, 0.4);
 }
+
+/* The triangle before the summary of a <details> element, on the line as the text is. */
+image.details-icon {
+  margin-bottom: -3px;
+}

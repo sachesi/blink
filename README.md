@@ -6,7 +6,8 @@ safe: a file is saved as you type, unsaved changes are backed up for recovery af
 crash, and a change another program made to the file is never overwritten without asking.
 
 The preview renders tables, task lists whose boxes can be ticked, footnotes, GitHub's
-alerts, syntax-coloured code blocks and images from the document's own folder. Find works in the source and in the rendered text,
+alerts, emoji, collapsible details, syntax-coloured code blocks and images from the
+document's own folder. Find works in the source and in the rendered text,
 replace in the source. Documents open in tabs, which can be dragged out into windows of
 their own, or each in a window of its own if you prefer. There is a focus mode, full
 screen with nothing but the text, and an export to a standalone HTML file or to PDF.
