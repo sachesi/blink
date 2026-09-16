@@ -2,8 +2,8 @@
 //!
 //! Each open document with unsaved changes is mirrored to a backup pair under
 //! `$XDG_STATE_HOME/blink/backups/`: `{id}.toml` (metadata) and `{id}.content`
-//! (raw text). A per-process lockfile under `locks/` plus a PID liveness check
-//! distinguishes a crashed session's orphaned backup from one owned by another
+//! (raw text). A per-process lockfile under `locks/`, which names the process that wrote
+//! it, distinguishes a crashed session's orphaned backup from one owned by another
 //! running instance. Pure logic with no GTK dependency; synchronous IO.
 
 use crate::conflict::write_text_atomically;
@@ -59,7 +59,8 @@ pub enum OrphanClass {
 /// Biased toward recovery (no data loss) when the signal is ambiguous: a
 /// missing lockfile is treated as orphaned even if some process happens to be
 /// alive at that PID, because the lockfile is the authoritative owner marker
-/// and an unrelated process may have reused the PID.
+/// and an unrelated process may have reused the PID. [`lock_present`] also
+/// reports a lock left by a crashed process whose PID was reused as missing.
 pub fn classify(
     record_pid: u32,
     current_pid: u32,
@@ -177,16 +178,54 @@ pub fn lock_path(locks: &Path, pid: u32) -> PathBuf {
     locks.join(format!("{pid}.lock"))
 }
 
+/// What tells the process running as `pid` apart from a later one given the same PID:
+/// the boot it runs in and when it started, in clock ticks after boot. `None` where
+/// `/proc` does not tell.
+pub fn process_identity(pid: u32) -> Option<String> {
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // The command name, in parentheses, can hold spaces and parentheses; the fields after
+    // it, from the third on, cannot. The start time is the 22nd.
+    let start_time = stat.rsplit_once(')')?.1.split_whitespace().nth(19)?;
+    Some(format!("{} {start_time}", boot.trim()))
+}
+
+/// Whether `pid` holds its lock: the lock is there, and was written by the process that
+/// runs as `pid` now rather than by one that crashed before the PID was reused. A lock
+/// that names no process, from an older version or a system without `/proc`, holds.
 pub fn lock_present(locks: &Path, pid: u32) -> bool {
-    lock_path(locks, pid).exists()
+    fs::read_to_string(lock_path(locks, pid)).is_ok_and(|identity| {
+        identity.is_empty() || process_identity(pid).as_deref() == Some(identity.as_str())
+    })
 }
 
 pub fn create_lock(locks: &Path, pid: u32) -> io::Result<()> {
     ensure_private_dir(locks)?;
     let path = lock_path(locks, pid);
-    fs::File::create(&path)?;
+    fs::write(&path, process_identity(pid).unwrap_or_default())?;
     set_file_private(&path);
     Ok(())
+}
+
+/// Remove the locks of processes that are gone, or whose PID another process took.
+pub fn remove_stale_locks(locks: &Path) {
+    let Ok(entries) = fs::read_dir(locks) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(pid) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".lock"))
+            .and_then(|pid| pid.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if !is_pid_alive(pid) || !lock_present(locks, pid) {
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 pub fn remove_lock(locks: &Path, pid: u32) {
@@ -430,6 +469,37 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("blink-backup-missing-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         assert!(list_records(&dir).unwrap().is_empty());
+    }
+
+    #[test]
+    fn lock_of_a_reused_pid_is_not_present() {
+        let dir = unique_dir("stale-lock");
+        let pid = std::process::id();
+        create_lock(&dir, pid).unwrap();
+        assert!(process_identity(pid).is_some());
+        assert!(lock_present(&dir, pid));
+
+        // Left by a process that ran as this PID before, in an earlier boot.
+        fs::write(lock_path(&dir, pid), "an-earlier-boot 12345").unwrap();
+        assert!(!lock_present(&dir, pid));
+
+        remove_stale_locks(&dir);
+        assert!(!lock_path(&dir, pid).exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stale_lock_removal_keeps_held_locks() {
+        let dir = unique_dir("held-lock");
+        let pid = std::process::id();
+        create_lock(&dir, pid).unwrap();
+        // A PID that cannot be running.
+        fs::write(lock_path(&dir, u32::MAX), "").unwrap();
+
+        remove_stale_locks(&dir);
+        assert!(lock_path(&dir, pid).exists());
+        assert!(!lock_path(&dir, u32::MAX).exists());
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

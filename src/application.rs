@@ -294,6 +294,7 @@ impl BlinkApplication {
                 let pid = std::process::id();
                 let orphans = gio::spawn_blocking(move || {
                     let locks_dir = backup::locks_dir();
+                    backup::remove_stale_locks(&locks_dir);
                     backup::list_records(&backup::backups_dir()).map(|records| {
                         records
                             .into_iter()
