@@ -56,10 +56,13 @@ the link stays.
 
 ## Export
 
-"Export as HTML…" in the main menu writes a standalone page with its own stylesheet, light
-and dark. Raw HTML in the document is left out of it, and so are link and image addresses
-other than web and mail addresses and relative paths, so the page runs no script when a
-browser opens it.
+"Export as HTML…" in the main menu writes a standalone page laid out like the preview: a
+column as wide as the window's, the text and monospace fonts, and code coloured for the
+light or the dark style, whichever the browser asks for. Images from the document's folder
+are embedded in the page, web images are left as addresses, and any other image shows its
+alternative text. Raw HTML in the document is left out, and so are link addresses other
+than web and mail addresses and relative paths, so the page runs no script when a browser
+opens it.
 
 ## Keyboard shortcuts
 

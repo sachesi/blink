@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use super::{BlinkWindow, ViewMode, buffer_text};
 use crate::conflict::{self, AutosaveOutcome, FileFingerprint};
 use crate::export;
+use crate::markdown;
 
 /// How often unsaved changes to a file are written to it.
 const AUTOSAVE_INTERVAL_SECS: u32 = 10;
@@ -319,13 +320,16 @@ impl BlinkWindow {
         let Some(path) = file.path() else {
             return;
         };
-        let title = self
-            .current_file()
-            .as_ref()
-            .map(file_title)
-            .unwrap_or_else(|| gettext("Untitled Document"));
-        let html = export::render_html(&buffer_text(&*self.imp().edit_buffer), &title);
-        if let Err(err) = blocking(move || conflict::write_text_atomically(&path, &html)).await {
+        let text = buffer_text(&*self.imp().edit_buffer);
+        let options = export::Options {
+            dark: markdown::code_highlights(&text, true),
+            ..self.export_options(&text)
+        };
+        let written = blocking(move || {
+            conflict::write_text_atomically(&path, &export::render_html(&text, &options))
+        })
+        .await;
+        if let Err(err) = written {
             self.present_error(
                 gettext("Error Exporting HTML"),
                 format!(
@@ -334,6 +338,27 @@ impl BlinkWindow {
                     describe_io_error(&err)
                 ),
             );
+        }
+    }
+
+    /// What an export of `text` takes from the window: the title, the folder of images, the
+    /// fonts, the width and the colours of the code in the light style.
+    fn export_options(&self, text: &str) -> export::Options {
+        let (text_font, monospace_font) = self.font_families();
+        export::Options {
+            title: self
+                .current_file()
+                .as_ref()
+                .map(file_title)
+                .unwrap_or_else(|| gettext("Untitled Document")),
+            base_dir: self
+                .current_path()
+                .and_then(|path| path.parent().map(Path::to_path_buf)),
+            text_font,
+            monospace_font,
+            width: self.content_width(),
+            light: markdown::code_highlights(text, false),
+            dark: Vec::new(),
         }
     }
 

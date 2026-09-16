@@ -437,6 +437,17 @@ fn keep_presses(block: &impl IsA<gtk::Widget>, view: &TextView) {
     block.add_controller(click);
 }
 
+/// The Markdown the preview and the exports understand: CommonMark with tables,
+/// strikethrough, task lists and footnotes.
+pub fn parser_options() -> pulldown_cmark::Options {
+    let mut options = pulldown_cmark::Options::empty();
+    options.insert(pulldown_cmark::Options::ENABLE_TABLES);
+    options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
+    options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
+    options.insert(pulldown_cmark::Options::ENABLE_FOOTNOTES);
+    options
+}
+
 /// Whether a link may be handed to the system URI launcher. Documents can come
 /// from untrusted sources, so only web and mail links are ever followed.
 pub fn is_safe_link(url: &str) -> bool {
@@ -446,7 +457,7 @@ pub fn is_safe_link(url: &str) -> bool {
 /// The readable text of a raw HTML chunk: tags removed, `<br>` turned into a
 /// line break. This renderer cannot lay out HTML, but dropping the chunk
 /// outright lost the text inside it and ran the surrounding words together.
-fn strip_html(chunk: &str) -> String {
+pub fn strip_html(chunk: &str) -> String {
     let mut out = String::new();
     let mut rest = chunk;
     while let Some(start) = rest.find('<') {
@@ -524,6 +535,116 @@ fn resolve_language(info: &str) -> Option<sourceview5::Language> {
     lang_candidates(info)
         .into_iter()
         .find_map(|id| manager.language(&id))
+}
+
+/// How a stretch of highlighted code looks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CodeStyle {
+    /// Red, green and blue.
+    pub color: Option<(u8, u8, u8)>,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+/// A stretch of highlighted code, as a byte range of the code.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodeRun {
+    pub range: Range<usize>,
+    pub style: CodeStyle,
+}
+
+/// The code of a code block as it is shown, without the newlines that end it.
+pub fn shown_code(code: &str) -> &str {
+    code.trim_end_matches('\n')
+}
+
+/// The syntax colours of every code block of `text`, in order, as the preview gives them in
+/// the light or the dark style. The runs are ranges of the code as [`shown_code`] gives it.
+pub fn code_highlights(text: &str, dark: bool) -> Vec<Vec<CodeRun>> {
+    let scheme = sourceview5::StyleSchemeManager::default().scheme(if dark {
+        "Adwaita-dark"
+    } else {
+        "Adwaita"
+    });
+    let mut highlights = Vec::new();
+    let mut block: Option<(String, String)> = None;
+    for event in Parser::new_ext(text, parser_options()) {
+        match event {
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let info = match kind {
+                    CodeBlockKind::Fenced(info) => info.to_string(),
+                    CodeBlockKind::Indented => String::new(),
+                };
+                block = Some((info, String::new()));
+            }
+            Event::Text(text) => {
+                if let Some((_, code)) = block.as_mut() {
+                    code.push_str(&text);
+                }
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                if let Some((info, code)) = block.take() {
+                    highlights.push(highlight(shown_code(&code), &info, scheme.as_ref()));
+                }
+            }
+            _ => {}
+        }
+    }
+    highlights
+}
+
+/// The runs of `code` that GtkSourceView colours for the language `info` names.
+fn highlight(code: &str, info: &str, scheme: Option<&sourceview5::StyleScheme>) -> Vec<CodeRun> {
+    let Some(language) = resolve_language(info) else {
+        return Vec::new();
+    };
+    let buffer = sourceview5::Buffer::new(None);
+    buffer.set_language(Some(&language));
+    buffer.set_style_scheme(scheme);
+    buffer.set_text(code);
+    let (start, end) = buffer.bounds();
+    buffer.ensure_highlight(&start, &end);
+
+    let mut runs = Vec::new();
+    let mut iter = start;
+    let mut offset = 0;
+    while !iter.is_end() {
+        let mut next = iter;
+        next.forward_to_tag_toggle(None::<&gtk::TextTag>);
+        // Tags come in order of priority, so a later one wins.
+        let style = iter
+            .tags()
+            .iter()
+            .fold(CodeStyle::default(), |mut style, tag| {
+                if tag.is_foreground_set()
+                    && let Some(color) = tag.foreground_rgba()
+                {
+                    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+                    style.color = Some((
+                        channel(color.red()),
+                        channel(color.green()),
+                        channel(color.blue()),
+                    ));
+                }
+                if tag.is_weight_set() {
+                    style.bold = tag.weight() >= 600;
+                }
+                if tag.is_style_set() {
+                    style.italic = tag.style() != gtk::pango::Style::Normal;
+                }
+                style
+            });
+        let length = buffer.text(&iter, &next, true).len();
+        if style != CodeStyle::default() {
+            runs.push(CodeRun {
+                range: offset..offset + length,
+                style,
+            });
+        }
+        offset += length;
+        iter = next;
+    }
+    runs
 }
 
 /// Builds a read-only, syntax-highlighted code block widget for the preview, with a
@@ -671,7 +792,7 @@ fn ensure_list_tag(buffer: &TextBuffer, depth: usize) -> String {
 /// therefore canonicalized (which collapses `..` and resolves symlinks) and
 /// required to stay within the canonicalized base directory. Remote schemes are
 /// never fetched.
-fn local_image_path(dest_url: &str, base_dir: Option<&Path>) -> Option<PathBuf> {
+pub fn local_image_path(dest_url: &str, base_dir: Option<&Path>) -> Option<PathBuf> {
     let dest_url = dest_url.trim();
     if dest_url.is_empty() || dest_url.starts_with("data:") {
         return None;
@@ -700,7 +821,7 @@ fn local_image_path(dest_url: &str, base_dir: Option<&Path>) -> Option<PathBuf> 
 /// The visual marker for the next list item, advancing the ordered counter.
 /// `Some(n)` at the top of the stack is an ordered list (renders `n. `);
 /// otherwise a bullet that alternates by nesting depth.
-fn list_marker(list_stack: &mut [Option<u64>]) -> String {
+pub fn list_marker(list_stack: &mut [Option<u64>]) -> String {
     match list_stack.last_mut() {
         Some(Some(number)) => {
             let marker = format!("{number}. ");
@@ -819,13 +940,8 @@ pub fn render_markdown(
 ) -> RenderResult {
     let buffer = view.buffer();
 
-    let mut options = pulldown_cmark::Options::empty();
-    options.insert(pulldown_cmark::Options::ENABLE_TABLES);
-    options.insert(pulldown_cmark::Options::ENABLE_STRIKETHROUGH);
-    options.insert(pulldown_cmark::Options::ENABLE_TASKLISTS);
-    options.insert(pulldown_cmark::Options::ENABLE_FOOTNOTES);
     // The offset iterator keeps the parser, and with it the link definitions.
-    let mut parser = Parser::new_ext(text, options).into_offset_iter();
+    let mut parser = Parser::new_ext(text, parser_options()).into_offset_iter();
     let events: Vec<(Event, Range<usize>)> = parser.by_ref().collect();
     let definitions = definitions(parser.reference_definitions(), &events);
     let blocks = top_level_blocks(&events);
@@ -911,7 +1027,7 @@ pub fn render_markdown(
                     Event::End(TagEnd::CodeBlock) => {
                         in_code_block = false;
                         let indent = block_indent(&list_stack, blockquote_depth);
-                        let clean_code = current_code.trim_end_matches('\n');
+                        let clean_code = shown_code(&current_code);
                         let (scroll, code_view, code_buffer) =
                             code_block_widget(clean_code, &current_code_lang, indent, hadj);
 
