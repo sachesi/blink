@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::math;
-use crate::math_view::BlinkMathView;
+use crate::math_view::{self, BlinkMathView};
 
 /// The width images are decoded at, at most: the widest reading column at a display scale
 /// of 2. A photo decoded at its full size holds tens of megabytes to show a few hundred
@@ -2342,10 +2342,12 @@ pub fn render_markdown(
     let mut blockquote_depth: i32 = 0;
 
     let mut in_table = false;
-    let mut table_rows: Vec<Vec<String>> = Vec::new();
+    // The markup of each cell, and the formulas in its text.
+    let mut table_rows: Vec<Vec<(String, Vec<Rc<math::Formula>>)>> = Vec::new();
     let mut table_alignments: Vec<Alignment> = Vec::new();
-    let mut current_row: Vec<String> = Vec::new();
+    let mut current_row: Vec<(String, Vec<Rc<math::Formula>>)> = Vec::new();
     let mut current_cell = String::new();
+    let mut cell_formulas: Vec<Rc<math::Formula>> = Vec::new();
     // The markup open in the current cell, and whether the cell has text that is not code.
     let mut cell_markup: Vec<CellMarkup> = Vec::new();
     let mut cell_has_text = false;
@@ -2464,7 +2466,10 @@ pub fn render_markdown(
                         if !cell_has_text && !current_cell.is_empty() {
                             current_cell.insert(0, '\u{2060}');
                         }
-                        current_row.push(std::mem::take(&mut current_cell));
+                        current_row.push((
+                            std::mem::take(&mut current_cell),
+                            std::mem::take(&mut cell_formulas),
+                        ));
                     }
                     Event::Start(tag @ (Tag::Strong | Tag::Emphasis | Tag::Strikethrough)) => {
                         let markup = match tag {
@@ -2507,7 +2512,15 @@ pub fn render_markdown(
                             markup.html.is_none() && matches!(markup.end, "</a>" | "</u>")
                         });
                     }
-                    // A label cannot hold a formula, which shows as its source.
+                    // A formula is drawn in the place of an object replacement character, and set
+                    // in the line of the cell, as a label cannot hold a formula on a line of its
+                    // own.
+                    Event::InlineMath(ref latex) | Event::DisplayMath(ref latex)
+                        if let Some(formula) = math::typeset(latex, false) =>
+                    {
+                        current_cell.push('\u{FFFC}');
+                        cell_formulas.push(formula);
+                    }
                     Event::Code(c) | Event::InlineMath(c) | Event::DisplayMath(c) => {
                         current_cell.push_str(&format!(
                             "{}{}</span>",
@@ -2585,7 +2598,7 @@ pub fn render_markdown(
                                 grid.attach(&hsep, 0, text_row - 1, grid_cols, 1);
                             }
 
-                            for (col_idx, cell_text) in row.iter().enumerate() {
+                            for (col_idx, (cell_text, formulas)) in row.iter().enumerate() {
                                 let text_col = (col_idx * 2) as i32;
 
                                 let xalign = match table_alignments.get(col_idx) {
@@ -2621,7 +2634,8 @@ pub fn render_markdown(
                                 if row_idx == 0 {
                                     label.add_css_class("heading");
                                 }
-                                grid.attach(&label, text_col, text_row, 1, 1);
+                                let cell = math_view::label_with_formulas(&label, formulas.clone());
+                                grid.attach(&cell, text_col, text_row, 1, 1);
                                 cell_labels.push(label);
 
                                 if col_idx > 0 {

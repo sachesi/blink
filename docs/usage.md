@@ -59,8 +59,8 @@ more of what GitHub renders:
 - Math between `$` signs is typeset in the line, and between `$$` signs on a centred line of
   its own, with the commands KaTeX knows, in the preview and in both exports. Letters
   KaTeX's fonts lack, such as Cyrillic in `\text{}`, are drawn in a font of the system. Math
-  that does not parse, or has a character no font has, shows as its source; in a table cell
-  math always does.
+  that does not parse, or has a character no font has, shows as its source. In a table cell
+  a formula is set in the line, displayed or not.
 - Definition lists, a term with `: its definition` on the next line, and wiki links,
   `[[Page]]` for `Page.md`.
 - A footnote reference links to its note, and the note ends with an arrow that links back
