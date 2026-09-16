@@ -8,29 +8,139 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-thread_local! {
-    // Decoded images by path, with the mtime they were decoded at. Each render keeps
-    // only the images it showed, so the cache never holds more than one document's.
-    static TEXTURES: RefCell<HashMap<PathBuf, (SystemTime, gtk::gdk::Texture)>> =
-        RefCell::new(HashMap::new());
+/// The width images are decoded at, at most: the widest reading column at a display scale
+/// of 2. A photo decoded at its full size holds tens of megabytes to show a few hundred
+/// pixels.
+const IMAGE_DECODE_WIDTH: i32 = 1400;
+
+/// An image of the document, and once decoded its texture and pixel size, or else the
+/// pictures waiting for them.
+struct CachedImage {
+    mtime: SystemTime,
+    /// `None` until decoded, and for good if the file could not be decoded.
+    image: Option<(gtk::gdk::Texture, (i32, i32))>,
+    decoded: bool,
+    waiting: Vec<(glib::WeakRef<gtk::Picture>, glib::WeakRef<gtk::Adjustment>)>,
 }
 
-/// Decoded texture for `path`, reused across renders until the file's mtime
-/// changes. Rendering runs after every pause in typing, and decoding the images
-/// each time would make typing stutter in documents with many of them.
-fn cached_texture(path: &Path) -> Option<gtk::gdk::Texture> {
+thread_local! {
+    // Images by path. Each render keeps only the images it showed, so the cache never
+    // holds more than one document's.
+    static IMAGES: RefCell<HashMap<PathBuf, CachedImage>> = RefCell::new(HashMap::new());
+}
+
+/// A picture of the image at `path`, sized to the reading column, or `None` for a file
+/// that could not be decoded. Rendering runs after every pause in typing, so an image is
+/// decoded once, until the file changes, and in the background, so that a document with
+/// large images opens without freezing the window. The picture takes its size when the
+/// decoding is done.
+fn image_picture(path: &Path, hadj: &gtk::Adjustment) -> Option<gtk::Picture> {
     let mtime = std::fs::metadata(path).ok()?.modified().ok()?;
-    TEXTURES.with(|cache| {
+    IMAGES.with(|cache| {
         let mut cache = cache.borrow_mut();
-        if let Some((cached_mtime, texture)) = cache.get(path)
-            && *cached_mtime == mtime
-        {
-            return Some(texture.clone());
+        let entry = cache
+            .entry(path.to_path_buf())
+            .and_modify(|entry| {
+                if entry.mtime != mtime {
+                    *entry = CachedImage::loading(path, mtime);
+                }
+            })
+            .or_insert_with(|| CachedImage::loading(path, mtime));
+        let picture = gtk::Picture::new();
+        match &entry.image {
+            Some((texture, size)) => {
+                picture.set_paintable(Some(texture));
+                bind_image_to_page(&picture, hadj, *size);
+            }
+            None if entry.decoded => return None,
+            None => entry.waiting.push((picture.downgrade(), hadj.downgrade())),
         }
-        let texture = gtk::gdk::Texture::from_filename(path).ok()?;
-        cache.insert(path.to_path_buf(), (mtime, texture.clone()));
-        Some(texture)
+        Some(picture)
     })
+}
+
+impl CachedImage {
+    fn loading(path: &Path, mtime: SystemTime) -> Self {
+        load_image(path.to_path_buf(), mtime);
+        Self {
+            mtime,
+            image: None,
+            decoded: false,
+            waiting: Vec::new(),
+        }
+    }
+}
+
+/// Decoded pixels, which unlike a texture can be made off the main thread.
+struct DecodedImage {
+    /// The size of the image in the file, which it is shown at.
+    size: (i32, i32),
+    width: i32,
+    height: i32,
+    has_alpha: bool,
+    stride: usize,
+    pixels: glib::Bytes,
+}
+
+fn decode_image(path: &Path) -> Option<DecodedImage> {
+    let (_, width, height) = gtk::gdk_pixbuf::Pixbuf::file_info(path)?;
+    let pixbuf = if width > IMAGE_DECODE_WIDTH {
+        gtk::gdk_pixbuf::Pixbuf::from_file_at_scale(path, IMAGE_DECODE_WIDTH, -1, true)
+    } else {
+        gtk::gdk_pixbuf::Pixbuf::from_file(path)
+    }
+    .ok()?;
+    Some(DecodedImage {
+        size: (width, height),
+        width: pixbuf.width(),
+        height: pixbuf.height(),
+        has_alpha: pixbuf.has_alpha(),
+        stride: usize::try_from(pixbuf.rowstride()).ok()?,
+        pixels: pixbuf.read_pixel_bytes(),
+    })
+}
+
+/// Decode the image at `path` on a worker thread and hand it to the pictures waiting.
+fn load_image(path: PathBuf, mtime: SystemTime) {
+    glib::spawn_future_local(async move {
+        let decode_path = path.clone();
+        let decoded = gio::spawn_blocking(move || decode_image(&decode_path))
+            .await
+            .ok()
+            .flatten();
+        IMAGES.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            // Dropped from the document, or changed on disk since, while it was decoding.
+            let Some(entry) = cache.get_mut(&path).filter(|entry| entry.mtime == mtime) else {
+                return;
+            };
+            entry.decoded = true;
+            let waiting = std::mem::take(&mut entry.waiting);
+            let Some(image) = decoded else {
+                return;
+            };
+            let format = if image.has_alpha {
+                gtk::gdk::MemoryFormat::R8g8b8a8
+            } else {
+                gtk::gdk::MemoryFormat::R8g8b8
+            };
+            let texture = gtk::gdk::MemoryTexture::new(
+                image.width,
+                image.height,
+                format,
+                &image.pixels,
+                image.stride,
+            )
+            .upcast::<gtk::gdk::Texture>();
+            for (picture, hadj) in &waiting {
+                if let (Some(picture), Some(hadj)) = (picture.upgrade(), hadj.upgrade()) {
+                    picture.set_paintable(Some(&texture));
+                    bind_image_to_page(&picture, &hadj, image.size);
+                }
+            }
+            entry.image = Some((texture, image.size));
+        });
+    });
 }
 
 /// Horizontal margin of the preview text view. Tag margins are absolute (a
@@ -67,19 +177,19 @@ fn bind_width_to_page(child: &impl IsA<gtk::Widget>, hadj: &gtk::Adjustment, ind
 /// aspect ratio. The height matters because a GtkPicture's *minimum* height is
 /// zero and a GtkTextView allocates anchored children at their minimum, so an
 /// image without a height request would not show at all.
-fn bind_image_to_page(picture: &gtk::Picture, hadj: &gtk::Adjustment, texture: &gtk::gdk::Texture) {
-    let tex_width = f64::from(texture.width().max(1));
-    let tex_height = f64::from(texture.height().max(1));
+fn bind_image_to_page(picture: &gtk::Picture, hadj: &gtk::Adjustment, (width, height): (i32, i32)) {
+    let image_width = f64::from(width.max(1));
+    let image_height = f64::from(height.max(1));
     hadj.bind_property("page-size", picture, "width-request")
         .transform_to(move |_, page_size: f64| {
-            Some(column_width(page_size, 0).min(tex_width) as i32)
+            Some(column_width(page_size, 0).min(image_width) as i32)
         })
         .sync_create()
         .build();
     hadj.bind_property("page-size", picture, "height-request")
         .transform_to(move |_, page_size: f64| {
-            let width = column_width(page_size, 0).min(tex_width);
-            Some((width * tex_height / tex_width).round() as i32)
+            let width = column_width(page_size, 0).min(image_width);
+            Some((width * image_height / image_width).round() as i32)
         })
         .sync_create()
         .build();
@@ -797,15 +907,13 @@ pub fn render_markdown(
                     if let Some(path) = &path {
                         shown_images.insert(path.clone());
                     }
-                    if let Some(texture) = path.and_then(|path| cached_texture(&path)) {
-                        let picture = gtk::Picture::for_paintable(&texture);
+                    if let Some(picture) = path.and_then(|path| image_picture(&path, hadj)) {
                         current_image = Some((Some(picture.clone()), String::new()));
                         picture.set_focusable(false);
                         picture.set_margin_top(12);
                         picture.set_margin_bottom(12);
                         picture.set_hexpand(false);
                         picture.set_halign(gtk::Align::Center);
-                        bind_image_to_page(&picture, hadj, &texture);
 
                         let anchor = buffer.create_child_anchor(&mut iter);
                         view.add_child_at_anchor(&picture, &anchor);
@@ -1017,7 +1125,7 @@ pub fn render_markdown(
         }
     }
 
-    TEXTURES.with(|cache| {
+    IMAGES.with(|cache| {
         cache
             .borrow_mut()
             .retain(|path, _| shown_images.contains(path))
