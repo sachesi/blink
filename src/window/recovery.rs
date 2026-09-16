@@ -283,9 +283,19 @@ impl BlinkWindow {
             }
         }
         self.update_title();
-        // The recovered text belongs to this session's backup now.
-        blocking(move || backup::delete_backup(&backups_dir, &record.backup_id)).await;
+        // The recovered text belongs to this session's backup now. Setting it in the editor
+        // is not an edit, which would back it up, so it is backed up here, before the old
+        // backup goes: a crash in between would lose it. A backup of the same file has the
+        // same id, and has just been written over.
         imp.recovery.borrow_mut().last_hash = None;
+        self.write_backup_now().await;
+        let replaced = {
+            let state = imp.recovery.borrow();
+            state.last_hash.is_some() && state.backup_id != record.backup_id
+        };
+        if replaced {
+            blocking(move || backup::delete_backup(&backups_dir, &record.backup_id)).await;
+        }
 
         // Recovered work is unsaved: show it in the editor.
         imp.last_single_mode.set(ViewMode::Edit);
