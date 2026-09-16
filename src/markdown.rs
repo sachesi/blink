@@ -603,6 +603,9 @@ fn ensure_blockquote_tag(buffer: &TextBuffer, depth: i32) -> String {
             Some(&name),
             &[
                 ("left-margin", &(TEXT_MARGIN + depth * QUOTE_INDENT)),
+                // The same as the view's, which it replaces; set on the tag, it also ends
+                // the paragraph background at the column instead of the edge of the view.
+                ("right-margin", &TEXT_MARGIN),
                 ("style", &gtk::pango::Style::Italic),
                 ("foreground", &dim_foreground()),
                 ("paragraph-background", &"rgba(128, 128, 128, 0.04)"),
