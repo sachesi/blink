@@ -10,6 +10,7 @@ use gettextrs::gettext;
 use gtk::{gio, glib};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::application::BlinkApplication;
 use crate::config;
@@ -317,6 +318,9 @@ mod imp {
                     document.disconnect(handler);
                 }
             }
+            // A tab left with a file of the same name as the one that went needs its
+            // folder no more.
+            obj.update_tab_titles();
             // The last document was closed or went to another window.
             if self.tab_view.n_pages() == 0 {
                 self.closing.set(true);
@@ -516,14 +520,10 @@ impl BlinkWindow {
             self.bind_property("focus-mode", &document, "focus-mode")
                 .sync_create()
                 .build(),
+            // The tooltip is markup, and a path can hold markup characters.
             document
-                .bind_property("title", page, "title")
-                .sync_create()
-                .build(),
-            // The tooltip is markup, and a folder name can hold markup characters.
-            document
-                .bind_property("folder", page, "tooltip")
-                .transform_to(|_, folder: String| Some(glib::markup_escape_text(&folder)))
+                .bind_property("path", page, "tooltip")
+                .transform_to(|_, path: String| Some(glib::markup_escape_text(&path)))
                 .sync_create()
                 .build(),
         ];
@@ -531,6 +531,7 @@ impl BlinkWindow {
             #[weak(rename_to = win)]
             self,
             move |document: &BlinkDocument| {
+                win.update_tab_titles();
                 if win.selected_document().as_ref() == Some(document) {
                     win.sync_header();
                 }
@@ -545,6 +546,51 @@ impl BlinkWindow {
             .attachments
             .borrow_mut()
             .insert(page.clone(), Attachment { bindings, handlers });
+        self.update_tab_titles();
+    }
+
+    /// Give each tab the title of its document, and the name of the folder of its file as
+    /// well while another tab of the window holds a file of the same name.
+    fn update_tab_titles(&self) {
+        let tab_view = &self.imp().tab_view;
+        let pages: Vec<(adw::TabPage, BlinkDocument)> = (0..tab_view.n_pages())
+            .map(|i| tab_view.nth_page(i))
+            .filter_map(|page| {
+                page.child()
+                    .downcast()
+                    .ok()
+                    .map(|document| (page, document))
+            })
+            .collect();
+        let file_name = |document: &BlinkDocument| {
+            Path::new(&document.path())
+                .file_name()
+                .map(|name| name.to_owned())
+        };
+        for (page, document) in &pages {
+            let name = file_name(document);
+            let shared = name.is_some()
+                && pages
+                    .iter()
+                    .filter(|(_, other)| file_name(other) == name)
+                    .count()
+                    > 1;
+            let title = if shared {
+                let folder = document.folder();
+                let folder_name = Path::new(&folder)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or(folder);
+                // Translators: the title of a tab, then the name of the folder its file is in,
+                // shown when two tabs have files of the same name.
+                gettext("{} — {}")
+                    .replacen("{}", &document.title(), 1)
+                    .replacen("{}", &folder_name, 1)
+            } else {
+                document.title()
+            };
+            page.set_title(&title);
+        }
     }
 
     /// Show the selected document's title, folder and view in the header bar.

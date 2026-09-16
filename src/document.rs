@@ -94,6 +94,9 @@ mod imp {
         /// The folder of the document's file, empty while it has none.
         #[property(get)]
         folder: RefCell<String>,
+        /// The path of the document's file, empty while it has none.
+        #[property(get)]
+        path: RefCell<String>,
         /// The name of the view: "edit", "preview" or "split".
         #[property(get)]
         view_mode_name: RefCell<String>,
@@ -222,8 +225,12 @@ mod imp {
     }
 
     impl BlinkDocument {
-        pub(super) fn set_title(&self, title: String, folder: String) {
+        pub(super) fn set_title(&self, title: String, folder: String, path: String) {
             let obj = self.obj();
+            if *self.path.borrow() != path {
+                self.path.replace(path);
+                obj.notify_path();
+            }
             if *self.title.borrow() != title {
                 self.title.replace(title);
                 obj.notify_title();
@@ -540,11 +547,15 @@ impl BlinkDocument {
         } else {
             name
         };
-        let folder = file
-            .and_then(|file| file.path())
+        let path = file.and_then(|file| file.path());
+        let folder = path
+            .as_deref()
             .and_then(|path| path.parent().map(|dir| dir.display().to_string()))
             .unwrap_or_default();
-        imp.set_title(title, folder);
+        let path = path
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+        imp.set_title(title, folder, path);
     }
 }
 

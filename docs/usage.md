@@ -8,7 +8,8 @@ it is running. The tab bar shows once a window holds more than one document. A f
 already open, under its own name or through a symbolic link, is brought to the front
 instead of being opened a second time, and a file opened while the window shows an untitled
 document that was never typed in takes its place. For the same reason "Save As" refuses a
-file that is open in another tab or window.
+file that is open in another tab or window. A tab's tooltip shows the path of its file, and
+while two tabs of a window hold files of the same name, each title also names its folder.
 
 A tab dragged out of its window and dropped outside every window opens in a window of its
 own, and dropped on another window's tab bar joins it. "Move to New Window" in a tab's

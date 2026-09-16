@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.5.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 15:54+0300\n"
+"POT-Creation-Date: 2026-09-16 16:17+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -212,9 +212,9 @@ msgstr ""
 msgid "{} px"
 msgstr ""
 
-#: src/document.rs:297 src/document.rs:537 src/document/file.rs:428
+#: src/document.rs:304 src/document.rs:544 src/document/file.rs:428
 #: src/document/file.rs:717 src/document/recovery.rs:103 ui/window.ui:67
-#: ui/window.ui:104
+#: ui/window.ui:115
 #, no-c-format
 msgid "Untitled Document"
 msgstr ""
@@ -451,9 +451,16 @@ msgstr ""
 msgid "Copy Code"
 msgstr ""
 
-#: src/window.rs:136
+#: src/window.rs:137
 #, no-c-format
 msgid "Code copied"
+msgstr ""
+
+#. Translators: the title of a tab, then the name of the folder its file is in,
+#. shown when two tabs have files of the same name.
+#: src/window.rs:586
+#, no-c-format
+msgid "{} — {}"
 msgstr ""
 
 #: ui/document.ui:32
@@ -514,7 +521,7 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
-#: ui/preferences_dialog.ui:32 ui/window.ui:144
+#: ui/preferences_dialog.ui:32 ui/window.ui:162
 msgid "Content Width"
 msgstr ""
 
@@ -738,30 +745,30 @@ msgstr ""
 msgid "_Close"
 msgstr ""
 
-#: ui/window.ui:91
+#: ui/window.ui:102
 msgid "Open Document"
 msgstr ""
 
-#: ui/window.ui:98
+#: ui/window.ui:109
 msgid "Save Document"
 msgstr ""
 
-#: ui/window.ui:110
+#: ui/window.ui:121
 msgid "Main Menu"
 msgstr ""
 
-#: ui/window.ui:122
+#: ui/window.ui:140 ui/window.ui:194
 msgid "Edit Document"
 msgstr ""
 
-#: ui/window.ui:129
+#: ui/window.ui:147 ui/window.ui:201
 msgid "Preview Document"
 msgstr ""
 
-#: ui/window.ui:136
+#: ui/window.ui:154 ui/window.ui:208
 msgid "Split View"
 msgstr ""
 
-#: ui/window.ui:181
+#: ui/window.ui:232
 msgid "Drop Markdown file to open"
 msgstr ""
