@@ -45,12 +45,7 @@ pub fn system_font_family(monospace: bool) -> String {
     };
     gtk::pango::FontDescription::from_string(&name)
         .family()
-        .filter(|family| {
-            pangocairo::FontMap::default()
-                .list_families()
-                .iter()
-                .any(|installed| installed.name().eq_ignore_ascii_case(family))
-        })
+        .filter(|family| is_installed(family))
         .map_or_else(
             || String::from(if monospace { "Monospace" } else { "Sans" }),
             |family| family.to_string(),
@@ -60,12 +55,24 @@ pub fn system_font_family(monospace: bool) -> String {
 /// The font family of text, or of monospace text: the one picked in Preferences, or else
 /// the system's.
 pub fn font_family(settings: &gio::Settings, monospace: bool) -> String {
-    let picked = settings.string(font_key(monospace));
-    if picked.is_empty() {
+    picked_font_family(&settings.string(font_key(monospace)), monospace)
+}
+
+/// `picked`, a family stored in the settings, or the system's while none is picked or the
+/// one picked is no longer installed.
+pub fn picked_font_family(picked: &str, monospace: bool) -> String {
+    if picked.is_empty() || !is_installed(picked) {
         system_font_family(monospace)
     } else {
-        picked.to_string()
+        picked.to_owned()
     }
+}
+
+fn is_installed(family: &str) -> bool {
+    pangocairo::FontMap::default()
+        .list_families()
+        .iter()
+        .any(|installed| installed.name().eq_ignore_ascii_case(family))
 }
 
 /// The application's settings. Aborts when the schema is not installed; `just run` points

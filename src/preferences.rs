@@ -160,7 +160,8 @@ mod imp {
 }
 
 /// Show the font family of text, or of monospace text, on `button`, the system's while
-/// none is picked, and store the family picked there. `reset` goes back to the system's.
+/// none is picked or the one picked is no longer installed, and store the family picked
+/// there. `reset` goes back to the system's.
 fn bind_font(
     settings: &gio::Settings,
     monospace: bool,
@@ -171,10 +172,7 @@ fn bind_font(
     settings
         .bind(key, button, "font-desc")
         .mapping(move |value, _| {
-            let mut family = value.str()?.to_owned();
-            if family.is_empty() {
-                family = config::system_font_family(monospace);
-            }
+            let family = config::picked_font_family(value.str()?, monospace);
             let mut description = pango::FontDescription::new();
             description.set_family(&family);
             Some(description.to_value())
