@@ -2824,6 +2824,19 @@ mod tests {
     }
 
     #[test]
+    fn headings_with_emoji_shortcodes_are_named_by_the_shortcode() {
+        // As GitHub names `:rocket: Enhancement`.
+        let ids: Vec<String> = events("#### :rocket: Enhancement\n")
+            .into_iter()
+            .filter_map(|(event, _)| match event {
+                Event::Start(Tag::Heading { id, .. }) => id.map(|id| id.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, ["rocket-enhancement"]);
+    }
+
+    #[test]
     fn wiki_links_point_at_markdown_files() {
         assert_eq!(wiki_destination("Other page"), "Other page.md");
         assert_eq!(wiki_destination("notes.txt"), "notes.txt");
