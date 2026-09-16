@@ -11,6 +11,7 @@ use sourceview5::prelude::*;
 use std::cell::{Cell, OnceCell, RefCell};
 
 use crate::config;
+use crate::editor_view::BlinkEditorView;
 use crate::markdown;
 
 mod document;
@@ -88,7 +89,7 @@ mod imp {
         #[template_child]
         pub edit_scroll: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
-        pub edit_view: TemplateChild<sourceview5::View>,
+        pub edit_view: TemplateChild<BlinkEditorView>,
         #[template_child]
         pub edit_buffer: TemplateChild<sourceview5::Buffer>,
         #[template_child]
@@ -131,7 +132,7 @@ mod imp {
         type ParentType = adw::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
-            sourceview5::View::ensure_type();
+            BlinkEditorView::ensure_type();
             klass.bind_template();
             klass.bind_template_callbacks();
 
@@ -392,6 +393,22 @@ impl BlinkWindow {
             .build();
         settings
             .bind("tab-width", &*imp.edit_view, "tab-width")
+            .get_only()
+            .build();
+        settings
+            .bind(
+                "highlight-current-line",
+                &*imp.edit_view,
+                "highlight-current-line",
+            )
+            .get_only()
+            .build();
+        settings
+            .bind(
+                "shade-alternate-lines",
+                &*imp.edit_view,
+                "shade-alternate-lines",
+            )
             .get_only()
             .build();
         self.apply_wrap();

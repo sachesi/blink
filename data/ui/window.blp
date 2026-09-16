@@ -226,7 +226,7 @@ template $BlinkWindow: Adw.ApplicationWindow {
             child: Adw.ClampScrollable {
               maximum-size: bind template.content-width;
 
-              child: GtkSource.View edit_view {
+              child: $BlinkEditorView edit_view {
                 monospace: true;
                 wrap-mode: word;
                 left-margin: 32;

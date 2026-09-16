@@ -26,6 +26,10 @@ mod imp {
         #[template_child]
         pub line_numbers_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub current_line_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub alternate_lines_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub tab_width_row: TemplateChild<adw::SpinRow>,
 
         /// The window the dialog is for, whose width it shows and sets.
@@ -96,6 +100,16 @@ mod imp {
                 .build();
             settings
                 .bind("show-line-numbers", &*self.line_numbers_row, "active")
+                .build();
+            settings
+                .bind("highlight-current-line", &*self.current_line_row, "active")
+                .build();
+            settings
+                .bind(
+                    "shade-alternate-lines",
+                    &*self.alternate_lines_row,
+                    "active",
+                )
                 .build();
             settings
                 .bind("tab-width", &*self.tab_width_row, "value")

@@ -84,7 +84,8 @@ Ctrl+? lists them all.
 ## Settings
 
 Preferences holds the style (follow the system, light or dark), the content width, word
-wrap, line numbers and the tab width. Everything is stored in GSettings under `io.github.sachesi.blink`,
+wrap, line numbers, the highlight of the line with the cursor, the shading of every other
+line and the tab width. Everything is stored in GSettings under `io.github.sachesi.blink`,
 including a setting with no place in Preferences:
 
     gsettings set io.github.sachesi.blink editor-font 'JetBrains Mono'

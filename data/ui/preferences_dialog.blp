@@ -37,6 +37,14 @@ template $BlinkPreferencesDialog: Adw.PreferencesDialog {
         title: _("Line Numbers");
       }
 
+      Adw.SwitchRow current_line_row {
+        title: _("Highlight Current Line");
+      }
+
+      Adw.SwitchRow alternate_lines_row {
+        title: _("Shade Alternate Lines");
+      }
+
       Adw.SpinRow tab_width_row {
         title: _("Tab Width");
 

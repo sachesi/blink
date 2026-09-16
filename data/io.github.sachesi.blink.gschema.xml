@@ -25,6 +25,14 @@
       <default>true</default>
       <summary>Show line numbers in the editor</summary>
     </key>
+    <key name="highlight-current-line" type="b">
+      <default>true</default>
+      <summary>Highlight the line with the cursor in the editor</summary>
+    </key>
+    <key name="shade-alternate-lines" type="b">
+      <default>true</default>
+      <summary>Shade every other line in the editor</summary>
+    </key>
     <key name="tab-width" type="u">
       <range min="1" max="16"/>
       <default>4</default>

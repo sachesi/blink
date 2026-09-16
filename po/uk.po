@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.5.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 12:47+0300\n"
+"POT-Creation-Date: 2026-09-16 13:12+0300\n"
 "PO-Revision-Date: 2026-09-13 23:50+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -25,7 +25,7 @@ msgid "Markdown Editor"
 msgstr "Редактор Markdown"
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:164
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:165
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr "Редагуйте Markdown із живим переглядом"
@@ -58,31 +58,39 @@ msgstr "Переносити довгі рядки в редакторі"
 msgid "Show line numbers in the editor"
 msgstr "Показувати номери рядків у редакторі"
 
-#: data/io.github.sachesi.blink.gschema.xml:31
+#: data/io.github.sachesi.blink.gschema.xml:30
+msgid "Highlight the line with the cursor in the editor"
+msgstr "Підсвічувати рядок із курсором у редакторі"
+
+#: data/io.github.sachesi.blink.gschema.xml:34
+msgid "Shade every other line in the editor"
+msgstr "Затіняти кожен другий рядок у редакторі"
+
+#: data/io.github.sachesi.blink.gschema.xml:39
 msgid "Width of a tab in the editor, in spaces"
 msgstr "Ширина табуляції в редакторі, у пробілах"
 
-#: data/io.github.sachesi.blink.gschema.xml:36
+#: data/io.github.sachesi.blink.gschema.xml:44
 msgid "Text size, in points above or below 11"
 msgstr "Розмір тексту, у пунктах більше або менше за 11"
 
-#: data/io.github.sachesi.blink.gschema.xml:40
+#: data/io.github.sachesi.blink.gschema.xml:48
 msgid "Font family of the editor"
 msgstr "Шрифт редактора"
 
-#: data/io.github.sachesi.blink.gschema.xml:41
+#: data/io.github.sachesi.blink.gschema.xml:49
 msgid "Empty for the system monospace font."
 msgstr "Порожньо — системний моноширинний шрифт."
 
-#: data/io.github.sachesi.blink.gschema.xml:45
+#: data/io.github.sachesi.blink.gschema.xml:53
 msgid "Recently opened files, newest first"
 msgstr "Нещодавно відкриті файли, найновіші першими"
 
-#: data/io.github.sachesi.blink.gschema.xml:49
+#: data/io.github.sachesi.blink.gschema.xml:57
 msgid "Window size"
 msgstr "Розмір вікна"
 
-#: data/io.github.sachesi.blink.gschema.xml:53
+#: data/io.github.sachesi.blink.gschema.xml:61
 msgid "Window maximized"
 msgstr "Вікно розгорнуто"
 
@@ -174,7 +182,7 @@ msgstr ""
 "покращення доступності."
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:169
+#: src/application.rs:170
 #, no-c-format
 msgid "translator-credits"
 msgstr "sachesi <xsachesi@pm.me>"
@@ -190,12 +198,12 @@ msgstr "{} пкс"
 msgid "Copy Code"
 msgstr "Копіювати код"
 
-#: src/window.rs:165
+#: src/window.rs:166
 #, no-c-format
 msgid "Code copied"
 msgstr "Код скопійовано"
 
-#: src/window.rs:636 src/window/document.rs:326 src/window/document.rs:574
+#: src/window.rs:653 src/window/document.rs:326 src/window/document.rs:574
 #: src/window/recovery.rs:120 ui/window.ui:49 ui/window.ui:86
 #, no-c-format
 msgid "Untitled Document"
@@ -493,6 +501,14 @@ msgid "Line Numbers"
 msgstr "Номери рядків"
 
 #: ui/preferences_dialog.ui:53
+msgid "Highlight Current Line"
+msgstr "Підсвічувати поточний рядок"
+
+#: ui/preferences_dialog.ui:58
+msgid "Shade Alternate Lines"
+msgstr "Затіняти рядки через один"
+
+#: ui/preferences_dialog.ui:63
 msgid "Tab Width"
 msgstr "Ширина табуляції"
 
