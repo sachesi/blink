@@ -1283,7 +1283,8 @@ fn details_depth_change(chunk: &str) -> isize {
 }
 
 /// `text` with GitHub's emoji shortcodes, such as `:tada:`, replaced by their emoji where
-/// `emoji` accepts them.
+/// `emoji` accepts them, and the emoji written out that it does not accept replaced by their
+/// shortcodes, which say more than the boxes of missing glyphs.
 fn replace_shortcodes(text: &str, emoji: EmojiFilter) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -1304,6 +1305,48 @@ fn replace_shortcodes(text: &str, emoji: EmojiFilter) -> String {
             out.push_str(&rest[..=start]);
             rest = after;
         }
+    }
+    out.push_str(rest);
+    shortcodes_of_missing_emoji(&out, emoji)
+}
+
+/// The most characters an emoji has, as a family joined of several people.
+const EMOJI_MAX_CHARS: usize = 10;
+
+/// `text` with the emoji `emoji` does not accept replaced by their shortcodes, where they
+/// have one.
+fn shortcodes_of_missing_emoji(text: &str, emoji: EmojiFilter) -> String {
+    // The blocks emoji start in; the characters before them are all letters and symbols
+    // of text fonts.
+    let may_start_emoji = |c: char| matches!(u32::from(c), 0x203c..=0x2bff | 0x3030 | 0x303d | 0x3297 | 0x3299 | 0x1f000..);
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some((start, first)) = rest.char_indices().find(|(_, c)| may_start_emoji(*c)) {
+        out.push_str(&rest[..start]);
+        // The longest emoji starting here.
+        let ends: Vec<usize> = rest[start..]
+            .char_indices()
+            .take(EMOJI_MAX_CHARS)
+            .map(|(index, c)| start + index + c.len_utf8())
+            .collect();
+        let found = ends
+            .iter()
+            .rev()
+            .find_map(|end| emojis::get(&rest[start..*end]).map(|found| (*end, found)));
+        let end = match found {
+            Some((end, found)) => {
+                match found.shortcode().filter(|_| !emoji(found.as_str())) {
+                    Some(shortcode) => out.push_str(&format!(":{shortcode}:")),
+                    None => out.push_str(&rest[start..end]),
+                }
+                end
+            }
+            None => {
+                out.push(first);
+                start + first.len_utf8()
+            }
+        };
+        rest = &rest[end..];
     }
     out.push_str(rest);
     out
@@ -3620,6 +3663,12 @@ mod tests {
         assert_eq!(
             replace_shortcodes(":tada: :+1:", |emoji| emoji == "👍"),
             ":tada: 👍"
+        );
+        // So does one written out, whole, as a sequence of several characters.
+        assert_eq!(
+            replace_shortcodes("🎉 👍 👨‍👩‍👧 🇺🇦 → 日本", |emoji| emoji
+                == "👍"),
+            ":tada: 👍 :family_man_woman_girl: :ukraine: → 日本"
         );
         let events = events("`:tada:` :tada:");
         assert!(
