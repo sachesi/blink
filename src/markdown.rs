@@ -2021,11 +2021,12 @@ pub fn render_markdown(
                     Event::Start(Tag::Strikethrough) => current_cell.push_str("<s>"),
                     Event::End(TagEnd::Strikethrough) => current_cell.push_str("</s>"),
                     // Cell links become real Pango links, so they keep the theme's
-                    // link colour and stay clickable. An unsafe scheme is never put
-                    // in an `href`, only underlined, since the label's default
-                    // handler would hand it straight to the system launcher.
+                    // link colour and stay clickable, and the preview follows them as
+                    // it follows the others. A link it does not follow is never put in
+                    // an `href`, only underlined, since the label's default handler
+                    // would hand it straight to the system launcher.
                     Event::Start(Tag::Link { dest_url, .. }) => {
-                        if is_safe_link(&dest_url) {
+                        if link_target(&dest_url, image_base_dir).is_some() {
                             current_cell.push_str(&format!(
                                 "<a href=\"{}\">",
                                 glib::markup_escape_text(&dest_url)

@@ -433,11 +433,31 @@ impl BlinkDocument {
         }
         self.watch_surface_selections(&result.added);
         for surface in &result.added {
-            if let markdown::Surface::Code { view, .. } = surface {
-                self.settings()
-                    .bind("tab-width", view, "tab-width")
-                    .get_only()
-                    .build();
+            match surface {
+                markdown::Surface::Code { view, .. } => {
+                    self.settings()
+                        .bind("tab-width", view, "tab-width")
+                        .get_only()
+                        .build();
+                }
+                // The links of a table cell go where the preview's other links go, never
+                // to the label's own handler.
+                markdown::Surface::Cell { label, .. } => {
+                    label.connect_activate_link(glib::clone!(
+                        #[weak(rename_to = document)]
+                        self,
+                        #[upgrade_or]
+                        glib::Propagation::Stop,
+                        move |_, url| {
+                            if let Some(target) =
+                                markdown::link_target(url, document.base_dir().as_deref())
+                            {
+                                document.follow_link(target);
+                            }
+                            glib::Propagation::Stop
+                        }
+                    ));
+                }
             }
         }
         // Match positions do not survive the rebuilt content.
