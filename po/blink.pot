@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.6.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 16:32+0300\n"
+"POT-Creation-Date: 2026-09-16 16:43+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -28,7 +28,7 @@ msgid "Markdown Editor"
 msgstr ""
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:368
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:369
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr ""
@@ -178,10 +178,17 @@ msgid ""
 msgstr ""
 
 #: data/io.github.sachesi.blink.metainfo.xml:47
+msgid ""
+"A font picked in Preferences that is no longer installed gives way to the "
+"system font, and backups left by a crash are offered even when another "
+"process has taken the process ID of the one that crashed."
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:48
 msgid "Blink is translated into Russian."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:52
+#: data/io.github.sachesi.blink.metainfo.xml:53
 msgid ""
 "The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
 "the split view are three toggles in the header bar, and the split view can "
@@ -191,7 +198,7 @@ msgid ""
 "versions are not carried over."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:53
+#: data/io.github.sachesi.blink.metainfo.xml:54
 msgid ""
 "Backups of unsaved work can be recovered after a crash every time: about "
 "half of them used to be lost, because their record could not be written. "
@@ -203,40 +210,40 @@ msgid ""
 "in the Adwaita icon theme."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:58
+#: data/io.github.sachesi.blink.metainfo.xml:59
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:63
+#: data/io.github.sachesi.blink.metainfo.xml:64
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."
 msgstr ""
 
-#: src/application.rs:320
+#: src/application.rs:321
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
 msgstr ""
 
-#: src/application.rs:323
+#: src/application.rs:324
 #, no-c-format
 msgid "Recover Unsaved Document?"
 msgstr ""
 
-#: src/application.rs:326
+#: src/application.rs:327
 #, no-c-format
 msgid "Discard"
 msgstr ""
 
-#: src/application.rs:327
+#: src/application.rs:328
 #, no-c-format
 msgid "Restore"
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:373
+#: src/application.rs:374
 #, no-c-format
 msgid "translator-credits"
 msgstr ""
