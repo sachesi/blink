@@ -39,6 +39,9 @@ the desktop and icon caches. A prefix other than `/usr/local` and `/usr` needs i
 directory in `XDG_DATA_DIRS` for the desktop to find the entry; `~/.local/share` is on
 most systems.
 
+Arch Linux: the AUR package `blink-markdown`, built from
+[packaging/aur/PKGBUILD](../packaging/aur/PKGBUILD), which each release tag updates.
+
 ## Removing
 
     sudo just uninstall
