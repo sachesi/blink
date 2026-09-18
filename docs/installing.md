@@ -2,7 +2,7 @@
 
 ## What you need
 
-To build: Rust 1.93 or newer, `blueprint-compiler`, `just`, `gettext`, and the development
+To build: Rust 1.95 or newer, `blueprint-compiler`, `just`, `gettext`, and the development
 packages of GTK 4.20, libadwaita 1.8 and GtkSourceView 5, or newer. On Fedora that is
 `gtk4-devel libadwaita-devel gtksourceview5-devel blueprint-compiler just gettext`; on
 Debian `libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev blueprint-compiler just

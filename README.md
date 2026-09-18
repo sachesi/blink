@@ -17,7 +17,7 @@ screen with nothing but the text, and an export to a standalone HTML file or to 
     just build
     sudo just install        # or: just prefix=$HOME/.local build install
 
-Build needs Rust 1.93, `blueprint-compiler`, `just`, `gettext` and the development
+Build needs Rust 1.95, `blueprint-compiler`, `just`, `gettext` and the development
 packages for GTK 4.20, libadwaita 1.8 and GtkSourceView 5, or newer. Details, other
 prefixes and removal are in [docs/installing.md](docs/installing.md).
 

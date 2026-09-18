@@ -2,7 +2,7 @@
 name = "blink"
 version = "0.7.0"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.95"
 authors = ["sachesi <xsachesi@pm.me>"]
 description = "A Markdown editor with a live preview, for GNOME"
 license = "GPL-3.0-or-later"
