@@ -19,7 +19,7 @@ emojis = "0.9"
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 async-channel = "2"
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "1.1"
 pangocairo = "0.22"
 cairo-rs = { version = "0.22", features = ["pdf", "v1_16"] }
 ratex-parser = "0.1.14"
