@@ -3,25 +3,35 @@ name: Release
 # A release tag gets a GitHub release, once CI has passed (ci.yml calls this). The tag
 # must agree with the version in the sources and with the newest release in the metainfo,
 # whose notes become the release's. The release carries the crates the build needs, for
-# building without a network.
+# building without a network, and packages for Fedora, Debian and Arch Linux. Run by hand,
+# it publishes a tag pushed before this workflow existed.
 on:
   workflow_call:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, such as v1.2.3
+        required: true
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  release:
-    name: Publish the release
+  source:
+    name: Check the version and vendor the crates
     runs-on: ubuntu-latest
     env:
       NAME: blink
-      TAG: ${{ github.ref_name }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
       - name: Check the version and write the notes
         run: |
+          mkdir -p notes
           python3 - <<'EOF'
           import os, re, sys, tomllib
           import xml.etree.ElementTree as ET
@@ -58,26 +68,186 @@ jobs:
                   notes.append(text(e))
               elif e.tag in ("ul", "ol"):
                   notes.append("\n".join(f"- {text(li)}" for li in e))
-          with open(os.environ["RUNNER_TEMP"] + "/notes.md", "w") as f:
+          with open("notes/notes.md", "w") as f:
               f.write("\n\n".join(notes) + "\n")
           EOF
       - name: Vendor the crates
         run: |
           dir="$NAME-${TAG#v}"
-          mkdir -p "$dir/.cargo"
+          mkdir -p "$dir/.cargo" dist
           cargo vendor --locked --versioned-dirs "$dir/vendor" > "$dir/.cargo/config.toml"
           # Paths relative to the source tree, so the tarball unpacks over it.
           sed -i 's|^directory = .*|directory = "vendor"|' "$dir/.cargo/config.toml"
           tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
-            -cJf "$dir-vendor.tar.xz" "$dir"
-          sha256sum "$dir-vendor.tar.xz" > SHA256SUMS
+            -cJf "dist/$dir-vendor.tar.xz" "$dir"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: notes
+          path: notes/notes.md
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vendor
+          path: dist/*
+
+  fedora:
+    name: Package for Fedora
+    needs: source
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install the tools
+        run: dnf install -y --setopt=install_weak_deps=False git-core rpm-build dnf-plugins-core
+      # The spec of this workflow's revision, which builds the tag's sources.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        run: |
+          spec=packaging/fedora/blink.spec
+          sed -i "s/^Version:.*/Version:        ${TAG#v}/; s/^Release:.*/Release:        1%{?dist}/" "$spec"
+          dnf builddep -y --setopt=install_weak_deps=False "$spec"
+          # rpmbuild fetches Source0 from the tag into a directory it does not create itself.
+          mkdir -p rpmbuild/SOURCES
+          rpmbuild -bb --define "_topdir $PWD/rpmbuild" --define "_disable_source_fetch 0" "$spec"
+          mkdir dist && mv rpmbuild/RPMS/*/*.rpm dist/
+          # The dependencies resolve on the release it was built for.
+          dnf install -y dist/*.rpm
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fedora
+          path: dist/*
+
+  debian:
+    name: Package for ${{ matrix.name }}
+    needs: source
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Testing: stable's GTK and libadwaita are older than it needs.
+          - name: Debian
+            image: debian:forky
+            artifact: debian
+            revision: "1"
+          # Not Ubuntu 26.04: its Rust is older than Blink needs.
+    container: ${{ matrix.image }}
+    env:
+      REVISION: ${{ matrix.revision }}
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install the build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git dpkg-dev \
+            cargo rustc just pkg-config blueprint-compiler gettext libgtk-4-dev libadwaita-1-dev libglib2.0-dev libgtksourceview-5-dev libxkbcommon-dev
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - name: Build
+        run: |
+          export BLINK_LOCALEDIR=/usr/share/locale
+          cargo build --locked --release
+          DESTDIR="$PWD/stage" JUST_TEMPDIR="$RUNNER_TEMP" just prefix=/usr install
+          # The install recipe refreshes the caches even when staged; dpkg's triggers own them.
+          rm -f stage/usr/share/glib-2.0/schemas/gschemas.compiled \
+            stage/usr/share/applications/mimeinfo.cache stage/usr/share/icons/hicolor/icon-theme.cache
+          install -Dm644 LICENSE stage/usr/share/doc/blink/copyright
+      - name: Package
+        run: |
+          bins=()
+          for f in $(find stage -type f); do
+            readelf -h "$f" >/dev/null 2>&1 && bins+=("$f")
+          done
+          arch=all shlibs=
+          if [ ${#bins[@]} -gt 0 ]; then
+            arch=$(dpkg --print-architecture)
+            strip --strip-unneeded "${bins[@]}"
+            # dpkg-shlibdeps wants a source package to belong to.
+            mkdir debian
+            printf 'Source: blink\n\nPackage: blink\nArchitecture: any\n' > debian/control
+            shlibs=$(dpkg-shlibdeps -O $(printf -- '-e %s ' "${bins[@]}") | sed -n 's/^shlibs:Depends=//p')
+          fi
+          mkdir stage/DEBIAN
+          cat > stage/DEBIAN/control <<EOF
+          Package: blink
+          Version: ${TAG#v}-$REVISION
+          Architecture: $arch
+          Maintainer: sachesi <xsachesi@pm.me>
+          Installed-Size: $(du -sk stage | cut -f1)
+          Depends: ${shlibs:+$shlibs, }libgtk-4-1 (>= 4.20), libadwaita-1-0 (>= 1.8), hicolor-icon-theme
+          Section: editors
+          Priority: optional
+          Homepage: https://github.com/sachesi/blink
+          Description: Markdown editor with a live preview, for GNOME
+           Blink is a Markdown editor for GNOME, built with GTK 4 and libadwaita. It
+           shows a document as source, as rendered text, or both side by side, in tabs,
+           with find and replace, a focus mode, and exports to PDF and standalone HTML.
+           The preview renders GitHub's Markdown, from task lists, alerts and footnotes
+           to typeset math. Unsaved work is saved to the file as you type, backed up for
+           recovery after a crash, and never written over a change another program made
+           to the file.
+          EOF
+          mkdir dist
+          deb="dist/blink_${TAG#v}-${REVISION}_$arch.deb"
+          dpkg-deb --root-owner-group -Zxz --build stage "$deb"
+          # The dependencies resolve on the release it was built for.
+          apt-get install -y "./$deb"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/*
+
+  arch:
+    name: Package for Arch Linux
+    needs: source
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      # The PKGBUILD of this workflow's revision, which builds the tag's sources.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        run: |
+          pacman -Syu --noconfirm --needed git
+          useradd -m builder
+          install -d -o builder pkg
+          cp packaging/aur/PKGBUILD pkg/
+          sed -i "s/^pkgver=.*/pkgver=${TAG#v}/; s/^pkgrel=.*/pkgrel=1/" pkg/PKGBUILD
+          (source pkg/PKGBUILD && pacman -S --noconfirm --needed --asdeps "${depends[@]}" "${makedepends[@]}")
+          su builder -c 'cd pkg && makepkg --noconfirm'
+          name=$(source pkg/PKGBUILD && echo "$pkgname")
+          mkdir dist && mv pkg/"$name-${TAG#v}"-1-*.pkg.tar.zst dist/
+          # The dependencies resolve on Arch as it is today.
+          pacman -U --noconfirm dist/*.pkg.tar.zst
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: arch
+          path: dist/*
+
+  publish:
+    name: Publish the release
+    needs: [source, fedora, debian, arch]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: notes
+          name: notes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          pattern: "{vendor,fedora,debian,arch}"
+          merge-multiple: true
       - name: Publish
         run: |
-          files=("$NAME-${TAG#v}-vendor.tar.xz" SHA256SUMS)
+          cd dist
+          sha256sum * > SHA256SUMS
           # A release that already exists keeps its notes, which may have been edited by hand.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" --clobber "${files[@]}"
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber *
           else
-            gh release create "$TAG" --verify-tag --title "Blink ${TAG#v}" \
-              --notes-file "$RUNNER_TEMP/notes.md" "${files[@]}"
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --title "Blink ${TAG#v}" \
+              --notes-file ../notes/notes.md *
           fi
