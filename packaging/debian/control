@@ -1,0 +1,35 @@
+Source: blink
+Section: editors
+Priority: optional
+Maintainer: sachesi <xsachesi@pm.me>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.95),
+               pkg-config,
+               just,
+               blueprint-compiler,
+               gettext,
+               libglib2.0-dev,
+               libgtksourceview-5-dev,
+               libxkbcommon-dev,
+               libgtk-4-dev (>= 4.20),
+               libadwaita-1-dev (>= 1.8)
+Standards-Version: 4.7.2
+Homepage: https://github.com/sachesi/blink
+Rules-Requires-Root: no
+
+Package: blink
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libgtk-4-1 (>= 4.20),
+         libadwaita-1-0 (>= 1.8),
+         hicolor-icon-theme
+Description: Markdown editor with a live preview, for GNOME
+ Blink is a Markdown editor for GNOME, built with GTK 4 and libadwaita. It shows
+ a document as source, as rendered text, or both side by side, in tabs, with
+ find and replace, a focus mode, and exports to PDF and standalone HTML. The
+ preview renders GitHub's Markdown, from task lists, alerts and footnotes to
+ typeset math. Unsaved work is saved to the file as you type, backed up for
+ recovery after a crash, and never written over a change another program made to
+ the file.
