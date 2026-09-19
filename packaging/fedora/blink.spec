@@ -4,6 +4,7 @@
 %global app_id io.github.sachesi.blink
 
 Name:           blink
+# The release workflow and Copr set Version to the tag they build.
 Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Markdown editor with a live preview, for GNOME
@@ -12,6 +13,8 @@ Summary:        Markdown editor with a live preview, for GNOME
 License:        GPL-3.0-or-later AND OFL-1.1
 URL:            https://github.com/sachesi/blink
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
+# The crates the build needs, from the release, so that it runs without a network.
+Source1:        %{url}/releases/download/v%{version}/%{name}-%{version}-vendor.tar.xz
 
 BuildRequires:  cargo
 BuildRequires:  rust >= 1.95
@@ -40,7 +43,7 @@ Unsaved work is saved to the file as you type, backed up for recovery after a
 crash, and never written over a change another program made to the file.
 
 %prep
-%autosetup -n %{name}-%{version}
+%autosetup -n %{name}-%{version} -b 1
 
 %build
 export CARGO_HOME="$PWD/.cargo-home"
@@ -49,7 +52,7 @@ export BLINK_LOCALEDIR="%{_datadir}/locale"
 %if 0%{?_cargo_target_dir:1}
 export CARGO_TARGET_DIR="%{_cargo_target_dir}"
 %endif
-cargo build --release --locked
+cargo build --release --locked --offline
 
 %install
 %if 0%{?_cargo_target_dir:1}
