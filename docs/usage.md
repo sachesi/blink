@@ -34,7 +34,8 @@ README and its `docs` are a click away. Opening a file on its own shows no sideb
 looks at no other file.
 
 Clicking a file in the sidebar opens it as a tab, or brings it to the front if it is open
-already, and the file of the selected tab is highlighted. Hidden files and folders, such as
+already, and the file of the selected tab is highlighted. A name too long for the
+sidebar shows in full when the pointer rests on it. Hidden files and folders, such as
 `.git` and `.github`, are left out, and so are `node_modules` and `target`. So are
 folders reached through a symbolic link, which could lead back to where they started.
 Folders with no Markdown in them anywhere are left out. The list stops at 5000 files, and

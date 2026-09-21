@@ -668,7 +668,16 @@ impl BlinkWindow {
                 let label = gtk::Label::builder()
                     .xalign(0.0)
                     .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                    .has_tooltip(true)
                     .build();
+                // The full name, for a name the sidebar is too narrow to show whole.
+                label.connect_query_tooltip(|label, _, _, _, tooltip| {
+                    if !label.layout().is_ellipsized() {
+                        return false;
+                    }
+                    tooltip.set_text(Some(&label.label()));
+                    true
+                });
                 let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
                 content.append(&icon);
                 content.append(&label);
