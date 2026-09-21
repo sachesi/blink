@@ -2,10 +2,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: blink 0.7.0\n"
+"Project-Id-Version: blink 0.8.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 12:20+0300\n"
-"PO-Revision-Date: 2026-09-16 23:10+0300\n"
+"POT-Creation-Date: 2026-09-21 12:59+0300\n"
+"PO-Revision-Date: 2026-09-21 13:05+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
 "Language: uk\n"
@@ -25,7 +25,7 @@ msgid "Markdown Editor"
 msgstr "Редактор Markdown"
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:438
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:443
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr "Редагуйте Markdown із живим переглядом"
@@ -163,6 +163,23 @@ msgstr "Експорт в окремий файл HTML або в PDF"
 
 #: data/io.github.sachesi.blink.metainfo.xml:45
 msgid ""
+"A folder can be opened, from Open Folder, the command line or by dropping it "
+"on the window, and its Markdown files and those in the folders below it are "
+"listed in a sidebar that F9 shows and hides. Files picked there open as tabs "
+"of that window, which stays open on its folder when its last tab closes. "
+"Hidden folders, node_modules and target are passed over."
+msgstr "Теку можна відкрити через «Відкрити теку», з командного рядка або перетягнувши її на вікно, і її файли Markdown разом із файлами вкладених тек з’являються на бічній панелі, яку F9 показує та ховає. Вибрані там файли відкриваються як вкладки цього вікна, яке лишається відкритим на своїй теці, коли закривається остання вкладка. Приховані теки, node_modules і target пропускаються."
+
+#: data/io.github.sachesi.blink.metainfo.xml:46
+msgid ""
+"The sidebar can be searched by file name, follows files as they are added, "
+"removed and renamed, and gives each file a menu to open it in a new window, "
+"copy its path or show it in the file manager. Open Recent lists recent "
+"folders above recent files."
+msgstr "На бічній панелі можна шукати за назвою файлу, вона стежить за додаванням, вилученням і перейменуванням файлів, а кожен файл має меню, щоб відкрити його в новому вікні, скопіювати шлях або показати у файловому менеджері. «Відкрити нещодавні» показує нещодавні теки над нещодавніми файлами."
+
+#: data/io.github.sachesi.blink.metainfo.xml:51
+msgid ""
 "The preview renders more of GitHub's Markdown. The boxes of task lists can "
 "be ticked, changing the source as typing would, and Ctrl+Z in the preview "
 "takes it back. Emoji shortcodes show as emoji, footnotes and their "
@@ -176,7 +193,7 @@ msgstr ""
 "кольори, як на GitHub, а елемент details відкривається й закривається "
 "клацанням на його підсумку."
 
-#: data/io.github.sachesi.blink.metainfo.xml:46
+#: data/io.github.sachesi.blink.metainfo.xml:52
 msgid ""
 "Math written between dollar signs is typeset in the preview, in table cells, "
 "and in both exports, and letters that KaTeX's fonts lack, such as Cyrillic, "
@@ -190,7 +207,7 @@ msgstr ""
 "зображень і вирівнювання абзаців та блоків, тож заголовок README, "
 "центрований через div, показується по центру."
 
-#: data/io.github.sachesi.blink.metainfo.xml:47
+#: data/io.github.sachesi.blink.metainfo.xml:53
 msgid ""
 "Quotes are rounded boxes in the preview, the PDF and the HTML export alike. "
 "Text in table cells and code blocks is copied with Ctrl+C or from their "
@@ -207,7 +224,7 @@ msgstr ""
 "сторінок. Емодзі, яких немає в жодному встановленому шрифті, показуються як "
 "їхні скорочення."
 
-#: data/io.github.sachesi.blink.metainfo.xml:52
+#: data/io.github.sachesi.blink.metainfo.xml:58
 msgid ""
 "Documents open in tabs, which can be dragged out into windows of their own "
 "or moved with \"Move to New Window\"; a narrow window shows its tabs in an "
@@ -223,7 +240,7 @@ msgstr ""
 "показують ще й свої теки. У параметрах можна відкривати кожен документ в "
 "окремому вікні."
 
-#: data/io.github.sachesi.blink.metainfo.xml:53
+#: data/io.github.sachesi.blink.metainfo.xml:59
 msgid ""
 "Documents export to PDF, set on A4 pages with page numbers, links and an "
 "outline, and the HTML export is laid out like the preview, with its images "
@@ -239,7 +256,7 @@ msgstr ""
 "редактора й перегляду. Редактор затіняє кожен другий рядок і підсвічує "
 "поточний."
 
-#: data/io.github.sachesi.blink.metainfo.xml:54
+#: data/io.github.sachesi.blink.metainfo.xml:60
 msgid ""
 "Text can be copied from code blocks and table cells in the preview, wide "
 "tables scroll instead of breaking words, and the header row of a table is "
@@ -257,7 +274,7 @@ msgstr ""
 "вибрано. Файли, перетягнуті на текст документа, відкриваються, а відновлені "
 "резервні копії зберігаються знову перед вилученням старої копії."
 
-#: data/io.github.sachesi.blink.metainfo.xml:55
+#: data/io.github.sachesi.blink.metainfo.xml:61
 msgid ""
 "A font picked in Preferences that is no longer installed gives way to the "
 "system font, and backups left by a crash are offered even when another "
@@ -268,11 +285,11 @@ msgstr ""
 "навіть тоді, коли ідентифікатор процесу, що аварійно завершився, зайняв "
 "інший процес."
 
-#: data/io.github.sachesi.blink.metainfo.xml:56
+#: data/io.github.sachesi.blink.metainfo.xml:62
 msgid "Blink is translated into Russian."
 msgstr "Blink перекладено російською."
 
-#: data/io.github.sachesi.blink.metainfo.xml:61
+#: data/io.github.sachesi.blink.metainfo.xml:67
 msgid ""
 "The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
 "the split view are three toggles in the header bar, and the split view can "
@@ -288,7 +305,7 @@ msgstr ""
 "налаштувань редактора. Налаштування зберігаються в GSettings; налаштування "
 "попередніх версій не переносяться."
 
-#: data/io.github.sachesi.blink.metainfo.xml:62
+#: data/io.github.sachesi.blink.metainfo.xml:68
 msgid ""
 "Backups of unsaved work can be recovered after a crash every time: about "
 "half of them used to be lost, because their record could not be written. "
@@ -309,7 +326,7 @@ msgstr ""
 "кольору акценту, а кнопка розділеного вигляду показує значок, що є в темі "
 "значків Adwaita."
 
-#: data/io.github.sachesi.blink.metainfo.xml:67
+#: data/io.github.sachesi.blink.metainfo.xml:73
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
@@ -317,7 +334,7 @@ msgstr ""
 "Виправлення відтворення в перегляді: зображення, тематичні розриви, відступи "
 "списків і цитат, вбудований HTML, посилання в таблицях і виноски."
 
-#: data/io.github.sachesi.blink.metainfo.xml:72
+#: data/io.github.sachesi.blink.metainfo.xml:78
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."
@@ -325,28 +342,28 @@ msgstr ""
 "Параметри, масштабування, довідка з комбінацій клавіш, перетягування та "
 "покращення доступності."
 
-#: src/application.rs:389
+#: src/application.rs:394
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
 msgstr "Знайдено незбережені зміни у «{}» з попереднього сеансу."
 
-#: src/application.rs:392
+#: src/application.rs:397
 #, no-c-format
 msgid "Recover Unsaved Document?"
 msgstr "Відновити незбережений документ?"
 
-#: src/application.rs:395
+#: src/application.rs:400
 #, no-c-format
 msgid "Discard"
 msgstr "Відхилити"
 
-#: src/application.rs:396
+#: src/application.rs:401
 #, no-c-format
 msgid "Restore"
 msgstr "Відновити"
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:443
+#: src/application.rs:448
 #, no-c-format
 msgid "translator-credits"
 msgstr "sachesi <xsachesi@pm.me>"
@@ -643,27 +660,27 @@ msgstr "Копіювати код"
 msgid "Details"
 msgstr "Подробиці"
 
-#: src/window.rs:168
+#: src/window.rs:178
 #, no-c-format
 msgid "The folder \"{}\" no longer exists"
 msgstr "Теки «{}» більше не існує"
 
-#: src/window.rs:220
+#: src/window.rs:235
 #, no-c-format
 msgid "Path copied"
 msgstr "Шлях скопійовано"
 
-#: src/window.rs:237
+#: src/window.rs:252
 #, no-c-format
 msgid "Could not open the file manager"
 msgstr "Не вдалося відкрити файловий менеджер"
 
-#: src/window.rs:247
+#: src/window.rs:262
 #, no-c-format
 msgid "Code copied"
 msgstr "Код скопійовано"
 
-#: src/window.rs:1008
+#: src/window.rs:1145
 #, no-c-format
 msgid "Only the first {} file is listed"
 msgid_plural "Only the first {} files are listed"
@@ -673,22 +690,22 @@ msgstr[2] "Показано лише перші {} файлів"
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:1149
+#: src/window.rs:1287
 #, no-c-format
 msgid "{} — {}"
 msgstr "{} — {}"
 
-#: src/window.rs:1341
+#: src/window.rs:1485
 #, no-c-format
 msgid "Open in New _Window"
 msgstr "Відкрити в новому _вікні"
 
-#: src/window.rs:1343
+#: src/window.rs:1487
 #, no-c-format
 msgid "_Copy Path"
 msgstr "_Копіювати шлях"
 
-#: src/window.rs:1344
+#: src/window.rs:1488
 #, no-c-format
 msgid "_Show in Files"
 msgstr "_Показати у Файлах"

@@ -5,7 +5,7 @@
 
 Name:           blink
 # The release workflow sets Version to the tag it builds; OBS counts the Release.
-Version:        0.7.0
+Version:        0.8.0
 Release:        0
 Summary:        Markdown editor with a live preview, for GNOME
 
