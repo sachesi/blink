@@ -37,7 +37,9 @@ Clicking a file in the sidebar opens it as a tab, or brings it to the front if i
 already, and the file of the selected tab is highlighted. A name too long for the
 sidebar shows in full when the pointer rests on it. The right-click menu of a row, also on the Menu key
 or Shift+F10, opens a file in a window of its own, copies the path of a file or folder,
-or shows it in the file manager. Hidden files and folders, such as
+or shows it in the file manager. The search button above the list, or typing while the list has
+the focus, narrows it to the files whose names hold the text, and the folders they are
+in; Enter opens the first of them. Hidden files and folders, such as
 `.git` and `.github`, are left out, and so are `node_modules` and `target`. So are
 folders reached through a symbolic link, which could lead back to where they started.
 Folders with no Markdown in them anywhere are left out. The list stops at 5000 files, and
