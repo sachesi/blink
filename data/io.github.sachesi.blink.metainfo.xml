@@ -40,6 +40,12 @@
     <mediatype>text/markdown</mediatype>
   </provides>
   <releases>
+    <release version="0.8.0" date="2026-09-21">
+      <description>
+        <p>A folder can be opened, from Open Folder, the command line or by dropping it on the window, and its Markdown files and those in the folders below it are listed in a sidebar that F9 shows and hides. Files picked there open as tabs of that window, which stays open on its folder when its last tab closes. Hidden folders, node_modules and target are passed over.</p>
+        <p>The sidebar can be searched by file name, follows files as they are added, removed and renamed, and gives each file a menu to open it in a new window, copy its path or show it in the file manager. Open Recent lists recent folders above recent files.</p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-09-16">
       <description>
         <p>The preview renders more of GitHub's Markdown. The boxes of task lists can be ticked, changing the source as typing would, and Ctrl+Z in the preview takes it back. Emoji shortcodes show as emoji, footnotes and their references link to each other, alerts are titled and coloured as on GitHub, and a details element opens and closes when its summary is clicked.</p>

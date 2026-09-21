@@ -3,7 +3,7 @@
 # pkgver and sha256sums are filled in by .github/workflows/aur.yml for each release.
 pkgname=blink-markdown
 _name=blink
-pkgver=0.7.0
+pkgver=0.8.0
 pkgrel=1
 pkgdesc='A Markdown editor with a live preview, for GNOME'
 arch=('x86_64' 'aarch64')
