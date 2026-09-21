@@ -18,6 +18,7 @@ use crate::window::BlinkWindow;
 pub const ACCELS: &[(&str, &[&str])] = &[
     ("win.new", &["<Control>n"]),
     ("win.open", &["<Control>o"]),
+    ("win.open-folder", &["<Control><Shift>o"]),
     ("win.save", &["<Control>s"]),
     ("win.save-as", &["<Control><Shift>s"]),
     ("win.close-document", &["<Control>w"]),
@@ -33,6 +34,7 @@ pub const ACCELS: &[(&str, &[&str])] = &[
     ("win.zoom-out", &["<Control>minus"]),
     ("win.zoom-reset", &["<Control>0"]),
     ("win.focus-mode", &["F11"]),
+    ("win.show-sidebar", &["F9"]),
     ("app.preferences", &["<Control>comma"]),
     ("app.quit", &["<Control>q"]),
 ];
@@ -89,12 +91,17 @@ mod imp {
             app.check_recovery();
         }
 
-        /// Files from the command line, the desktop entry, or a second launch while this
-        /// one runs.
+        /// Files and folders from the command line, the desktop entry, or a second launch
+        /// while this one runs.
         fn open(&self, files: &[gio::File], _hint: &str) {
             let app = self.obj();
             let mut window = app.active_window().and_downcast::<BlinkWindow>();
             for file in files {
+                if file.path().is_some_and(|path| path.is_dir()) {
+                    // The files after it go to the folder's window.
+                    window = Some(app.open_folder(file.clone(), window.as_ref()));
+                    continue;
+                }
                 let document = app.open_file(file.clone(), window.as_ref());
                 // The files after the first go where it went, not each to a window of its
                 // own.
@@ -134,14 +141,22 @@ impl BlinkApplication {
             .flat_map(|window| window.documents())
     }
 
-    /// A new, untitled document: a tab of `window` when documents open in tabs, otherwise
-    /// in a window of its own.
+    /// A new, untitled document: a tab of `window` when documents open in tabs or the
+    /// window has none, otherwise in a window of its own.
     pub fn new_document(&self, window: Option<&BlinkWindow>) -> BlinkDocument {
-        let document = BlinkDocument::new();
         let window = match window {
-            Some(window) if self.settings().boolean("open-in-tabs") => window.clone(),
+            Some(window)
+                if self.settings().boolean("open-in-tabs") || window.documents().is_empty() =>
+            {
+                window.clone()
+            }
             _ => BlinkWindow::new(self),
         };
+        Self::new_document_in(&window)
+    }
+
+    fn new_document_in(window: &BlinkWindow) -> BlinkDocument {
+        let document = BlinkDocument::new();
         window.add_document(&document);
         window.present();
         document
@@ -151,28 +166,67 @@ impl BlinkApplication {
     /// document of the window if that is blank, otherwise as a new document. Returns the
     /// document it is in.
     pub fn open_file(&self, file: gio::File, window: Option<&BlinkWindow>) -> BlinkDocument {
+        self.open_file_where(file, window, false)
+    }
+
+    /// Open `file` from the folder in the sidebar of `window`, as a tab of it whether or
+    /// not documents open in tabs: the folder belongs to the window.
+    pub fn open_file_from_folder(&self, file: gio::File, window: &BlinkWindow) -> BlinkDocument {
+        self.open_file_where(file, Some(window), true)
+    }
+
+    fn open_file_where(
+        &self,
+        file: gio::File,
+        window: Option<&BlinkWindow>,
+        in_tab: bool,
+    ) -> BlinkDocument {
         // Two documents saving to one file would each take the other's writes for a change
         // made by another program.
         if let Some(document) = self.documents().find(|document| document.holds(&file)) {
             document.present();
             return document;
         }
-        let (document, made) = self.blank_document(window);
+        let (document, made) = self.blank_document(window, in_tab);
         document.load(file, made);
         document.present();
         document
     }
 
     /// The selected document of `window` when it is blank, or else a new document, and
-    /// whether it is new.
-    fn blank_document(&self, window: Option<&BlinkWindow>) -> (BlinkDocument, bool) {
+    /// whether it is new. The new document is a tab of `window` when `in_tab`.
+    fn blank_document(&self, window: Option<&BlinkWindow>, in_tab: bool) -> (BlinkDocument, bool) {
         match window
             .and_then(BlinkWindow::selected_document)
             .filter(BlinkDocument::is_blank)
         {
             Some(document) => (document, false),
-            None => (self.new_document(window), true),
+            None => match window {
+                Some(window) if in_tab => (Self::new_document_in(window), true),
+                _ => (self.new_document(window), true),
+            },
         }
+    }
+
+    /// Show `folder` in the sidebar of `window` when that shows no folder yet, otherwise
+    /// in a new window, or bring forward the window that shows it already. Returns the
+    /// window it is in.
+    pub fn open_folder(&self, folder: gio::File, window: Option<&BlinkWindow>) -> BlinkWindow {
+        let shown = self
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<BlinkWindow>().ok())
+            .find(|window| window.folder().is_some_and(|shown| shown.equal(&folder)));
+        let target = shown.unwrap_or_else(|| {
+            let target = match window {
+                Some(window) if window.folder().is_none() => window.clone(),
+                _ => BlinkWindow::new(self),
+            };
+            target.set_folder(folder);
+            target
+        });
+        target.present();
+        target
     }
 
     fn load_style(&self) {
@@ -346,7 +400,8 @@ impl BlinkApplication {
                 let open = self
                     .documents()
                     .find(|document| document.holds_either(file.as_ref(), canonical.as_deref()));
-                let document = open.unwrap_or_else(|| self.blank_document(window.as_ref()).0);
+                let document =
+                    open.unwrap_or_else(|| self.blank_document(window.as_ref(), false).0);
                 document.restore(record);
                 document.present();
             }

@@ -299,7 +299,13 @@ impl BlinkDocument {
         dialog.set_default_filter(Some(&markdown));
         match self.current_file() {
             Some(file) => dialog.set_initial_file(Some(&file)),
-            None => dialog.set_initial_name(Some(&gettext("Untitled.md"))),
+            None => {
+                dialog.set_initial_name(Some(&gettext("Untitled.md")));
+                // A new note in a window showing a folder most likely belongs in it.
+                if let Some(folder) = self.window().and_then(|window| window.folder()) {
+                    dialog.set_initial_folder(Some(&folder));
+                }
+            }
         }
         let Ok(file) = dialog.save_future(self.dialog_parent().as_ref()).await else {
             return false;

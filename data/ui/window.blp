@@ -8,6 +8,11 @@ menu primary_menu {
       action: "win.new";
     }
 
+    item {
+      label: _("Open _Folder…");
+      action: "win.open-folder";
+    }
+
     submenu recent_menu {
       label: _("Open _Recent");
     }
@@ -91,6 +96,7 @@ template $BlinkWindow: Adw.ApplicationWindow {
       // Beside the title there is no room for the view toggles as well.
       view_toggles.visible: false;
       view_bar.visible: true;
+      split_view.collapsed: true;
     }
 
     apply => $on_narrow() swapped;
@@ -104,124 +110,211 @@ template $BlinkWindow: Adw.ApplicationWindow {
         enable-new-tab: true;
         create-tab => $on_create_tab() swapped;
 
-        child: Adw.ToolbarView {
-          reveal-top-bars: bind template.focus-mode inverted;
-          reveal-bottom-bars: bind template.focus-mode inverted;
+        child: Adw.OverlaySplitView split_view {
+          show-sidebar: bind template.show-sidebar bidirectional;
 
-          [top]
-          Adw.HeaderBar {
-            [start]
-            Gtk.Button {
-              icon-name: "document-open-symbolic";
-              tooltip-text: _("Open Document");
-              action-name: "win.open";
+          // The Markdown files of the folder the window shows, while it shows one.
+          sidebar: Adw.ToolbarView {
+            [top]
+            Adw.HeaderBar {
+              title-widget: Adw.WindowTitle folder_title {};
             }
 
-            [start]
-            Gtk.Button {
-              icon-name: "document-save-symbolic";
-              tooltip-text: _("Save Document");
-              action-name: "win.save";
-            }
+            content: Gtk.Stack folder_stack {
+              Gtk.StackPage {
+                name: "files";
 
-            title-widget: Adw.WindowTitle window_title {
-              title: _("Untitled Document");
+                child: Gtk.ScrolledWindow {
+                  hscrollbar-policy: never;
+
+                  child: Gtk.ListView folder_list {
+                    activate => $on_folder_row_activated() swapped;
+
+                    styles [
+                      "navigation-sidebar",
+                    ]
+                  };
+                };
+              }
+
+              Gtk.StackPage {
+                name: "empty";
+
+                child: Adw.StatusPage {
+                  icon-name: "folder-symbolic";
+                  title: _("No Markdown Files");
+                  description: _("There are no Markdown files in this folder or the folders in it");
+
+                  styles [
+                    "compact",
+                  ]
+                };
+              }
             };
 
-            [end]
-            Gtk.MenuButton {
-              icon-name: "open-menu-symbolic";
-              tooltip-text: _("Main Menu");
-              menu-model: primary_menu;
-              primary: true;
-            }
-
-            [end]
-            Adw.TabButton tab_button {
-              view: tab_view;
-              action-name: "overview.open";
+            [bottom]
+            Gtk.Label folder_truncated {
               visible: false;
+              wrap: true;
+              margin-start: 12;
+              margin-end: 12;
+              margin-top: 6;
+              margin-bottom: 6;
+              xalign: 0;
+
+              styles [
+                "caption",
+                "dim-label",
+              ]
             }
-
-            [end]
-            Adw.ToggleGroup view_toggles {
-              notify::active-name => $on_view_toggled() swapped;
-
-              Adw.Toggle {
-                name: "edit";
-                icon-name: "document-edit-symbolic";
-                tooltip: _("Edit Document");
-              }
-
-              Adw.Toggle {
-                name: "preview";
-                icon-name: "view-reveal-symbolic";
-                tooltip: _("Preview Document");
-              }
-
-              Adw.Toggle split_toggle {
-                name: "split";
-                icon-name: "view-dual-symbolic";
-                tooltip: _("Split View");
-              }
-            }
-
-            [end]
-            Gtk.MenuButton width_button {
-              icon-name: "format-justify-fill-symbolic";
-              tooltip-text: _("Content Width");
-            }
-          }
-
-          // Shown once a window wide enough for it holds more than one document. Tabs are
-          // dragged between windows here, and a tab dropped outside every window opens in a
-          // new one.
-          [top]
-          Adw.TabBar tab_bar {
-            view: tab_view;
-          }
-
-          content: Adw.TabView tab_view {
-            menu-model: tab_menu;
-            // Not Ctrl+Home and Ctrl+End, with or without Shift: in the editor they move the
-            // cursor to the start and the end, and select up to them.
-            shortcuts: control_tab | control_shift_tab | control_page_up | control_page_down | control_shift_page_up | control_shift_page_down | alt_digits | alt_zero;
-            close-page => $on_close_page() swapped;
-            create-window => $on_create_window() swapped;
-            page-attached => $on_page_attached() swapped;
-            page-detached => $on_page_detached() swapped;
-            setup-menu => $on_setup_menu() swapped;
-            notify::selected-page => $on_selected_page() swapped;
           };
 
-          // The view toggles of a narrow window.
-          [bottom]
-          Gtk.ActionBar view_bar {
-            visible: false;
+          content: Adw.ToolbarView {
+            reveal-top-bars: bind template.focus-mode inverted;
+            reveal-bottom-bars: bind template.focus-mode inverted;
 
-            [center]
-            Adw.ToggleGroup {
-              active-name: bind view_toggles.active-name bidirectional;
-
-              Adw.Toggle {
-                name: "edit";
-                icon-name: "document-edit-symbolic";
-                tooltip: _("Edit Document");
+            [top]
+            Adw.HeaderBar {
+              [start]
+              Gtk.ToggleButton sidebar_button {
+                icon-name: "sidebar-show-symbolic";
+                tooltip-text: _("Show Sidebar");
+                action-name: "win.show-sidebar";
+                visible: false;
               }
 
-              Adw.Toggle {
-                name: "preview";
-                icon-name: "view-reveal-symbolic";
-                tooltip: _("Preview Document");
+              [start]
+              Gtk.Button {
+                icon-name: "document-open-symbolic";
+                tooltip-text: _("Open Document");
+                action-name: "win.open";
               }
 
-              Adw.Toggle bottom_split_toggle {
-                name: "split";
-                icon-name: "view-dual-symbolic";
-                tooltip: _("Split View");
+              [start]
+              Gtk.Button {
+                icon-name: "document-save-symbolic";
+                tooltip-text: _("Save Document");
+                action-name: "win.save";
+              }
+
+              title-widget: Adw.WindowTitle window_title {
+                title: _("Untitled Document");
+              };
+
+              [end]
+              Gtk.MenuButton {
+                icon-name: "open-menu-symbolic";
+                tooltip-text: _("Main Menu");
+                menu-model: primary_menu;
+                primary: true;
+              }
+
+              [end]
+              Adw.TabButton tab_button {
+                view: tab_view;
+                action-name: "overview.open";
+                visible: false;
+              }
+
+              [end]
+              Adw.ToggleGroup view_toggles {
+                notify::active-name => $on_view_toggled() swapped;
+
+                Adw.Toggle {
+                  name: "edit";
+                  icon-name: "document-edit-symbolic";
+                  tooltip: _("Edit Document");
+                }
+
+                Adw.Toggle {
+                  name: "preview";
+                  icon-name: "view-reveal-symbolic";
+                  tooltip: _("Preview Document");
+                }
+
+                Adw.Toggle split_toggle {
+                  name: "split";
+                  icon-name: "view-dual-symbolic";
+                  tooltip: _("Split View");
+                }
+              }
+
+              [end]
+              Gtk.MenuButton width_button {
+                icon-name: "format-justify-fill-symbolic";
+                tooltip-text: _("Content Width");
               }
             }
-          }
+
+            // Shown once a window wide enough for it holds more than one document. Tabs are
+            // dragged between windows here, and a tab dropped outside every window opens in a
+            // new one.
+
+            [top]
+            Adw.TabBar tab_bar {
+              view: tab_view;
+            }
+
+            content: Gtk.Stack content_stack {
+              Gtk.StackPage {
+                name: "documents";
+
+                child: Adw.TabView tab_view {
+                  menu-model: tab_menu;
+                  // Not Ctrl+Home and Ctrl+End, with or without Shift: in the editor they move the
+                  // cursor to the start and the end, and select up to them.
+                  shortcuts: control_tab | control_shift_tab | control_page_up | control_page_down | control_shift_page_up | control_shift_page_down | alt_digits | alt_zero;
+                  close-page => $on_close_page() swapped;
+                  create-window => $on_create_window() swapped;
+                  page-attached => $on_page_attached() swapped;
+                  page-detached => $on_page_detached() swapped;
+                  setup-menu => $on_setup_menu() swapped;
+                  notify::selected-page => $on_selected_page() swapped;
+                };
+              }
+
+              // A window with a folder stays open with no document.
+              Gtk.StackPage {
+                name: "no-document";
+
+                child: Adw.StatusPage {
+                  icon-name: "document-open-symbolic";
+                  title: _("No Document Open");
+                  description: _("Pick a file in the sidebar");
+                };
+              }
+            };
+
+            // The view toggles of a narrow window.
+
+            [bottom]
+            Gtk.ActionBar view_bar {
+              visible: false;
+
+              [center]
+              Adw.ToggleGroup {
+                active-name: bind view_toggles.active-name bidirectional;
+
+                Adw.Toggle {
+                  name: "edit";
+                  icon-name: "document-edit-symbolic";
+                  tooltip: _("Edit Document");
+                }
+
+                Adw.Toggle {
+                  name: "preview";
+                  icon-name: "view-reveal-symbolic";
+                  tooltip: _("Preview Document");
+                }
+
+                Adw.Toggle bottom_split_toggle {
+                  name: "split";
+                  icon-name: "view-dual-symbolic";
+                  tooltip: _("Split View");
+                }
+              }
+            }
+          };
         };
       };
     };

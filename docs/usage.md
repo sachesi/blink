@@ -15,14 +15,41 @@ A tab dragged out of its window and dropped outside every window opens in a wind
 own, and dropped on another window's tab bar joins it. "Move to New Window" in a tab's
 context menu does the same without dragging. Closing a window closes its documents one
 after the other, each asking about unsaved changes first; cancelling that question leaves
-the window open with the documents not yet closed. Closing the last tab closes the window.
+the window open with the documents not yet closed. Closing the last tab closes the window,
+unless the window shows a folder.
 
 A window narrower than 700 pixels at the normal text size has no room for the tab bar. The
 button with the number of tabs in the header bar shows all of them instead, to pick, close
 or add one.
 
 With "Open Documents in Tabs" turned off in Preferences, every new or opened document gets
-a window of its own instead. Tabs can still be dragged between windows.
+a window of its own instead. Tabs can still be dragged between windows. Files picked in a
+folder's sidebar are the exception: they always open as tabs of the folder's window.
+
+## Folders
+
+"Open Folder" in the main menu (Shift+Ctrl+O), or a folder passed to `blink`, lists the
+Markdown files in the folder and in the folders below it in a sidebar, so a repository's
+README and its `docs` are a click away. Opening a file on its own shows no sidebar and
+looks at no other file.
+
+Clicking a file in the sidebar opens it as a tab, or brings it to the front if it is open
+already, and the file of the selected tab is highlighted. Hidden files and folders, such as
+`.git` and `.github`, are left out, and so are `node_modules` and `target`. So are
+folders reached through a symbolic link, which could lead back to where they started.
+Folders with no Markdown in them anywhere are left out. The list stops at 5000 files, and
+says so. It is read again whenever the window comes back to the front, and when a
+document is saved under a new name.
+
+F9, or the button at the left of the header bar, shows and hides the sidebar. Focus mode
+hides it until you leave. In a window narrower than 700 pixels it covers the document,
+and goes away once a file is picked.
+
+A folder belongs to its window. A folder opened from a window that shows no folder yet
+goes into that window, and an untitled document there that was never typed in gives way
+to it; otherwise the folder gets a window of its own, and a folder that is shown already
+is brought to the front. Closing every tab of the window leaves it open, on a page that
+asks for a file from the sidebar. "Save As" of an untitled document starts in the folder.
 
 ## Views
 
@@ -148,6 +175,7 @@ Ctrl+? lists them all.
 |---|---|
 | Ctrl+N | New document |
 | Ctrl+O | Open |
+| Shift+Ctrl+O | Open a folder |
 | Ctrl+S | Save |
 | Shift+Ctrl+S | Save as |
 | Ctrl+W | Close the document |
@@ -161,6 +189,7 @@ Ctrl+? lists them all.
 | Ctrl+H | Replace |
 | Shift+Ctrl+H | Replace all |
 | Ctrl++, Ctrl+-, Ctrl+0 | Larger text, smaller text, normal size |
+| F9 | Show or hide the folder's sidebar |
 | F11 | Focus mode |
 | Ctrl+, | Preferences |
 | Ctrl+Q | Quit |
