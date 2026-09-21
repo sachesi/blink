@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-16 23:04+0300\n"
+"POT-Creation-Date: 2026-09-21 11:56+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -28,7 +28,7 @@ msgid "Markdown Editor"
 msgstr ""
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:369
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:424
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr ""
@@ -135,18 +135,23 @@ msgid "Documents in tabs, which can be dragged out into windows of their own"
 msgstr ""
 
 #: data/io.github.sachesi.blink.metainfo.xml:13
-msgid "Find and replace in the source, and find in the rendered text"
+msgid ""
+"A sidebar with the Markdown files of an opened folder and the folders in it"
 msgstr ""
 
 #: data/io.github.sachesi.blink.metainfo.xml:14
-msgid "Focus mode, full screen with nothing but the text"
+msgid "Find and replace in the source, and find in the rendered text"
 msgstr ""
 
 #: data/io.github.sachesi.blink.metainfo.xml:15
+msgid "Focus mode, full screen with nothing but the text"
+msgstr ""
+
+#: data/io.github.sachesi.blink.metainfo.xml:16
 msgid "Export to a standalone HTML file or to PDF"
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:44
+#: data/io.github.sachesi.blink.metainfo.xml:45
 msgid ""
 "The preview renders more of GitHub's Markdown. The boxes of task lists can "
 "be ticked, changing the source as typing would, and Ctrl+Z in the preview "
@@ -155,7 +160,7 @@ msgid ""
 "and a details element opens and closes when its summary is clicked."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:45
+#: data/io.github.sachesi.blink.metainfo.xml:46
 msgid ""
 "Math written between dollar signs is typeset in the preview, in table cells, "
 "and in both exports, and letters that KaTeX's fonts lack, such as Cyrillic, "
@@ -164,7 +169,7 @@ msgid ""
 "README header centred with a div shows centred."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:46
+#: data/io.github.sachesi.blink.metainfo.xml:47
 msgid ""
 "Quotes are rounded boxes in the preview, the PDF and the HTML export alike. "
 "Text in table cells and code blocks is copied with Ctrl+C or from their "
@@ -174,7 +179,7 @@ msgid ""
 "installed font has show as their shortcodes."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:51
+#: data/io.github.sachesi.blink.metainfo.xml:52
 msgid ""
 "Documents open in tabs, which can be dragged out into windows of their own "
 "or moved with \"Move to New Window\"; a narrow window shows its tabs in an "
@@ -184,7 +189,7 @@ msgid ""
 "instead."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:52
+#: data/io.github.sachesi.blink.metainfo.xml:53
 msgid ""
 "Documents export to PDF, set on A4 pages with page numbers, links and an "
 "outline, and the HTML export is laid out like the preview, with its images "
@@ -194,7 +199,7 @@ msgid ""
 "current one."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:53
+#: data/io.github.sachesi.blink.metainfo.xml:54
 msgid ""
 "Text can be copied from code blocks and table cells in the preview, wide "
 "tables scroll instead of breaking words, and the header row of a table is "
@@ -205,18 +210,18 @@ msgid ""
 "restored backups are backed up again before the old backup is removed."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:54
+#: data/io.github.sachesi.blink.metainfo.xml:55
 msgid ""
 "A font picked in Preferences that is no longer installed gives way to the "
 "system font, and backups left by a crash are offered even when another "
 "process has taken the process ID of the one that crashed."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:55
+#: data/io.github.sachesi.blink.metainfo.xml:56
 msgid "Blink is translated into Russian."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:60
+#: data/io.github.sachesi.blink.metainfo.xml:61
 msgid ""
 "The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
 "the split view are three toggles in the header bar, and the split view can "
@@ -226,7 +231,7 @@ msgid ""
 "versions are not carried over."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:61
+#: data/io.github.sachesi.blink.metainfo.xml:62
 msgid ""
 "Backups of unsaved work can be recovered after a crash every time: about "
 "half of them used to be lost, because their record could not be written. "
@@ -238,40 +243,40 @@ msgid ""
 "in the Adwaita icon theme."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:66
+#: data/io.github.sachesi.blink.metainfo.xml:67
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
 msgstr ""
 
-#: data/io.github.sachesi.blink.metainfo.xml:71
+#: data/io.github.sachesi.blink.metainfo.xml:72
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."
 msgstr ""
 
-#: src/application.rs:321
+#: src/application.rs:375
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
 msgstr ""
 
-#: src/application.rs:324
+#: src/application.rs:378
 #, no-c-format
 msgid "Recover Unsaved Document?"
 msgstr ""
 
-#: src/application.rs:327
+#: src/application.rs:381
 #, no-c-format
 msgid "Discard"
 msgstr ""
 
-#: src/application.rs:328
+#: src/application.rs:382
 #, no-c-format
 msgid "Restore"
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:374
+#: src/application.rs:429
 #, no-c-format
 msgid "translator-credits"
 msgstr ""
@@ -282,9 +287,9 @@ msgstr ""
 msgid "{} px"
 msgstr ""
 
-#: src/document.rs:309 src/document.rs:554 src/document/file.rs:434
-#: src/document/file.rs:735 src/document/recovery.rs:103 ui/window.ui:67
-#: ui/window.ui:115
+#: src/document.rs:309 src/document.rs:554 src/document/file.rs:440
+#: src/document/file.rs:741 src/document/recovery.rs:103 ui/window.ui:71
+#: ui/window.ui:194
 #, no-c-format
 msgid "Untitled Document"
 msgstr ""
@@ -304,7 +309,7 @@ msgstr ""
 msgid "Could not open \"{}\""
 msgstr ""
 
-#: src/document/file.rs:239 src/document/file.rs:276 src/document/file.rs:317
+#: src/document/file.rs:239 src/document/file.rs:276 src/document/file.rs:323
 #, no-c-format
 msgid "Error Saving File"
 msgstr ""
@@ -314,146 +319,146 @@ msgstr ""
 msgid "Could not save \"{}\""
 msgstr ""
 
-#: src/document/file.rs:302
+#: src/document/file.rs:303
 #, no-c-format
 msgid "Untitled.md"
 msgstr ""
 
-#: src/document/file.rs:318
+#: src/document/file.rs:324
 #, no-c-format
 msgid ""
 "\"{}\" is open in another tab or window. Close it there first, or save under "
 "another name."
 msgstr ""
 
-#: src/document/file.rs:358
+#: src/document/file.rs:364
 #, no-c-format
 msgid "Untitled"
 msgstr ""
 
-#: src/document/file.rs:369
+#: src/document/file.rs:375
 #, no-c-format
 msgid "HTML Files"
 msgstr ""
 
-#: src/document/file.rs:385
+#: src/document/file.rs:391
 #, no-c-format
 msgid "Error Exporting HTML"
 msgstr ""
 
-#: src/document/file.rs:388 src/document/file.rs:414
+#: src/document/file.rs:394 src/document/file.rs:420
 #, no-c-format
 msgid "Could not export the file"
 msgstr ""
 
-#: src/document/file.rs:397
+#: src/document/file.rs:403
 #, no-c-format
 msgid "PDF Files"
 msgstr ""
 
-#: src/document/file.rs:411
+#: src/document/file.rs:417
 #, no-c-format
 msgid "Error Exporting PDF"
 msgstr ""
 
-#: src/document/file.rs:450
+#: src/document/file.rs:456
 #, no-c-format
 msgid "Unsaved Changes"
 msgstr ""
 
-#: src/document/file.rs:452
+#: src/document/file.rs:458
 #, no-c-format
 msgid "\"{}\" has unsaved changes. Do you want to close without saving?"
 msgstr ""
 
-#: src/document/file.rs:456
+#: src/document/file.rs:462
 #, no-c-format
 msgid "Cancel"
 msgstr ""
 
-#: src/document/file.rs:457
+#: src/document/file.rs:463
 #, no-c-format
 msgid "Close Without Saving"
 msgstr ""
 
-#: src/document/file.rs:508
+#: src/document/file.rs:514
 #, no-c-format
 msgid "\"{}\" changed on disk — autosave paused"
 msgstr ""
 
-#: src/document/file.rs:516
+#: src/document/file.rs:522
 #, no-c-format
 msgid "\"{}\" no longer exists"
 msgstr ""
 
-#: src/document/file.rs:525
+#: src/document/file.rs:531
 #, no-c-format
 msgid "Autosave of \"{}\" failed"
 msgstr ""
 
-#: src/document/file.rs:656
+#: src/document/file.rs:662
 #, no-c-format
 msgid "\"{}\" was deleted on disk — save to keep your changes"
 msgstr ""
 
-#: src/document/file.rs:670
+#: src/document/file.rs:676
 #, no-c-format
 msgid "File Changed on Disk"
 msgstr ""
 
-#: src/document/file.rs:672
+#: src/document/file.rs:678
 #, no-c-format
 msgid ""
 "\"{}\" was modified by another program. Reload to discard your changes, or "
 "overwrite to keep them."
 msgstr ""
 
-#: src/document/file.rs:675
+#: src/document/file.rs:681
 #, no-c-format
 msgid "Save As…"
 msgstr ""
 
-#: src/document/file.rs:676
+#: src/document/file.rs:682
 #, no-c-format
 msgid "Overwrite"
 msgstr ""
 
-#: src/document/file.rs:677
+#: src/document/file.rs:683
 #, no-c-format
 msgid "Reload"
 msgstr ""
 
-#: src/document/file.rs:720
+#: src/document/file.rs:726
 #, no-c-format
 msgid "OK"
 msgstr ""
 
-#: src/document/file.rs:755
+#: src/document/file.rs:761
 #, no-c-format
 msgid "Markdown Files"
 msgstr ""
 
-#: src/document/file.rs:760
+#: src/document/file.rs:766
 #, no-c-format
 msgid "All Files"
 msgstr ""
 
-#: src/document/file.rs:773
+#: src/document/file.rs:779
 #, no-c-format
 msgid "You do not have permission to access this file."
 msgstr ""
 
-#: src/document/file.rs:774
+#: src/document/file.rs:780
 #, no-c-format
 msgid "The file no longer exists."
 msgstr ""
 
-#: src/document/file.rs:775
+#: src/document/file.rs:781
 #, no-c-format
 msgid "There is not enough space left on the disk."
 msgstr ""
 
-#: src/document/file.rs:776
+#: src/document/file.rs:782
 #, no-c-format
 msgid "The location is read-only."
 msgstr ""
@@ -560,14 +565,21 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-#: src/window.rs:137
+#: src/window.rs:189
 #, no-c-format
 msgid "Code copied"
 msgstr ""
 
+#: src/window.rs:829
+#, no-c-format
+msgid "Only the first {} file is listed"
+msgid_plural "Only the first {} files are listed"
+msgstr[0] ""
+msgstr[1] ""
+
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:586
+#: src/window.rs:971
 #, no-c-format
 msgid "{} — {}"
 msgstr ""
@@ -588,7 +600,7 @@ msgstr ""
 msgid "Close Search"
 msgstr ""
 
-#: ui/document.ui:76 ui/document.ui:82 ui/shortcuts_dialog.ui:138
+#: ui/document.ui:76 ui/document.ui:82 ui/shortcuts_dialog.ui:144
 msgid "Replace"
 msgstr ""
 
@@ -596,7 +608,7 @@ msgstr ""
 msgid "Replace Match"
 msgstr ""
 
-#: ui/document.ui:89 ui/shortcuts_dialog.ui:144
+#: ui/document.ui:89 ui/shortcuts_dialog.ui:150
 msgid "Replace All"
 msgstr ""
 
@@ -630,7 +642,7 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
-#: ui/preferences_dialog.ui:32 ui/window.ui:162
+#: ui/preferences_dialog.ui:32 ui/window.ui:241
 msgid "Content Width"
 msgstr ""
 
@@ -707,114 +719,122 @@ msgid "Open"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:27
-msgid "Save"
+msgid "Open Folder"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:33
-msgid "Save As"
+msgid "Save"
 msgstr ""
 
 #: ui/shortcuts_dialog.ui:39
+msgid "Save As"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:45
 msgid "Close Document"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:47
+#: ui/shortcuts_dialog.ui:53
 msgid "Tabs"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:50
+#: ui/shortcuts_dialog.ui:56
 msgid "Next Tab"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:56
+#: ui/shortcuts_dialog.ui:62
 msgid "Previous Tab"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:62
+#: ui/shortcuts_dialog.ui:68
 msgid "Move Tab Right"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:68
+#: ui/shortcuts_dialog.ui:74
 msgid "Move Tab Left"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:74
+#: ui/shortcuts_dialog.ui:80
 msgid "Go to Tab"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:82
+#: ui/shortcuts_dialog.ui:88
 msgid "Editing"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:85
+#: ui/shortcuts_dialog.ui:91
 msgid "Undo"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:91
+#: ui/shortcuts_dialog.ui:97
 msgid "Redo"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:97
+#: ui/shortcuts_dialog.ui:103
 msgid "Bold"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:103
+#: ui/shortcuts_dialog.ui:109
 msgid "Italic"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:109
+#: ui/shortcuts_dialog.ui:115
 msgid "Link"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:117
+#: ui/shortcuts_dialog.ui:123
 msgid "Find and Replace"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:120
+#: ui/shortcuts_dialog.ui:126
 msgid "Find"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:126
+#: ui/shortcuts_dialog.ui:132
 msgid "Find Next"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:132
+#: ui/shortcuts_dialog.ui:138
 msgid "Find Previous"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:152
+#: ui/shortcuts_dialog.ui:158
 msgid "View"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:155
+#: ui/shortcuts_dialog.ui:161
 msgid "Zoom In"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:161
+#: ui/shortcuts_dialog.ui:167
 msgid "Zoom Out"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:167
+#: ui/shortcuts_dialog.ui:173
 msgid "Reset Zoom"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:173
+#: ui/shortcuts_dialog.ui:179
 msgid "Focus Mode"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:181
+#: ui/shortcuts_dialog.ui:185 ui/window.ui:173
+msgid "Show Sidebar"
+msgstr ""
+
+#: ui/shortcuts_dialog.ui:193
 msgid "General"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:184
+#: ui/shortcuts_dialog.ui:196
 msgid "Preferences"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:190
+#: ui/shortcuts_dialog.ui:202
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:196
+#: ui/shortcuts_dialog.ui:208
 msgid "Quit"
 msgstr ""
 
@@ -823,69 +843,89 @@ msgid "_New Document"
 msgstr ""
 
 #: ui/window.ui:16
+msgid "Open _Folder…"
+msgstr ""
+
+#: ui/window.ui:20
 msgid "Open _Recent"
 msgstr ""
 
-#: ui/window.ui:19
+#: ui/window.ui:23
 msgid "Save _As…"
 msgstr ""
 
-#: ui/window.ui:23
+#: ui/window.ui:27
 msgid "_Export as HTML…"
 msgstr ""
 
-#: ui/window.ui:27
+#: ui/window.ui:31
 msgid "Export as _PDF…"
 msgstr ""
 
-#: ui/window.ui:33
+#: ui/window.ui:37
 msgid "_Focus Mode"
 msgstr ""
 
-#: ui/window.ui:39
+#: ui/window.ui:43
 msgid "_Preferences"
 msgstr ""
 
-#: ui/window.ui:43
+#: ui/window.ui:47
 msgid "_Keyboard Shortcuts"
 msgstr ""
 
-#: ui/window.ui:47
+#: ui/window.ui:51
 msgid "_About Blink"
 msgstr ""
 
-#: ui/window.ui:55
+#: ui/window.ui:59
 msgid "Move to _New Window"
 msgstr ""
 
-#: ui/window.ui:61
+#: ui/window.ui:65
 msgid "_Close"
 msgstr ""
 
-#: ui/window.ui:102
+#: ui/window.ui:136
+msgid "No Markdown Files"
+msgstr ""
+
+#: ui/window.ui:137
+msgid "There are no Markdown files in this folder or the folders in it"
+msgstr ""
+
+#: ui/window.ui:181
 msgid "Open Document"
 msgstr ""
 
-#: ui/window.ui:109
+#: ui/window.ui:188
 msgid "Save Document"
 msgstr ""
 
-#: ui/window.ui:121
+#: ui/window.ui:200
 msgid "Main Menu"
 msgstr ""
 
-#: ui/window.ui:140 ui/window.ui:194
+#: ui/window.ui:219 ui/window.ui:294
 msgid "Edit Document"
 msgstr ""
 
-#: ui/window.ui:147 ui/window.ui:201
+#: ui/window.ui:226 ui/window.ui:301
 msgid "Preview Document"
 msgstr ""
 
-#: ui/window.ui:154 ui/window.ui:208
+#: ui/window.ui:233 ui/window.ui:308
 msgid "Split View"
 msgstr ""
 
-#: ui/window.ui:232
+#: ui/window.ui:276
+msgid "No Document Open"
+msgstr ""
+
+#: ui/window.ui:277
+msgid "Pick a file in the sidebar"
+msgstr ""
+
+#: ui/window.ui:334
 msgid "Drop Markdown file to open"
 msgstr ""

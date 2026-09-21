@@ -5,6 +5,7 @@ mod conflict;
 mod document;
 mod editor_view;
 mod export;
+mod folder;
 mod markdown;
 mod math;
 mod math_view;

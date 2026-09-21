@@ -23,7 +23,7 @@ mod preview;
 mod recovery;
 mod search;
 
-pub use file::{Command, markdown_filters};
+pub use file::{Command, file_title, markdown_filters};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ViewMode {

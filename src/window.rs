@@ -2,19 +2,38 @@
 //!
 //! The header bar and the `win.*` actions act on the selected document. Documents move
 //! between windows with their tabs, and a tab dropped outside every window opens in a new
-//! one.
+//! one. A window can show a folder, whose Markdown files the sidebar lists.
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
+use gettextrs::ngettext;
 use gtk::{gio, glib};
 use std::cell::{Cell, OnceCell, RefCell};
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use crate::application::BlinkApplication;
 use crate::config;
 use crate::document::{BlinkDocument, Command, ViewMode};
+use crate::folder;
+
+/// The actions that act on the selected document, off while the window has none.
+const DOCUMENT_ACTIONS: &[&str] = &[
+    "win.save",
+    "win.save-as",
+    "win.export-html",
+    "win.export-pdf",
+    "win.close-document",
+    "win.find",
+    "win.find-next",
+    "win.find-previous",
+    "win.replace",
+    "win.replace-all",
+    "win.format-bold",
+    "win.format-italic",
+    "win.format-link",
+];
 
 /// What ties a document to the window it is in, undone when it leaves.
 struct Attachment {
@@ -45,6 +64,22 @@ mod imp {
         pub recent_menu: TemplateChild<gio::Menu>,
         #[template_child]
         pub tab_view: TemplateChild<adw::TabView>,
+        #[template_child]
+        pub content_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub view_bar: TemplateChild<gtk::ActionBar>,
+        #[template_child]
+        pub split_view: TemplateChild<adw::OverlaySplitView>,
+        #[template_child]
+        pub sidebar_button: TemplateChild<gtk::ToggleButton>,
+        #[template_child]
+        pub folder_title: TemplateChild<adw::WindowTitle>,
+        #[template_child]
+        pub folder_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub folder_list: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub folder_truncated: TemplateChild<gtk::Label>,
 
         /// Full screen, with the header bar and the status bar hidden.
         #[property(get, set = Self::set_focus_mode)]
@@ -52,6 +87,9 @@ mod imp {
         /// The widest the editor and the preview of its documents get, in pixels.
         #[property(get, set)]
         content_width: Cell<i32>,
+        /// The sidebar with the files of the folder is shown.
+        #[property(get, set)]
+        show_sidebar: Cell<bool>,
 
         pub settings: OnceCell<gio::Settings>,
         /// The window is too narrow for the split view.
@@ -63,6 +101,22 @@ mod imp {
         /// The tab whose context menu is open.
         pub menu_page: RefCell<Option<adw::TabPage>>,
         pub(super) attachments: RefCell<HashMap<adw::TabPage, Attachment>>,
+
+        /// The folder the sidebar lists.
+        pub folder: RefCell<Option<gio::File>>,
+        /// What the sidebar lists, `None` until the folder was first scanned.
+        pub folder_listing: RefCell<Option<folder::Listing>>,
+        /// The entries at the top of the folder, which the sidebar's tree grows from.
+        pub folder_root: OnceCell<gio::ListStore>,
+        /// A scan of the folder is running.
+        pub folder_scanning: Cell<bool>,
+        /// Another scan was asked for while one ran, and follows it.
+        pub folder_rescan: Cell<bool>,
+        /// The sidebar was shown when focus mode hid it.
+        pub sidebar_before_focus: Cell<bool>,
+        /// The file whose folders the sidebar last opened to show it. They are opened once,
+        /// so a folder closed by hand stays closed while its file is edited.
+        pub folder_revealed: RefCell<Option<PathBuf>>,
     }
 
     #[glib::object_subclass]
@@ -86,6 +140,9 @@ mod imp {
             });
             klass.install_action_async("win.open", None, |win, _, _| async move {
                 win.open().await;
+            });
+            klass.install_action_async("win.open-folder", None, |win, _, _| async move {
+                win.open_folder().await;
             });
             klass.install_action(
                 "win.open-recent",
@@ -172,6 +229,7 @@ mod imp {
             });
             klass.install_property_action("win.focus-mode", "focus-mode");
             klass.install_property_action("win.content-width", "content-width");
+            klass.install_property_action("win.show-sidebar", "show-sidebar");
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -190,6 +248,9 @@ mod imp {
             obj.setup_recent_menu();
             obj.setup_drop();
             obj.setup_focus_mode_escape();
+            obj.setup_folder_list();
+            obj.action_set_enabled("win.show-sidebar", false);
+            obj.sync_content();
             // Losing focus is when a crash elsewhere, a logout or a power cut is likeliest
             // to catch unsaved work.
             obj.connect_is_active_notify(|win| {
@@ -197,6 +258,10 @@ mod imp {
                     for document in win.documents() {
                         document.enqueue(Command::Backup);
                     }
+                } else {
+                    // Coming back from another program, which may have added or removed
+                    // files.
+                    win.scan_folder();
                 }
             });
             obj.sync_header();
@@ -244,8 +309,13 @@ mod imp {
         #[template_callback]
         fn on_narrow(&self) {
             self.narrow.set(true);
-            if let Some(document) = self.obj().selected_document() {
-                document.leave_split();
+            let obj = self.obj();
+            match obj.selected_document() {
+                Some(document) => document.leave_split(),
+                // The sidebar collapsing hides it, and with no document it is all there
+                // is to pick from.
+                None if obj.folder().is_some() => obj.set_show_sidebar(true),
+                None => {}
             }
         }
 
@@ -303,7 +373,9 @@ mod imp {
 
         #[template_callback]
         fn on_page_attached(&self, page: &adw::TabPage) {
-            self.obj().attach(page);
+            let obj = self.obj();
+            obj.attach(page);
+            obj.sync_content();
         }
 
         #[template_callback]
@@ -321,8 +393,10 @@ mod imp {
             // A tab left with a file of the same name as the one that went needs its
             // folder no more.
             obj.update_tab_titles();
-            // The last document was closed or went to another window.
-            if self.tab_view.n_pages() == 0 {
+            obj.sync_content();
+            // The last document was closed or went to another window. A window with a
+            // folder stays for the next file from it, unless it is closing.
+            if self.tab_view.n_pages() == 0 && (obj.folder().is_none() || self.closing_all.get()) {
                 self.closing.set(true);
                 glib::idle_add_local_once(glib::clone!(
                     #[weak]
@@ -335,9 +409,13 @@ mod imp {
         #[template_callback]
         fn on_setup_menu(&self, page: Option<&adw::TabPage>) {
             self.menu_page.replace(page.cloned());
-            // A window's only document is already in a window of its own.
-            self.obj()
-                .action_set_enabled("win.tab-to-new-window", self.tab_view.n_pages() > 1);
+            // A window's only document is already in a window of its own, unless the window
+            // stays for its folder.
+            let obj = self.obj();
+            obj.action_set_enabled(
+                "win.tab-to-new-window",
+                self.tab_view.n_pages() > 1 || obj.folder().is_some(),
+            );
         }
 
         #[template_callback]
@@ -363,6 +441,15 @@ mod imp {
             }
             obj.sync_header();
         }
+
+        /// Enter on a row of the sidebar.
+        #[template_callback]
+        fn on_folder_row_activated(&self, position: u32) {
+            let obj = self.obj();
+            if let Some(row) = obj.folder_tree().and_then(|tree| tree.row(position)) {
+                obj.activate_folder_row(&row);
+            }
+        }
     }
 
     impl BlinkWindow {
@@ -372,8 +459,13 @@ mod imp {
             }
             let obj = self.obj();
             if focus_mode {
+                self.sidebar_before_focus.set(obj.show_sidebar());
+                obj.set_show_sidebar(false);
                 obj.fullscreen();
             } else {
+                if self.sidebar_before_focus.get() {
+                    obj.set_show_sidebar(true);
+                }
                 obj.unfullscreen();
             }
         }
@@ -461,7 +553,7 @@ impl BlinkWindow {
     /// window when it has no other tab. The last window of the application stays.
     pub fn discard_blank(&self, document: &BlinkDocument) {
         let tab_view = &self.imp().tab_view;
-        if tab_view.n_pages() > 1 || self.app().windows().len() > 1 {
+        if tab_view.n_pages() > 1 || self.folder().is_some() || self.app().windows().len() > 1 {
             tab_view.close_page(&tab_view.page(document));
         }
     }
@@ -507,6 +599,315 @@ impl BlinkWindow {
         }
     }
 
+    async fn open_folder(&self) {
+        let dialog = gtk::FileDialog::new();
+        if let Ok(folder) = dialog.select_folder_future(Some(self)).await {
+            self.app().open_folder(folder, Some(self));
+        }
+    }
+
+    pub fn folder(&self) -> Option<gio::File> {
+        self.imp().folder.borrow().clone()
+    }
+
+    /// List `folder` in the sidebar and show it. An untitled document never typed in, the
+    /// window's only one, gives way to the page that asks for a file from it.
+    pub fn set_folder(&self, folder: gio::File) {
+        let imp = self.imp();
+        let name = crate::document::file_title(&folder);
+        imp.folder_title.set_title(&name);
+        imp.folder_title.set_tooltip_text(
+            folder
+                .path()
+                .map(|path| path.display().to_string())
+                .as_deref(),
+        );
+        imp.folder.replace(Some(folder));
+        imp.folder_listing.replace(None);
+        if let Some(root) = imp.folder_root.get() {
+            root.remove_all();
+        }
+        imp.sidebar_button.set_visible(true);
+        self.action_set_enabled("win.show-sidebar", true);
+        self.set_show_sidebar(true);
+        if let [document] = self.documents().as_slice()
+            && document.is_blank()
+        {
+            imp.tab_view.close_page(&imp.tab_view.page(document));
+        }
+        self.scan_folder();
+        self.sync_header();
+    }
+
+    /// The tree of the sidebar: the entries of the folder, each folder with its own below
+    /// it once expanded.
+    fn setup_folder_list(&self) {
+        let imp = self.imp();
+        let root = gio::ListStore::new::<glib::BoxedAnyObject>();
+        let tree = gtk::TreeListModel::new(root.clone(), false, false, |item| {
+            let entry = item.downcast_ref::<glib::BoxedAnyObject>()?;
+            let children = entry.borrow::<folder::Entry>().children.clone()?;
+            Some(entry_store(&children).upcast())
+        });
+        imp.folder_root.set(root).ok();
+        let selection = gtk::SingleSelection::builder()
+            .model(&tree)
+            .autoselect(false)
+            .can_unselect(true)
+            .build();
+
+        let factory = gtk::SignalListItemFactory::new();
+        factory.connect_setup(glib::clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |_, item| {
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
+                let icon = gtk::Image::new();
+                let label = gtk::Label::builder()
+                    .xalign(0.0)
+                    .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                    .build();
+                let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+                content.append(&icon);
+                content.append(&label);
+                let expander = gtk::TreeExpander::builder()
+                    .indent_for_icon(true)
+                    .child(&content)
+                    .build();
+                // A click opens the file or opens and closes the folder at once. Taking
+                // the click from the list keeps the selection on the selected tab's file,
+                // and a double click from opening and closing a folder again.
+                let click = gtk::GestureClick::new();
+                click.connect_pressed(glib::clone!(
+                    #[weak]
+                    win,
+                    #[weak]
+                    expander,
+                    move |gesture, presses, _, _| {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        if presses == 1
+                            && let Some(row) = expander.list_row()
+                        {
+                            win.activate_folder_row(&row);
+                        }
+                    }
+                ));
+                expander.add_controller(click);
+                item.set_child(Some(&expander));
+            }
+        ));
+        factory.connect_bind(|_, item| {
+            let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
+            let Some(row) = item.item().and_downcast::<gtk::TreeListRow>() else {
+                return;
+            };
+            let Some(expander) = item.child().and_downcast::<gtk::TreeExpander>() else {
+                return;
+            };
+            expander.set_list_row(Some(&row));
+            let Some(entry) = row.item().and_downcast::<glib::BoxedAnyObject>() else {
+                return;
+            };
+            let entry = entry.borrow::<folder::Entry>();
+            let Some(content) = expander.child() else {
+                return;
+            };
+            if let Some(icon) = content.first_child().and_downcast::<gtk::Image>() {
+                icon.set_icon_name(Some(if entry.children.is_some() {
+                    "folder-symbolic"
+                } else {
+                    "text-x-generic-symbolic"
+                }));
+            }
+            if let Some(label) = content.last_child().and_downcast::<gtk::Label>() {
+                label.set_label(&entry.name);
+            }
+        });
+        factory.connect_unbind(|_, item| {
+            if let Some(expander) = item
+                .downcast_ref::<gtk::ListItem>()
+                .and_then(|item| item.child())
+                .and_downcast::<gtk::TreeExpander>()
+            {
+                expander.set_list_row(None);
+            }
+        });
+        imp.folder_list.set_factory(Some(&factory));
+        imp.folder_list.set_model(Some(&selection));
+    }
+
+    fn folder_selection(&self) -> Option<gtk::SingleSelection> {
+        self.imp().folder_list.model().and_downcast()
+    }
+
+    fn folder_tree(&self) -> Option<gtk::TreeListModel> {
+        self.folder_selection()?.model().and_downcast()
+    }
+
+    /// Open the file of `row` as a tab, or open or close its folder.
+    fn activate_folder_row(&self, row: &gtk::TreeListRow) {
+        let Some(entry) = row.item().and_downcast::<glib::BoxedAnyObject>() else {
+            return;
+        };
+        let (path, is_folder) = {
+            let entry = entry.borrow::<folder::Entry>();
+            (entry.path.clone(), entry.children.is_some())
+        };
+        if is_folder {
+            row.set_expanded(!row.is_expanded());
+            return;
+        }
+        self.app()
+            .open_file_from_folder(gio::File::for_path(path), self);
+        // Over a narrow window the sidebar hides the document just opened.
+        if self.imp().split_view.is_collapsed() {
+            self.set_show_sidebar(false);
+        }
+    }
+
+    /// Scan the folder again, off the main thread, and list what it holds now. One scan
+    /// runs at a time: a large folder takes long enough to walk that switching windows
+    /// would otherwise start scans faster than they end.
+    fn scan_folder(&self) {
+        let imp = self.imp();
+        let Some(root) = self.folder().and_then(|folder| folder.path()) else {
+            return;
+        };
+        if imp.folder_scanning.replace(true) {
+            imp.folder_rescan.set(true);
+            return;
+        }
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = win)]
+            self,
+            async move {
+                let listing =
+                    gio::spawn_blocking(move || folder::scan(&root, folder::MAX_FILES)).await;
+                let imp = win.imp();
+                imp.folder_scanning.set(false);
+                if let Ok(listing) = listing {
+                    win.show_listing(listing);
+                }
+                if imp.folder_rescan.take() {
+                    win.scan_folder();
+                }
+            }
+        ));
+    }
+
+    /// Put `listing` in the sidebar, with the folders that were open still open. The tree
+    /// is left alone when nothing changed, so its scrolling stays as well.
+    fn show_listing(&self, listing: folder::Listing) {
+        let imp = self.imp();
+        if imp.folder_listing.borrow().as_ref() == Some(&listing) {
+            return;
+        }
+        let (Some(root), Some(tree)) = (imp.folder_root.get(), self.folder_tree()) else {
+            return;
+        };
+        let expanded: HashSet<PathBuf> = (0..tree.n_items())
+            .filter_map(|position| tree.row(position))
+            .filter(gtk::TreeListRow::is_expanded)
+            .filter_map(|row| entry_path(&row))
+            .collect();
+        let entries: Vec<glib::BoxedAnyObject> = listing
+            .entries
+            .iter()
+            .cloned()
+            .map(glib::BoxedAnyObject::new)
+            .collect();
+        root.splice(0, root.n_items(), &entries);
+        let mut position = 0;
+        while position < tree.n_items() {
+            if let Some(row) = tree.row(position)
+                && entry_path(&row).is_some_and(|path| expanded.contains(&path))
+            {
+                row.set_expanded(true);
+            }
+            position += 1;
+        }
+        imp.folder_stack
+            .set_visible_child_name(if listing.entries.is_empty() {
+                "empty"
+            } else {
+                "files"
+            });
+        imp.folder_truncated.set_visible(listing.truncated);
+        if listing.truncated {
+            let max = u32::try_from(folder::MAX_FILES).unwrap_or(u32::MAX);
+            imp.folder_truncated.set_label(
+                &ngettext(
+                    "Only the first {} file is listed",
+                    "Only the first {} files are listed",
+                    max,
+                )
+                .replacen("{}", &max.to_string(), 1),
+            );
+        }
+        imp.folder_listing.replace(Some(listing));
+        self.select_folder_row();
+    }
+
+    /// Select the file of the selected document in the sidebar, opening the folders it is
+    /// in when it comes to be selected, or nothing when it is not in the folder.
+    fn select_folder_row(&self) {
+        let (Some(selection), Some(tree)) = (self.folder_selection(), self.folder_tree()) else {
+            return;
+        };
+        let path = self
+            .selected_document()
+            .map(|document| PathBuf::from(document.path()))
+            .filter(|path| !path.as_os_str().is_empty());
+        let reveal = *self.imp().folder_revealed.borrow() != path;
+        let mut found = gtk::INVALID_LIST_POSITION;
+        if let Some(path) = &path {
+            let mut position = 0;
+            while position < tree.n_items() {
+                if let Some(row) = tree.row(position)
+                    && let Some(entry_path) = entry_path(&row)
+                {
+                    if entry_path == *path {
+                        found = position;
+                        break;
+                    }
+                    if reveal && row.is_expandable() && path.starts_with(&entry_path) {
+                        row.set_expanded(true);
+                    }
+                }
+                position += 1;
+            }
+        }
+        // A file not found yet, as none is before the first scan ends, is still to show.
+        if reveal {
+            self.imp()
+                .folder_revealed
+                .replace(path.filter(|_| found != gtk::INVALID_LIST_POSITION));
+        }
+        if selection.selected() != found {
+            selection.set_selected(found);
+            if found != gtk::INVALID_LIST_POSITION {
+                self.imp()
+                    .folder_list
+                    .scroll_to(found, gtk::ListScrollFlags::NONE, None);
+            }
+        }
+    }
+
+    /// Show the documents, or the page that asks for a file once there is none.
+    fn sync_content(&self) {
+        let imp = self.imp();
+        imp.content_stack
+            .set_visible_child_name(if imp.tab_view.n_pages() == 0 {
+                "no-document"
+            } else {
+                "documents"
+            });
+    }
+
     /// Tie a document that arrived to the window: its width and focus mode follow the
     /// window's, and its title shows on its tab and, while selected, in the header bar.
     fn attach(&self, page: &adw::TabPage) {
@@ -538,6 +939,12 @@ impl BlinkWindow {
             }
         );
         let handlers = vec![
+            // A file saved under a new name in the folder is listed at once.
+            document.connect_path_notify(glib::clone!(
+                #[weak(rename_to = win)]
+                self,
+                move |_| win.scan_folder()
+            )),
             document.connect_title_notify(sync.clone()),
             document.connect_folder_notify(sync.clone()),
             document.connect_view_mode_name_notify(sync),
@@ -593,10 +1000,25 @@ impl BlinkWindow {
         }
     }
 
-    /// Show the selected document's title, folder and view in the header bar.
+    /// Show the selected document's title, folder and view in the header bar, and its
+    /// file in the sidebar. Without a document, the window is named after its folder.
     fn sync_header(&self) {
         let imp = self.imp();
-        let Some(document) = self.selected_document() else {
+        let document = self.selected_document();
+        for action in DOCUMENT_ACTIONS {
+            self.action_set_enabled(action, document.is_some());
+        }
+        imp.view_toggles.set_sensitive(document.is_some());
+        imp.view_bar.set_sensitive(document.is_some());
+        imp.width_button.set_sensitive(document.is_some());
+        self.select_folder_row();
+        let Some(document) = document else {
+            let name = self
+                .folder()
+                .map(|folder| crate::document::file_title(&folder));
+            imp.window_title.set_title("");
+            imp.window_title.set_subtitle("");
+            self.set_title(name.as_deref());
             return;
         };
         let title = document.title();
@@ -722,4 +1144,17 @@ impl BlinkWindow {
         ));
         self.add_controller(keys);
     }
+}
+
+fn entry_store(entries: &[folder::Entry]) -> gio::ListStore {
+    let store = gio::ListStore::new::<glib::BoxedAnyObject>();
+    for entry in entries {
+        store.append(&glib::BoxedAnyObject::new(entry.clone()));
+    }
+    store
+}
+
+fn entry_path(row: &gtk::TreeListRow) -> Option<PathBuf> {
+    let entry = row.item().and_downcast::<glib::BoxedAnyObject>()?;
+    Some(entry.borrow::<folder::Entry>().path.clone())
 }

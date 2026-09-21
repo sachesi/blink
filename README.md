@@ -9,8 +9,10 @@ The preview renders tables, task lists whose boxes can be ticked, footnotes, Git
 alerts, emoji, collapsible details, typeset math, syntax-coloured code blocks and images
 from the document's own folder. Find works in the source and in the rendered text,
 replace in the source. Documents open in tabs, which can be dragged out into windows of
-their own, or each in a window of its own if you prefer. There is a focus mode, full
-screen with nothing but the text, and an export to a standalone HTML file or to PDF.
+their own, or each in a window of its own if you prefer. A folder opened in Blink lists
+its Markdown files, and those of the folders below it, in a sidebar. There is a focus
+mode, full screen with nothing but the text, and an export to a standalone HTML file or
+to PDF.
 
 ## Packages
 
