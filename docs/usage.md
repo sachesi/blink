@@ -43,8 +43,9 @@ in; Enter opens the first of them. Hidden files and folders, such as
 `.git` and `.github`, are left out, and so are `node_modules` and `target`. So are
 folders reached through a symbolic link, which could lead back to where they started.
 Folders with no Markdown in them anywhere are left out. The list stops at 5000 files, and
-says so. It is read again whenever the window comes back to the front, and when a
-document is saved under a new name.
+says so. Files and folders added, removed or renamed while Blink runs show up in it at
+once; in a tree of more than 1000 folders, those in the folders past the first 1000 show
+up when the window comes back to the front.
 
 F9, or the button at the left of the header bar, shows and hides the sidebar. Focus mode
 hides it until you leave. In a window narrower than 700 pixels it covers the document,

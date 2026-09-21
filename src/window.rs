@@ -18,6 +18,10 @@ use crate::config;
 use crate::document::{BlinkDocument, Command, ViewMode};
 use crate::folder;
 
+/// The most folders of an opened folder watched for files coming and going. Those past
+/// it are only read again when the window comes back to the front.
+const MAX_WATCHED_FOLDERS: usize = 1000;
+
 /// The actions that act on the selected document, off while the window has none.
 const DOCUMENT_ACTIONS: &[&str] = &[
     "win.save",
@@ -110,6 +114,10 @@ mod imp {
         pub folder_listing: RefCell<Option<folder::Listing>>,
         /// The entries at the top of the folder, which the sidebar's tree grows from.
         pub folder_root: OnceCell<gio::ListStore>,
+        /// The monitors of the folders walked, by path.
+        pub folder_monitors: RefCell<HashMap<PathBuf, gio::FileMonitor>>,
+        /// A scan waits for the changes coming in to settle.
+        pub folder_scan_timer: RefCell<Option<glib::SourceId>>,
         /// A scan of the folder is running.
         pub folder_scanning: Cell<bool>,
         /// Another scan was asked for while one ran, and follows it.
@@ -318,9 +326,9 @@ mod imp {
                     for document in win.documents() {
                         document.enqueue(Command::Backup);
                     }
-                } else {
+                } else if win.folder_partly_watched() {
                     // Coming back from another program, which may have added or removed
-                    // files.
+                    // files where no monitor sees it.
                     win.scan_folder();
                 }
             });
@@ -338,6 +346,7 @@ mod imp {
             let obj = self.obj();
             if self.closing.get() || self.tab_view.n_pages() == 0 {
                 obj.save_window_state();
+                obj.stop_following_folder();
                 return self.parent_close_request();
             }
             if !self.closing_all.replace(true) {
@@ -932,6 +941,9 @@ impl BlinkWindow {
                     gio::spawn_blocking(move || folder::scan(&root, folder::MAX_FILES)).await;
                 let imp = win.imp();
                 imp.folder_scanning.set(false);
+                if win.folder().is_none() {
+                    return;
+                }
                 if let Ok(listing) = listing {
                     win.show_listing(listing);
                 }
@@ -946,7 +958,14 @@ impl BlinkWindow {
     /// is left alone when nothing changed, so its scrolling stays as well.
     fn show_listing(&self, listing: folder::Listing) {
         let imp = self.imp();
-        if imp.folder_listing.borrow().as_ref() == Some(&listing) {
+        self.watch_folders(&listing.folders);
+        if imp
+            .folder_listing
+            .borrow()
+            .as_ref()
+            .is_some_and(|shown| shown.shows_same(&listing))
+        {
+            imp.folder_listing.replace(Some(listing));
             return;
         }
         let expanded = imp
@@ -956,6 +975,111 @@ impl BlinkWindow {
             .then(|| self.expanded_folders());
         imp.folder_listing.replace(Some(listing));
         self.render_folder(expanded);
+    }
+
+    /// Stop watching the folder, for a window that is closing: the monitors and a scan
+    /// waiting to start would otherwise last until the window is freed. A scan running
+    /// finds no folder when it ends, and watches nothing.
+    fn stop_following_folder(&self) {
+        let imp = self.imp();
+        imp.folder.replace(None);
+        for (_, monitor) in imp.folder_monitors.take() {
+            monitor.cancel();
+        }
+        if let Some(timer) = imp.folder_scan_timer.take() {
+            timer.remove();
+        }
+    }
+
+    /// Some folders walked, past the most watched or unreadable to a monitor, are not
+    /// watched.
+    fn folder_partly_watched(&self) -> bool {
+        let imp = self.imp();
+        imp.folder_listing
+            .borrow()
+            .as_ref()
+            .is_some_and(|listing| imp.folder_monitors.borrow().len() < listing.folders.len())
+    }
+
+    /// Watch `folders` for files coming and going, and no other.
+    fn watch_folders(&self, folders: &[PathBuf]) {
+        let wanted: HashSet<&PathBuf> = folders.iter().take(MAX_WATCHED_FOLDERS).collect();
+        let mut monitors = self.imp().folder_monitors.borrow_mut();
+        monitors.retain(|path, monitor| {
+            let keep = wanted.contains(path);
+            if !keep {
+                monitor.cancel();
+            }
+            keep
+        });
+        for path in wanted {
+            if monitors.contains_key(path) {
+                continue;
+            }
+            let Ok(monitor) = gio::File::for_path(path)
+                .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+            else {
+                continue;
+            };
+            monitor.connect_changed(glib::clone!(
+                #[weak(rename_to = win)]
+                self,
+                move |_, file, other, event| win.folder_changed(file, other, event)
+            ));
+            monitors.insert(path.clone(), monitor);
+        }
+    }
+
+    /// Scan the folder again, shortly, when `event` can change what the sidebar lists. A
+    /// save, which renames a hidden file over the one it saves, cannot.
+    fn folder_changed(
+        &self,
+        file: &gio::File,
+        other: Option<&gio::File>,
+        event: gio::FileMonitorEvent,
+    ) {
+        // A checkout or a build sends thousands of events; once a scan is on its way the
+        // rest need no look.
+        if self.imp().folder_scan_timer.borrow().is_some() {
+            return;
+        }
+        let matters = {
+            let listing = self.imp().folder_listing.borrow();
+            let Some(listing) = listing.as_ref() else {
+                return;
+            };
+            let appears = |file: Option<&gio::File>| {
+                file.and_then(|file| file.path())
+                    .is_some_and(|path| listing.would_change_with(&path))
+            };
+            let goes = |file: &gio::File| {
+                file.path()
+                    .is_some_and(|path| listing.would_change_without(&path))
+            };
+            match event {
+                gio::FileMonitorEvent::Created | gio::FileMonitorEvent::MovedIn => {
+                    appears(Some(file))
+                }
+                gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut => goes(file),
+                gio::FileMonitorEvent::Renamed => goes(file) || appears(other),
+                _ => false,
+            }
+        };
+        let imp = self.imp();
+        if matters {
+            let timer = glib::timeout_add_local_once(
+                std::time::Duration::from_millis(300),
+                glib::clone!(
+                    #[weak(rename_to = win)]
+                    self,
+                    move || {
+                        win.imp().folder_scan_timer.take();
+                        win.scan_folder();
+                    }
+                ),
+            );
+            imp.folder_scan_timer.replace(Some(timer));
+        }
     }
 
     fn expanded_folders(&self) -> HashSet<PathBuf> {
@@ -1115,12 +1239,6 @@ impl BlinkWindow {
             }
         );
         let handlers = vec![
-            // A file saved under a new name in the folder is listed at once.
-            document.connect_path_notify(glib::clone!(
-                #[weak(rename_to = win)]
-                self,
-                move |_| win.scan_folder()
-            )),
             document.connect_title_notify(sync.clone()),
             document.connect_folder_notify(sync.clone()),
             document.connect_view_mode_name_notify(sync),

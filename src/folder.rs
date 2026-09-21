@@ -26,6 +26,48 @@ pub struct Listing {
     pub entries: Vec<Entry>,
     /// Files past [`MAX_FILES`] were left out.
     pub truncated: bool,
+    /// Every folder walked, the root first: where a file that appears could be listed.
+    pub folders: Vec<PathBuf>,
+}
+
+impl Listing {
+    /// What the sidebar shows, which a change to the folders walked alone leaves as it is.
+    pub fn shows_same(&self, other: &Listing) -> bool {
+        self.entries == other.entries && self.truncated == other.truncated
+    }
+
+    /// Whether a file or folder appearing at `path` could change the listing: a Markdown
+    /// file not listed yet, or a folder that would be walked.
+    pub fn would_change_with(&self, path: &Path) -> bool {
+        let Some(name) = path.file_name().map(|name| name.to_string_lossy()) else {
+            return false;
+        };
+        if name.starts_with('.') {
+            return false;
+        }
+        if path.is_dir() {
+            return !SKIPPED_FOLDERS.contains(&name.as_ref());
+        }
+        is_markdown(path) && !self.lists(path)
+    }
+
+    /// Whether `path` is a file or folder the listing holds or walked, whose going away
+    /// changes it.
+    pub fn would_change_without(&self, path: &Path) -> bool {
+        self.lists(path) || self.folders.iter().any(|folder| folder == path)
+    }
+
+    fn lists(&self, path: &Path) -> bool {
+        fn find(entries: &[Entry], path: &Path) -> bool {
+            entries.iter().any(|entry| {
+                entry.path == path
+                    || entry.children.as_deref().is_some_and(|children| {
+                        path.starts_with(&entry.path) && find(children, path)
+                    })
+            })
+        }
+        find(&self.entries, path)
+    }
 }
 
 /// The Markdown files in `root` and below it, and the folders that lead to them. Hidden
@@ -35,7 +77,13 @@ pub struct Listing {
 pub fn scan(root: &Path, max_files: usize) -> Listing {
     let mut listing = Listing::default();
     let mut count = 0;
-    listing.entries = scan_folder(root, max_files, &mut count, &mut listing.truncated);
+    listing.entries = scan_folder(
+        root,
+        max_files,
+        &mut count,
+        &mut listing.truncated,
+        &mut listing.folders,
+    );
     listing
 }
 
@@ -44,10 +92,12 @@ fn scan_folder(
     max_files: usize,
     count: &mut usize,
     truncated: &mut bool,
+    folders: &mut Vec<PathBuf>,
 ) -> Vec<Entry> {
     let Ok(read) = fs::read_dir(folder) else {
         return Vec::new();
     };
+    folders.push(folder.to_owned());
     let mut found: Vec<(String, PathBuf, bool)> = read
         .flatten()
         .filter_map(|entry| {
@@ -74,7 +124,7 @@ fn scan_folder(
             break;
         }
         if is_folder {
-            let children = scan_folder(&path, max_files, count, truncated);
+            let children = scan_folder(&path, max_files, count, truncated, folders);
             if !children.is_empty() {
                 entries.push(Entry {
                     name,
@@ -241,7 +291,9 @@ mod tests {
         touch(&root, "src/lib.rs");
         fs::create_dir_all(root.join("empty/deeper")).unwrap();
 
-        assert_eq!(scan(&root, MAX_FILES), Listing::default());
+        let listing = scan(&root, MAX_FILES);
+        assert!(listing.entries.is_empty());
+        assert_eq!(listing.folders.len(), 4);
         fs::remove_dir_all(&root).unwrap();
     }
 
@@ -297,5 +349,31 @@ mod tests {
     fn missing_root_is_empty() {
         let root = unique_dir("missing").join("gone");
         assert_eq!(scan(&root, MAX_FILES), Listing::default());
+    }
+
+    #[test]
+    fn tells_which_changes_matter() {
+        let root = unique_dir("changes");
+        touch(&root, "README.md");
+        touch(&root, "src/main.rs");
+        let listing = scan(&root, MAX_FILES);
+
+        touch(&root, "new.md");
+        assert!(listing.would_change_with(&root.join("new.md")));
+        // Saving writes a hidden file and renames it over the listed one.
+        touch(&root, ".README.md.blink-tmp-1");
+        assert!(!listing.would_change_with(&root.join(".README.md.blink-tmp-1")));
+        assert!(!listing.would_change_with(&root.join("README.md")));
+        assert!(!listing.would_change_with(&root.join("notes.txt")));
+        fs::create_dir_all(root.join("docs")).unwrap();
+        assert!(listing.would_change_with(&root.join("docs")));
+        fs::create_dir_all(root.join("node_modules")).unwrap();
+        assert!(!listing.would_change_with(&root.join("node_modules")));
+
+        assert!(listing.would_change_without(&root.join("README.md")));
+        // A folder walked may hold the next file listed.
+        assert!(listing.would_change_without(&root.join("src")));
+        assert!(!listing.would_change_without(&root.join("src/main.rs")));
+        fs::remove_dir_all(&root).unwrap();
     }
 }
