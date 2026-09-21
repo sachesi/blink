@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 11:56+0300\n"
+"POT-Creation-Date: 2026-09-21 12:11+0300\n"
 "PO-Revision-Date: 2026-09-16 23:10+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -639,12 +639,12 @@ msgstr "Копіювати код"
 msgid "Details"
 msgstr "Подробиці"
 
-#: src/window.rs:189
+#: src/window.rs:191
 #, no-c-format
 msgid "Code copied"
 msgstr "Код скопійовано"
 
-#: src/window.rs:829
+#: src/window.rs:846
 #, no-c-format
 msgid "Only the first {} file is listed"
 msgid_plural "Only the first {} files are listed"
@@ -654,7 +654,7 @@ msgstr[2] "Показано лише перші {} файлів"
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:971
+#: src/window.rs:988
 #, no-c-format
 msgid "{} — {}"
 msgstr "{} — {}"
@@ -1004,8 +1004,8 @@ msgid "Pick a file in the sidebar"
 msgstr "Виберіть файл на бічній панелі"
 
 #: ui/window.ui:334
-msgid "Drop Markdown file to open"
-msgstr "Перетягніть файл Markdown для відкриття"
+msgid "Drop Markdown file or folder to open"
+msgstr "Перетягніть файл Markdown або теку, щоб відкрити"
 
 #, no-c-format
 #~ msgid "Opening another file will discard unsaved changes."

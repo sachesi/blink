@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 11:56+0300\n"
+"POT-Creation-Date: 2026-09-21 12:11+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -565,12 +565,12 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-#: src/window.rs:189
+#: src/window.rs:191
 #, no-c-format
 msgid "Code copied"
 msgstr ""
 
-#: src/window.rs:829
+#: src/window.rs:846
 #, no-c-format
 msgid "Only the first {} file is listed"
 msgid_plural "Only the first {} files are listed"
@@ -579,7 +579,7 @@ msgstr[1] ""
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:971
+#: src/window.rs:988
 #, no-c-format
 msgid "{} — {}"
 msgstr ""
@@ -927,5 +927,5 @@ msgid "Pick a file in the sidebar"
 msgstr ""
 
 #: ui/window.ui:334
-msgid "Drop Markdown file to open"
+msgid "Drop Markdown file or folder to open"
 msgstr ""
