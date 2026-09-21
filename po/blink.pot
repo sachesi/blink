@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 12:13+0300\n"
+"POT-Creation-Date: 2026-09-21 12:15+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -28,7 +28,7 @@ msgid "Markdown Editor"
 msgstr ""
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:429
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:438
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr ""
@@ -259,28 +259,28 @@ msgid ""
 "polish."
 msgstr ""
 
-#: src/application.rs:380
+#: src/application.rs:389
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
 msgstr ""
 
-#: src/application.rs:383
+#: src/application.rs:392
 #, no-c-format
 msgid "Recover Unsaved Document?"
 msgstr ""
 
-#: src/application.rs:386
+#: src/application.rs:395
 #, no-c-format
 msgid "Discard"
 msgstr ""
 
-#: src/application.rs:387
+#: src/application.rs:396
 #, no-c-format
 msgid "Restore"
 msgstr ""
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:434
+#: src/application.rs:443
 #, no-c-format
 msgid "translator-credits"
 msgstr ""
@@ -574,12 +574,22 @@ msgstr ""
 msgid "The folder \"{}\" no longer exists"
 msgstr ""
 
-#: src/window.rs:207
+#: src/window.rs:216
+#, no-c-format
+msgid "Path copied"
+msgstr ""
+
+#: src/window.rs:233
+#, no-c-format
+msgid "Could not open the file manager"
+msgstr ""
+
+#: src/window.rs:243
 #, no-c-format
 msgid "Code copied"
 msgstr ""
 
-#: src/window.rs:862
+#: src/window.rs:935
 #, no-c-format
 msgid "Only the first {} file is listed"
 msgid_plural "Only the first {} files are listed"
@@ -588,9 +598,24 @@ msgstr[1] ""
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:1004
+#: src/window.rs:1077
 #, no-c-format
 msgid "{} — {}"
+msgstr ""
+
+#: src/window.rs:1269
+#, no-c-format
+msgid "Open in New _Window"
+msgstr ""
+
+#: src/window.rs:1271
+#, no-c-format
+msgid "_Copy Path"
+msgstr ""
+
+#: src/window.rs:1272
+#, no-c-format
+msgid "_Show in Files"
 msgstr ""
 
 #: ui/document.ui:32

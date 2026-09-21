@@ -35,7 +35,9 @@ looks at no other file. "Open Recent" lists the last ten folders above the last 
 
 Clicking a file in the sidebar opens it as a tab, or brings it to the front if it is open
 already, and the file of the selected tab is highlighted. A name too long for the
-sidebar shows in full when the pointer rests on it. Hidden files and folders, such as
+sidebar shows in full when the pointer rests on it. The right-click menu of a row, also on the Menu key
+or Shift+F10, opens a file in a window of its own, copies the path of a file or folder,
+or shows it in the file manager. Hidden files and folders, such as
 `.git` and `.github`, are left out, and so are `node_modules` and `target`. So are
 folders reached through a symbolic link, which could lead back to where they started.
 Folders with no Markdown in them anywhere are left out. The list stops at 5000 files, and

@@ -208,6 +208,15 @@ impl BlinkApplication {
         }
     }
 
+    /// Open `file` in a window of its own, or bring it forward where it is open already.
+    pub fn open_file_in_new_window(&self, file: gio::File) -> BlinkDocument {
+        if let Some(document) = self.documents().find(|document| document.holds(&file)) {
+            document.present();
+            return document;
+        }
+        self.open_file(file, Some(&BlinkWindow::new(self)))
+    }
+
     /// Show `folder` in the sidebar of `window` when that shows no folder yet, otherwise
     /// in a new window, or bring forward the window that shows it already. Returns the
     /// window it is in.

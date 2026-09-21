@@ -204,6 +204,44 @@ mod imp {
             });
 
             klass.install_action(
+                "win.open-in-new-window",
+                Some(&PathBuf::static_variant_type()),
+                |win, _, param| {
+                    if let Some(path) = param.and_then(PathBuf::from_variant) {
+                        win.app().open_file_in_new_window(gio::File::for_path(path));
+                    }
+                },
+            );
+            klass.install_action(
+                "win.copy-path",
+                Some(&PathBuf::static_variant_type()),
+                |win, _, param| {
+                    // The clipboard takes text: a name that is not UTF-8 is copied as near
+                    // as text gets to it.
+                    if let Some(path) = param.and_then(PathBuf::from_variant) {
+                        win.clipboard().set_text(&path.display().to_string());
+                        win.toast(&gettext("Path copied"));
+                    }
+                },
+            );
+            klass.install_action_async(
+                "win.show-in-files",
+                Some(&PathBuf::static_variant_type()),
+                |win, _, param| async move {
+                    let Some(path) = param.as_ref().and_then(PathBuf::from_variant) else {
+                        return;
+                    };
+                    let launcher = gtk::FileLauncher::new(Some(&gio::File::for_path(path)));
+                    if launcher
+                        .open_containing_folder_future(Some(&win))
+                        .await
+                        .is_err()
+                    {
+                        win.toast(&gettext("Could not open the file manager"));
+                    }
+                },
+            );
+            klass.install_action(
                 "win.copy-code",
                 Some(glib::VariantTy::STRING),
                 |win, _, param| {
@@ -699,10 +737,28 @@ impl BlinkWindow {
                 let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
                 content.append(&icon);
                 content.append(&label);
+                // A child of the box, which removes it with its other children.
+                let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
+                menu.set_parent(&content);
+                menu.set_position(gtk::PositionType::Bottom);
+                menu.set_has_arrow(false);
+                menu.set_halign(gtk::Align::Start);
                 let expander = gtk::TreeExpander::builder()
                     .indent_for_icon(true)
                     .child(&content)
                     .build();
+                let right_click = gtk::GestureClick::builder()
+                    .button(gtk::gdk::BUTTON_SECONDARY)
+                    .build();
+                right_click.connect_pressed(glib::clone!(
+                    #[weak]
+                    expander,
+                    move |gesture, _, x, y| {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        popup_row_menu(&expander, x, y);
+                    }
+                ));
+                expander.add_controller(right_click);
                 // A click opens the file or opens and closes the folder at once. Taking
                 // the click from the list keeps the selection on the selected tab's file,
                 // and a double click from opening and closing a folder again.
@@ -743,14 +799,15 @@ impl BlinkWindow {
             let Some(content) = expander.child() else {
                 return;
             };
-            if let Some(icon) = content.first_child().and_downcast::<gtk::Image>() {
-                icon.set_icon_name(Some(if entry.children.is_some() {
-                    "folder-symbolic"
-                } else {
-                    "text-x-generic-symbolic"
-                }));
-            }
-            if let Some(label) = content.last_child().and_downcast::<gtk::Label>() {
+            let Some(icon) = content.first_child().and_downcast::<gtk::Image>() else {
+                return;
+            };
+            icon.set_icon_name(Some(if entry.children.is_some() {
+                "folder-symbolic"
+            } else {
+                "text-x-generic-symbolic"
+            }));
+            if let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() {
                 label.set_label(&entry.name);
             }
         });
@@ -763,6 +820,26 @@ impl BlinkWindow {
                 expander.set_list_row(None);
             }
         });
+        // The Menu key and Shift+F10 open the menu of the row with the focus.
+        let keys = gtk::EventControllerKey::new();
+        keys.connect_key_pressed(|controller, key, _, modifiers| {
+            // Caps Lock and the like are left out of the comparison.
+            let modifiers = modifiers & gtk::accelerator_get_default_mod_mask();
+            let menu_key = key == gtk::gdk::Key::Menu
+                || (key == gtk::gdk::Key::F10 && modifiers == gtk::gdk::ModifierType::SHIFT_MASK);
+            let Some(expander) = controller
+                .widget()
+                .and_then(|list| list.focus_child())
+                .and_then(|row| row.first_child())
+                .and_downcast::<gtk::TreeExpander>()
+                .filter(|_| menu_key)
+            else {
+                return glib::Propagation::Proceed;
+            };
+            popup_row_menu(&expander, 0.0, f64::from(expander.height()));
+            glib::Propagation::Stop
+        });
+        imp.folder_list.add_controller(keys);
         imp.folder_list.set_factory(Some(&factory));
         imp.folder_list.set_model(Some(&selection));
     }
@@ -1202,6 +1279,55 @@ fn entry_store(entries: &[folder::Entry]) -> gio::ListStore {
         store.append(&glib::BoxedAnyObject::new(entry.clone()));
     }
     store
+}
+
+/// The menu of a row of the sidebar: a file opens in a window of its own, and either is
+/// copied as a path or shown in the file manager.
+fn folder_row_menu(row: &gtk::TreeListRow) -> gio::Menu {
+    let menu = gio::Menu::new();
+    let Some(entry) = row.item().and_downcast::<glib::BoxedAnyObject>() else {
+        return menu;
+    };
+    let entry = entry.borrow::<folder::Entry>();
+    let path = entry.path.to_variant();
+    let mut items = Vec::new();
+    if entry.children.is_none() {
+        items.push((gettext("Open in New _Window"), "win.open-in-new-window"));
+    }
+    items.push((gettext("_Copy Path"), "win.copy-path"));
+    items.push((gettext("_Show in Files"), "win.show-in-files"));
+    for (label, action) in items {
+        let item = gio::MenuItem::new(Some(&label), None);
+        item.set_action_and_target_value(Some(action), Some(&path));
+        menu.append_item(&item);
+    }
+    menu
+}
+
+/// Show the menu of the row of `expander` at `x`, `y` in it.
+fn popup_row_menu(expander: &gtk::TreeExpander, x: f64, y: f64) {
+    let Some(row) = expander.list_row() else {
+        return;
+    };
+    let Some(content) = expander.child() else {
+        return;
+    };
+    let Some(menu) = content.last_child().and_downcast::<gtk::PopoverMenu>() else {
+        return;
+    };
+    let Some(point) =
+        expander.compute_point(&content, &gtk::graphene::Point::new(x as f32, y as f32))
+    else {
+        return;
+    };
+    menu.set_menu_model(Some(&folder_row_menu(&row)));
+    menu.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+        point.x() as i32,
+        point.y() as i32,
+        1,
+        1,
+    )));
+    menu.popup();
 }
 
 fn entry_path(row: &gtk::TreeListRow) -> Option<PathBuf> {
