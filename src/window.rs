@@ -1086,7 +1086,8 @@ impl BlinkWindow {
         }
     }
 
-    /// Files dragged onto the window open like files from the Open dialog.
+    /// Files dragged onto the window open like files from the Open dialog, and folders like
+    /// folders from the Open Folder dialog.
     fn setup_drop(&self) {
         let imp = self.imp();
         // GTK delivers dropped files as a GdkFileList, even a single one.
@@ -1126,7 +1127,11 @@ impl BlinkWindow {
                 };
                 let app = win.app();
                 for file in files.files() {
-                    app.open_file(file, Some(&win));
+                    if file.path().is_some_and(|path| path.is_dir()) {
+                        app.open_folder(file, Some(&win));
+                    } else {
+                        app.open_file(file, Some(&win));
+                    }
                 }
                 true
             }
