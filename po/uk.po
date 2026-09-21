@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 12:13+0300\n"
+"POT-Creation-Date: 2026-09-21 12:15+0300\n"
 "PO-Revision-Date: 2026-09-16 23:10+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Ukrainian <uk@li.org>\n"
@@ -25,7 +25,7 @@ msgid "Markdown Editor"
 msgstr "Редактор Markdown"
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:429
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:438
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr "Редагуйте Markdown із живим переглядом"
@@ -325,28 +325,28 @@ msgstr ""
 "Параметри, масштабування, довідка з комбінацій клавіш, перетягування та "
 "покращення доступності."
 
-#: src/application.rs:380
+#: src/application.rs:389
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
 msgstr "Знайдено незбережені зміни у «{}» з попереднього сеансу."
 
-#: src/application.rs:383
+#: src/application.rs:392
 #, no-c-format
 msgid "Recover Unsaved Document?"
 msgstr "Відновити незбережений документ?"
 
-#: src/application.rs:386
+#: src/application.rs:395
 #, no-c-format
 msgid "Discard"
 msgstr "Відхилити"
 
-#: src/application.rs:387
+#: src/application.rs:396
 #, no-c-format
 msgid "Restore"
 msgstr "Відновити"
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:434
+#: src/application.rs:443
 #, no-c-format
 msgid "translator-credits"
 msgstr "sachesi <xsachesi@pm.me>"
@@ -648,12 +648,22 @@ msgstr "Подробиці"
 msgid "The folder \"{}\" no longer exists"
 msgstr "Теки «{}» більше не існує"
 
-#: src/window.rs:207
+#: src/window.rs:216
+#, no-c-format
+msgid "Path copied"
+msgstr "Шлях скопійовано"
+
+#: src/window.rs:233
+#, no-c-format
+msgid "Could not open the file manager"
+msgstr "Не вдалося відкрити файловий менеджер"
+
+#: src/window.rs:243
 #, no-c-format
 msgid "Code copied"
 msgstr "Код скопійовано"
 
-#: src/window.rs:862
+#: src/window.rs:935
 #, no-c-format
 msgid "Only the first {} file is listed"
 msgid_plural "Only the first {} files are listed"
@@ -663,10 +673,25 @@ msgstr[2] "Показано лише перші {} файлів"
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:1004
+#: src/window.rs:1077
 #, no-c-format
 msgid "{} — {}"
 msgstr "{} — {}"
+
+#: src/window.rs:1269
+#, no-c-format
+msgid "Open in New _Window"
+msgstr "Відкрити в новому _вікні"
+
+#: src/window.rs:1271
+#, no-c-format
+msgid "_Copy Path"
+msgstr "_Копіювати шлях"
+
+#: src/window.rs:1272
+#, no-c-format
+msgid "_Show in Files"
+msgstr "_Показати у Файлах"
 
 #: ui/document.ui:32
 msgid "Search"
