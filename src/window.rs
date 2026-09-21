@@ -153,6 +153,24 @@ mod imp {
                     }
                 },
             );
+            klass.install_action(
+                "win.open-recent-folder",
+                Some(&PathBuf::static_variant_type()),
+                |win, _, param| {
+                    let Some(path) = param.and_then(PathBuf::from_variant) else {
+                        return;
+                    };
+                    if path.is_dir() {
+                        win.app().open_folder(gio::File::for_path(path), Some(win));
+                    } else {
+                        win.toast(&gettext("The folder \"{}\" no longer exists").replacen(
+                            "{}",
+                            &path.display().to_string(),
+                            1,
+                        ));
+                    }
+                },
+            );
             for (name, command) in [
                 ("win.save", Command::Save),
                 ("win.save-as", Command::SaveAs),
@@ -1062,27 +1080,45 @@ impl BlinkWindow {
 
     fn setup_recent_menu(&self) {
         self.rebuild_recent_menu();
-        self.settings().connect_changed(
-            Some("recent-files"),
-            glib::clone!(
-                #[weak(rename_to = win)]
-                self,
-                move |_, _| win.rebuild_recent_menu()
-            ),
-        );
+        for key in ["recent-files", "recent-folders"] {
+            self.settings().connect_changed(
+                Some(key),
+                glib::clone!(
+                    #[weak(rename_to = win)]
+                    self,
+                    move |_, _| win.rebuild_recent_menu()
+                ),
+            );
+        }
     }
 
+    /// The recent folders, then the recent files, each in a section of their own.
     fn rebuild_recent_menu(&self) {
         let menu = &self.imp().recent_menu;
         menu.remove_all();
-        for path in self.settings().strv("recent-files") {
-            let label = std::path::Path::new(path.as_str())
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.to_string());
-            let item = gio::MenuItem::new(Some(&label), None);
-            item.set_action_and_target_value(Some("win.open-recent"), Some(&path.to_variant()));
-            menu.append_item(&item);
+        let folder_target = |path: &str| PathBuf::from(path).to_variant();
+        let file_target = |path: &str| path.to_variant();
+        for (key, action, target) in [
+            (
+                "recent-folders",
+                "win.open-recent-folder",
+                &folder_target as &dyn Fn(&str) -> glib::Variant,
+            ),
+            ("recent-files", "win.open-recent", &file_target),
+        ] {
+            let section = gio::Menu::new();
+            for path in self.settings().strv(key) {
+                let label = std::path::Path::new(path.as_str())
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string());
+                let item = gio::MenuItem::new(Some(&label), None);
+                item.set_action_and_target_value(Some(action), Some(&target(&path)));
+                section.append_item(&item);
+            }
+            if section.n_items() > 0 {
+                menu.append_section(None, &section);
+            }
         }
     }
 

@@ -226,6 +226,16 @@ impl BlinkApplication {
             target
         });
         target.present();
+        // Recent folders are kept as text, which a name that is not UTF-8 would not survive.
+        if let Some(path) = target
+            .folder()
+            .and_then(|folder| folder.path())
+            .filter(|path| path.to_str().is_some())
+        {
+            let settings = self.settings();
+            let recent = crate::document::push_recent(settings.strv("recent-folders"), &path);
+            let _ = settings.set_strv("recent-folders", recent);
+        }
         target
     }
 

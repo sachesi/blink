@@ -31,7 +31,7 @@ folder's sidebar are the exception: they always open as tabs of the folder's win
 "Open Folder" in the main menu (Shift+Ctrl+O), a folder dropped on the window or a folder
 passed to `blink` lists the Markdown files in the folder and in the folders below it in a
 sidebar, so a repository's README and its `docs` are a click away. Opening a file on its own shows no sidebar and
-looks at no other file.
+looks at no other file. "Open Recent" lists the last ten folders above the last ten files.
 
 Clicking a file in the sidebar opens it as a tab, or brings it to the front if it is open
 already, and the file of the selected tab is highlighted. A name too long for the
