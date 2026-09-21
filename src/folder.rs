@@ -96,6 +96,29 @@ fn scan_folder(
     entries
 }
 
+/// The files of `entries` whose names hold `query`, ignoring case, with the folders
+/// that lead to them. A folder whose own name holds it keeps all it has.
+pub fn filter(entries: &[Entry], query: &str) -> Vec<Entry> {
+    let query = query.to_lowercase();
+    filter_lowercase(entries, &query)
+}
+
+fn filter_lowercase(entries: &[Entry], query: &str) -> Vec<Entry> {
+    entries
+        .iter()
+        .filter_map(|entry| {
+            if entry.name.to_lowercase().contains(query) {
+                return Some(entry.clone());
+            }
+            let children = filter_lowercase(entry.children.as_deref()?, query);
+            (!children.is_empty()).then(|| Entry {
+                children: Some(children),
+                ..entry.clone()
+            })
+        })
+        .collect()
+}
+
 fn is_markdown(path: &Path) -> bool {
     path.extension().is_some_and(|extension| {
         extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")
@@ -238,6 +261,35 @@ mod tests {
 
         let listing = scan(&root, 4);
         assert!(!listing.truncated);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn filter_keeps_matches_and_the_folders_to_them() {
+        let root = unique_dir("filter");
+        for name in [
+            "README.md",
+            "docs/usage.md",
+            "docs/install.md",
+            "docs/api/Usage-notes.md",
+            "guides/intro.md",
+            "notes/todo.md",
+        ] {
+            touch(&root, name);
+        }
+        let listing = scan(&root, MAX_FILES);
+
+        assert_eq!(
+            outline(&filter(&listing.entries, "USAGE")),
+            ["docs/", "  api/", "    Usage-notes.md", "  usage.md"]
+        );
+        // A folder that matches by name keeps its files, matching or not.
+        assert_eq!(
+            outline(&filter(&listing.entries, "guide")),
+            ["guides/", "  intro.md"]
+        );
+        assert!(filter(&listing.entries, "missing").is_empty());
+        assert_eq!(filter(&listing.entries, ""), listing.entries);
         fs::remove_dir_all(&root).unwrap();
     }
 

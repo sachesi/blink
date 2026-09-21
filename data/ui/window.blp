@@ -118,6 +118,25 @@ template $BlinkWindow: Adw.ApplicationWindow {
             [top]
             Adw.HeaderBar {
               title-widget: Adw.WindowTitle folder_title {};
+
+              [end]
+              Gtk.ToggleButton {
+                icon-name: "system-search-symbolic";
+                tooltip-text: _("Search Files");
+                active: bind folder_search_bar.search-mode-enabled bidirectional;
+              }
+            }
+
+            // Opens as well when a name is typed in the list.
+            [top]
+            Gtk.SearchBar folder_search_bar {
+              key-capture-widget: folder_list;
+
+              child: Gtk.SearchEntry folder_search {
+                placeholder-text: _("Search Files");
+                search-changed => $on_folder_search_changed() swapped;
+                activate => $on_folder_search_activated() swapped;
+              };
             }
 
             content: Gtk.Stack folder_stack {
@@ -144,6 +163,20 @@ template $BlinkWindow: Adw.ApplicationWindow {
                   icon-name: "folder-symbolic";
                   title: _("No Markdown Files");
                   description: _("There are no Markdown files in this folder or the folders in it");
+
+                  styles [
+                    "compact",
+                  ]
+                };
+              }
+
+              Gtk.StackPage {
+                name: "no-match";
+
+                child: Adw.StatusPage {
+                  icon-name: "edit-find-symbolic";
+                  title: _("No Results Found");
+                  description: _("Try a different search");
 
                   styles [
                     "compact",

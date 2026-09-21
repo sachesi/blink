@@ -80,6 +80,8 @@ mod imp {
         pub folder_list: TemplateChild<gtk::ListView>,
         #[template_child]
         pub folder_truncated: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub folder_search: TemplateChild<gtk::SearchEntry>,
 
         /// Full screen, with the header bar and the status bar hidden.
         #[property(get, set = Self::set_focus_mode)]
@@ -112,6 +114,8 @@ mod imp {
         pub folder_scanning: Cell<bool>,
         /// Another scan was asked for while one ran, and follows it.
         pub folder_rescan: Cell<bool>,
+        /// The folders that were open when a search started, to open again once it ends.
+        pub expanded_before_search: RefCell<Option<HashSet<PathBuf>>>,
         /// The sidebar was shown when focus mode hid it.
         pub sidebar_before_focus: Cell<bool>,
         /// The file whose folders the sidebar last opened to show it. They are opened once,
@@ -496,6 +500,41 @@ mod imp {
                 document.selected();
             }
             obj.sync_header();
+        }
+
+        /// While a search runs the sidebar lists what matches, with every folder open.
+        #[template_callback]
+        fn on_folder_search_changed(&self) {
+            let obj = self.obj();
+            let expanded = if self.folder_search.text().is_empty() {
+                Some(
+                    self.expanded_before_search
+                        .take()
+                        .unwrap_or_else(|| obj.expanded_folders()),
+                )
+            } else {
+                if self.expanded_before_search.borrow().is_none() {
+                    self.expanded_before_search
+                        .replace(Some(obj.expanded_folders()));
+                }
+                None
+            };
+            obj.render_folder(expanded);
+        }
+
+        /// Enter in the search opens the first file found.
+        #[template_callback]
+        fn on_folder_search_activated(&self) {
+            let obj = self.obj();
+            let Some(tree) = obj.folder_tree() else {
+                return;
+            };
+            if let Some(row) = (0..tree.n_items())
+                .filter_map(|position| tree.row(position))
+                .find(|row| !row.is_expandable())
+            {
+                obj.activate_folder_row(&row);
+            }
         }
 
         /// Enter on a row of the sidebar.
@@ -910,38 +949,72 @@ impl BlinkWindow {
         if imp.folder_listing.borrow().as_ref() == Some(&listing) {
             return;
         }
-        let (Some(root), Some(tree)) = (imp.folder_root.get(), self.folder_tree()) else {
-            return;
+        let expanded = imp
+            .folder_search
+            .text()
+            .is_empty()
+            .then(|| self.expanded_folders());
+        imp.folder_listing.replace(Some(listing));
+        self.render_folder(expanded);
+    }
+
+    fn expanded_folders(&self) -> HashSet<PathBuf> {
+        let Some(tree) = self.folder_tree() else {
+            return HashSet::new();
         };
-        let expanded: HashSet<PathBuf> = (0..tree.n_items())
+        (0..tree.n_items())
             .filter_map(|position| tree.row(position))
             .filter(gtk::TreeListRow::is_expanded)
             .filter_map(|row| entry_path(&row))
-            .collect();
-        let entries: Vec<glib::BoxedAnyObject> = listing
-            .entries
+            .collect()
+    }
+
+    /// Fill the tree from the listing, or from what of it matches the search, and open
+    /// the folders in `expanded`, or every folder when `None`.
+    fn render_folder(&self, expanded: Option<HashSet<PathBuf>>) {
+        let imp = self.imp();
+        let (Some(root), Some(tree)) = (imp.folder_root.get(), self.folder_tree()) else {
+            return;
+        };
+        let (entries, listed, truncated) = {
+            let listing = imp.folder_listing.borrow();
+            let Some(listing) = listing.as_ref() else {
+                return;
+            };
+            let query = imp.folder_search.text();
+            let entries = if query.is_empty() {
+                listing.entries.clone()
+            } else {
+                folder::filter(&listing.entries, &query)
+            };
+            (entries, !listing.entries.is_empty(), listing.truncated)
+        };
+        let items: Vec<glib::BoxedAnyObject> = entries
             .iter()
             .cloned()
             .map(glib::BoxedAnyObject::new)
             .collect();
-        root.splice(0, root.n_items(), &entries);
+        root.splice(0, root.n_items(), &items);
         let mut position = 0;
         while position < tree.n_items() {
             if let Some(row) = tree.row(position)
-                && entry_path(&row).is_some_and(|path| expanded.contains(&path))
+                && expanded.as_ref().is_none_or(|expanded| {
+                    entry_path(&row).is_some_and(|path| expanded.contains(&path))
+                })
             {
                 row.set_expanded(true);
             }
             position += 1;
         }
-        imp.folder_stack
-            .set_visible_child_name(if listing.entries.is_empty() {
-                "empty"
-            } else {
-                "files"
-            });
-        imp.folder_truncated.set_visible(listing.truncated);
-        if listing.truncated {
+        imp.folder_stack.set_visible_child_name(if !listed {
+            "empty"
+        } else if entries.is_empty() {
+            "no-match"
+        } else {
+            "files"
+        });
+        imp.folder_truncated.set_visible(truncated);
+        if truncated {
             let max = u32::try_from(folder::MAX_FILES).unwrap_or(u32::MAX);
             imp.folder_truncated.set_label(
                 &ngettext(
@@ -952,7 +1025,6 @@ impl BlinkWindow {
                 .replacen("{}", &max.to_string(), 1),
             );
         }
-        imp.folder_listing.replace(Some(listing));
         self.select_folder_row();
     }
 

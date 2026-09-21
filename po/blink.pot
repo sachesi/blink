@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 12:15+0300\n"
+"POT-Creation-Date: 2026-09-21 12:20+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -293,7 +293,7 @@ msgstr ""
 
 #: src/document.rs:309 src/document.rs:554 src/document/file.rs:440
 #: src/document/file.rs:741 src/document/recovery.rs:103 ui/window.ui:71
-#: ui/window.ui:194
+#: ui/window.ui:228
 #, no-c-format
 msgid "Untitled Document"
 msgstr ""
@@ -569,27 +569,27 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-#: src/window.rs:164
+#: src/window.rs:168
 #, no-c-format
 msgid "The folder \"{}\" no longer exists"
 msgstr ""
 
-#: src/window.rs:216
+#: src/window.rs:220
 #, no-c-format
 msgid "Path copied"
 msgstr ""
 
-#: src/window.rs:233
+#: src/window.rs:237
 #, no-c-format
 msgid "Could not open the file manager"
 msgstr ""
 
-#: src/window.rs:243
+#: src/window.rs:247
 #, no-c-format
 msgid "Code copied"
 msgstr ""
 
-#: src/window.rs:935
+#: src/window.rs:1008
 #, no-c-format
 msgid "Only the first {} file is listed"
 msgid_plural "Only the first {} files are listed"
@@ -598,22 +598,22 @@ msgstr[1] ""
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:1077
+#: src/window.rs:1149
 #, no-c-format
 msgid "{} — {}"
 msgstr ""
 
-#: src/window.rs:1269
+#: src/window.rs:1341
 #, no-c-format
 msgid "Open in New _Window"
 msgstr ""
 
-#: src/window.rs:1271
+#: src/window.rs:1343
 #, no-c-format
 msgid "_Copy Path"
 msgstr ""
 
-#: src/window.rs:1272
+#: src/window.rs:1344
 #, no-c-format
 msgid "_Show in Files"
 msgstr ""
@@ -676,7 +676,7 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
-#: ui/preferences_dialog.ui:32 ui/window.ui:241
+#: ui/preferences_dialog.ui:32 ui/window.ui:275
 msgid "Content Width"
 msgstr ""
 
@@ -852,7 +852,7 @@ msgstr ""
 msgid "Focus Mode"
 msgstr ""
 
-#: ui/shortcuts_dialog.ui:185 ui/window.ui:173
+#: ui/shortcuts_dialog.ui:185 ui/window.ui:207
 msgid "Show Sidebar"
 msgstr ""
 
@@ -920,46 +920,58 @@ msgstr ""
 msgid "_Close"
 msgstr ""
 
-#: ui/window.ui:136
+#: ui/window.ui:111 ui/window.ui:122
+msgid "Search Files"
+msgstr ""
+
+#: ui/window.ui:155
 msgid "No Markdown Files"
 msgstr ""
 
-#: ui/window.ui:137
+#: ui/window.ui:156
 msgid "There are no Markdown files in this folder or the folders in it"
 msgstr ""
 
-#: ui/window.ui:181
+#: ui/window.ui:170
+msgid "No Results Found"
+msgstr ""
+
+#: ui/window.ui:171
+msgid "Try a different search"
+msgstr ""
+
+#: ui/window.ui:215
 msgid "Open Document"
 msgstr ""
 
-#: ui/window.ui:188
+#: ui/window.ui:222
 msgid "Save Document"
 msgstr ""
 
-#: ui/window.ui:200
+#: ui/window.ui:234
 msgid "Main Menu"
 msgstr ""
 
-#: ui/window.ui:219 ui/window.ui:294
+#: ui/window.ui:253 ui/window.ui:328
 msgid "Edit Document"
 msgstr ""
 
-#: ui/window.ui:226 ui/window.ui:301
+#: ui/window.ui:260 ui/window.ui:335
 msgid "Preview Document"
 msgstr ""
 
-#: ui/window.ui:233 ui/window.ui:308
+#: ui/window.ui:267 ui/window.ui:342
 msgid "Split View"
 msgstr ""
 
-#: ui/window.ui:276
+#: ui/window.ui:310
 msgid "No Document Open"
 msgstr ""
 
-#: ui/window.ui:277
+#: ui/window.ui:311
 msgid "Pick a file in the sidebar"
 msgstr ""
 
-#: ui/window.ui:334
+#: ui/window.ui:368
 msgid "Drop Markdown file or folder to open"
 msgstr ""
