@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: blink 0.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 12:11+0300\n"
+"POT-Creation-Date: 2026-09-21 12:13+0300\n"
 "PO-Revision-Date: 2026-09-16 23:10+0300\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Russian <ru@li.org>\n"
@@ -25,7 +25,7 @@ msgid "Markdown Editor"
 msgstr "Редактор Markdown"
 
 #: data/io.github.sachesi.blink.desktop:4
-#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:424
+#: data/io.github.sachesi.blink.metainfo.xml:7 src/application.rs:429
 #, no-c-format
 msgid "Edit Markdown with a live preview"
 msgstr "Редактируйте Markdown с живым предпросмотром"
@@ -108,10 +108,14 @@ msgid "Recently opened files, newest first"
 msgstr "Недавно открытые файлы, сначала новые"
 
 #: data/io.github.sachesi.blink.gschema.xml:67
+msgid "Recently opened folders, newest first"
+msgstr "Недавно открытые папки, сначала новые"
+
+#: data/io.github.sachesi.blink.gschema.xml:71
 msgid "Window size"
 msgstr "Размер окна"
 
-#: data/io.github.sachesi.blink.gschema.xml:71
+#: data/io.github.sachesi.blink.gschema.xml:75
 msgid "Window maximized"
 msgstr "Окно развёрнуто"
 
@@ -322,28 +326,28 @@ msgstr ""
 "Параметры, масштаб, справка по сочетаниям клавиш, перетаскивание и улучшения "
 "доступности."
 
-#: src/application.rs:375
+#: src/application.rs:380
 #, no-c-format
 msgid "Unsaved changes to \"{}\" were found from a previous session."
 msgstr "Найдены несохранённые изменения в «{}» из прошлого сеанса."
 
-#: src/application.rs:378
+#: src/application.rs:383
 #, no-c-format
 msgid "Recover Unsaved Document?"
 msgstr "Восстановить несохранённый документ?"
 
-#: src/application.rs:381
+#: src/application.rs:386
 #, no-c-format
 msgid "Discard"
 msgstr "Отбросить"
 
-#: src/application.rs:382
+#: src/application.rs:387
 #, no-c-format
 msgid "Restore"
 msgstr "Восстановить"
 
 #. Translators: put your name here, one per line, optionally with an email address.
-#: src/application.rs:429
+#: src/application.rs:434
 #, no-c-format
 msgid "translator-credits"
 msgstr "sachesi <xsachesi@pm.me>"
@@ -640,12 +644,17 @@ msgstr "Копировать код"
 msgid "Details"
 msgstr "Подробности"
 
-#: src/window.rs:191
+#: src/window.rs:164
+#, no-c-format
+msgid "The folder \"{}\" no longer exists"
+msgstr "Папки «{}» больше не существует"
+
+#: src/window.rs:207
 #, no-c-format
 msgid "Code copied"
 msgstr "Код скопирован"
 
-#: src/window.rs:846
+#: src/window.rs:862
 #, no-c-format
 msgid "Only the first {} file is listed"
 msgid_plural "Only the first {} files are listed"
@@ -655,7 +664,7 @@ msgstr[2] "Показаны только первые {} файлов"
 
 #. Translators: the title of a tab, then the name of the folder its file is in,
 #. shown when two tabs have files of the same name.
-#: src/window.rs:988
+#: src/window.rs:1004
 #, no-c-format
 msgid "{} — {}"
 msgstr "{} — {}"

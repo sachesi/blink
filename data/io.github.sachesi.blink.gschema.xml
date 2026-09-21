@@ -62,6 +62,10 @@
       <default>[]</default>
       <summary>Recently opened files, newest first</summary>
     </key>
+    <key name="recent-folders" type="as">
+      <default>[]</default>
+      <summary>Recently opened folders, newest first</summary>
+    </key>
     <key name="window-size" type="(ii)">
       <default>(960, 720)</default>
       <summary>Window size</summary>

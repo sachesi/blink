@@ -23,7 +23,7 @@ use crate::pdf;
 
 /// How often unsaved changes to a file are written to it.
 const AUTOSAVE_INTERVAL_SECS: u32 = 10;
-/// How many files "Open Recent" remembers.
+/// How many files, and how many folders, "Open Recent" remembers.
 const MAX_RECENT: usize = 10;
 
 #[derive(Debug, Clone)]
@@ -743,7 +743,7 @@ pub fn file_title(file: &gio::File) -> String {
 
 /// The recent files list with `path` moved or added to the front, and no longer than
 /// [`MAX_RECENT`].
-fn push_recent(recent: glib::StrV, path: &Path) -> Vec<String> {
+pub fn push_recent(recent: glib::StrV, path: &Path) -> Vec<String> {
     let path = path.to_string_lossy();
     let mut list: Vec<String> = recent
         .iter()
