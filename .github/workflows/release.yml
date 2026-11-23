@@ -156,9 +156,6 @@ jobs:
           export BLINK_LOCALEDIR=/usr/share/locale
           cargo build --locked --release
           DESTDIR="$PWD/stage" JUST_TEMPDIR="$RUNNER_TEMP" just prefix=/usr install
-          # The install recipe refreshes the caches even when staged; dpkg's triggers own them.
-          rm -f stage/usr/share/glib-2.0/schemas/gschemas.compiled \
-            stage/usr/share/applications/mimeinfo.cache stage/usr/share/icons/hicolor/icon-theme.cache
           install -Dm644 LICENSE stage/usr/share/doc/blink/copyright
       - name: Package
         run: |

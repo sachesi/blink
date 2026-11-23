@@ -23,7 +23,3 @@ override_dh_auto_test:
 
 override_dh_auto_install:
 	DESTDIR=$(CURDIR)/debian/blink JUST_TEMPDIR=$(CURDIR)/debian just prefix=/usr install
-	# The install recipe refreshes the caches even when staged; dpkg's triggers own them.
-	rm -f debian/blink/usr/share/glib-2.0/schemas/gschemas.compiled \
-	  debian/blink/usr/share/applications/mimeinfo.cache \
-	  debian/blink/usr/share/icons/hicolor/icon-theme.cache

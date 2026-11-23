@@ -35,7 +35,8 @@ other way before `just install` stops with "Settings schema not installed".
 `install` copies what `just build` produced; it never builds. The default prefix is
 `/usr/local`. It puts the binary in `bin`, and the desktop entry, metainfo, icons,
 GSettings schema and translations under `share`, then compiles the schemas and refreshes
-the desktop and icon caches. A prefix other than `/usr/local` and `/usr` needs its `share`
+the desktop and icon caches. With `DESTDIR` set it leaves the caches out, since a package
+built from the staged files gets them from the package manager's own triggers. A prefix other than `/usr/local` and `/usr` needs its `share`
 directory in `XDG_DATA_DIRS` for the desktop to find the entry; `~/.local/share` is on
 most systems.
 
