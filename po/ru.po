@@ -2,10 +2,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: blink 0.8.0\n"
+"Project-Id-Version: blink 0.8.1\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/blink/issues\n"
-"POT-Creation-Date: 2026-09-21 12:59+0300\n"
-"PO-Revision-Date: 2026-09-21 13:05+0300\n"
+"POT-Creation-Date: 2026-09-21 13:07+0300\n"
+"PO-Revision-Date: 2026-11-23 18:05+0200\n"
 "Last-Translator: sachesi <xsachesi@pm.me>\n"
 "Language-Team: Russian <ru@li.org>\n"
 "Language: ru\n"
@@ -164,22 +164,41 @@ msgstr "Экспорт в самостоятельный файл HTML или в
 
 #: data/io.github.sachesi.blink.metainfo.xml:45
 msgid ""
+"The preview no longer stalls on wiki links built to make Markdown parsing "
+"slow, such as one with a long run of pipes or images nested in each other. "
+"The Arch Linux package installs again, as it no longer carries a desktop "
+"file cache that the system builds itself."
+msgstr "Предпросмотр больше не зависает на вики-ссылках, составленных так, чтобы замедлить разбор Markdown, например на ссылке с длинным рядом вертикальных черт или с вложенными друг в друга изображениями. Пакет для Arch Linux снова устанавливается, так как больше не содержит кэш файлов desktop, который система строит сама."
+
+#: data/io.github.sachesi.blink.metainfo.xml:50
+msgid ""
 "A folder can be opened, from Open Folder, the command line or by dropping it "
 "on the window, and its Markdown files and those in the folders below it are "
 "listed in a sidebar that F9 shows and hides. Files picked there open as tabs "
 "of that window, which stays open on its folder when its last tab closes. "
 "Hidden folders, node_modules and target are passed over."
-msgstr "Папку можно открыть через «Открыть папку», из командной строки или перетащив её на окно, и её файлы Markdown вместе с файлами вложенных папок появляются на боковой панели, которую F9 показывает и скрывает. Выбранные там файлы открываются как вкладки этого окна, которое остаётся открытым на своей папке, когда закрывается последняя вкладка. Скрытые папки, node_modules и target пропускаются."
+msgstr ""
+"Папку можно открыть через «Открыть папку», из командной строки или перетащив "
+"её на окно, и её файлы Markdown вместе с файлами вложенных папок появляются "
+"на боковой панели, которую F9 показывает и скрывает. Выбранные там файлы "
+"открываются как вкладки этого окна, которое остаётся открытым на своей "
+"папке, когда закрывается последняя вкладка. Скрытые папки, node_modules и "
+"target пропускаются."
 
-#: data/io.github.sachesi.blink.metainfo.xml:46
+#: data/io.github.sachesi.blink.metainfo.xml:51
 msgid ""
 "The sidebar can be searched by file name, follows files as they are added, "
 "removed and renamed, and gives each file a menu to open it in a new window, "
 "copy its path or show it in the file manager. Open Recent lists recent "
 "folders above recent files."
-msgstr "На боковой панели можно искать по имени файла, она следит за добавлением, удалением и переименованием файлов, а у каждого файла есть меню, чтобы открыть его в новом окне, скопировать путь или показать в файловом менеджере. «Открыть недавние» показывает недавние папки над недавними файлами."
+msgstr ""
+"На боковой панели можно искать по имени файла, она следит за добавлением, "
+"удалением и переименованием файлов, а у каждого файла есть меню, чтобы "
+"открыть его в новом окне, скопировать путь или показать в файловом "
+"менеджере. «Открыть недавние» показывает недавние папки над недавними "
+"файлами."
 
-#: data/io.github.sachesi.blink.metainfo.xml:51
+#: data/io.github.sachesi.blink.metainfo.xml:56
 msgid ""
 "The preview renders more of GitHub's Markdown. The boxes of task lists can "
 "be ticked, changing the source as typing would, and Ctrl+Z in the preview "
@@ -194,7 +213,7 @@ msgstr ""
 "как на GitHub, а элемент details открывается и закрывается щелчком по его "
 "сводке."
 
-#: data/io.github.sachesi.blink.metainfo.xml:52
+#: data/io.github.sachesi.blink.metainfo.xml:57
 msgid ""
 "Math written between dollar signs is typeset in the preview, in table cells, "
 "and in both exports, and letters that KaTeX's fonts lack, such as Cyrillic, "
@@ -208,7 +227,7 @@ msgstr ""
 "текста, ширину изображений и выравнивание абзацев и блоков, поэтому "
 "заголовок README, отцентрированный через div, показывается по центру."
 
-#: data/io.github.sachesi.blink.metainfo.xml:53
+#: data/io.github.sachesi.blink.metainfo.xml:58
 msgid ""
 "Quotes are rounded boxes in the preview, the PDF and the HTML export alike. "
 "Text in table cells and code blocks is copied with Ctrl+C or from their "
@@ -225,7 +244,7 @@ msgstr ""
 "Эмодзи, которых нет ни в одном установленном шрифте, показываются в виде их "
 "кодов."
 
-#: data/io.github.sachesi.blink.metainfo.xml:58
+#: data/io.github.sachesi.blink.metainfo.xml:63
 msgid ""
 "Documents open in tabs, which can be dragged out into windows of their own "
 "or moved with \"Move to New Window\"; a narrow window shows its tabs in an "
@@ -241,7 +260,7 @@ msgstr ""
 "показываются и их папки. В параметрах можно открывать каждый документ в "
 "отдельном окне."
 
-#: data/io.github.sachesi.blink.metainfo.xml:59
+#: data/io.github.sachesi.blink.metainfo.xml:64
 msgid ""
 "Documents export to PDF, set on A4 pages with page numbers, links and an "
 "outline, and the HTML export is laid out like the preview, with its images "
@@ -256,7 +275,7 @@ msgstr ""
 "выбрать шрифты предпросмотра и кода, а также ширину редактора и "
 "предпросмотра. Редактор затеняет каждую вторую строку и подсвечивает текущую."
 
-#: data/io.github.sachesi.blink.metainfo.xml:60
+#: data/io.github.sachesi.blink.metainfo.xml:65
 msgid ""
 "Text can be copied from code blocks and table cells in the preview, wide "
 "tables scroll instead of breaking words, and the header row of a table is "
@@ -275,7 +294,7 @@ msgstr ""
 "восстановленные резервные копии сохраняются заново перед удалением старой "
 "копии."
 
-#: data/io.github.sachesi.blink.metainfo.xml:61
+#: data/io.github.sachesi.blink.metainfo.xml:66
 msgid ""
 "A font picked in Preferences that is no longer installed gives way to the "
 "system font, and backups left by a crash are offered even when another "
@@ -286,11 +305,11 @@ msgstr ""
 "даже если идентификатор завершившегося со сбоем процесса занял другой "
 "процесс."
 
-#: data/io.github.sachesi.blink.metainfo.xml:62
+#: data/io.github.sachesi.blink.metainfo.xml:67
 msgid "Blink is translated into Russian."
 msgstr "Blink переведён на русский язык."
 
-#: data/io.github.sachesi.blink.metainfo.xml:67
+#: data/io.github.sachesi.blink.metainfo.xml:72
 msgid ""
 "The window is rebuilt on libadwaita's own widgets. Editing, the preview and "
 "the split view are three toggles in the header bar, and the split view can "
@@ -306,7 +325,7 @@ msgstr ""
 "стиль отделён от настроек редактора. Настройки хранятся в GSettings; "
 "настройки прежних версий не переносятся."
 
-#: data/io.github.sachesi.blink.metainfo.xml:68
+#: data/io.github.sachesi.blink.metainfo.xml:73
 msgid ""
 "Backups of unsaved work can be recovered after a crash every time: about "
 "half of them used to be lost, because their record could not be written. "
@@ -327,7 +346,7 @@ msgstr ""
 "акцентного цвета, а кнопка разделённого вида показывает значок, который есть "
 "в теме значков Adwaita."
 
-#: data/io.github.sachesi.blink.metainfo.xml:73
+#: data/io.github.sachesi.blink.metainfo.xml:78
 msgid ""
 "Preview rendering fixes: images, thematic breaks, list and blockquote "
 "indentation, embedded HTML, table links and footnotes."
@@ -335,7 +354,7 @@ msgstr ""
 "Исправления отображения предпросмотра: изображения, тематические разрывы, "
 "отступы списков и цитат, встроенный HTML, ссылки в таблицах и сноски."
 
-#: data/io.github.sachesi.blink.metainfo.xml:78
+#: data/io.github.sachesi.blink.metainfo.xml:83
 msgid ""
 "Preferences, zoom, keyboard shortcuts help, drag and drop, and accessibility "
 "polish."
