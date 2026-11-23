@@ -89,9 +89,13 @@ install:
     install -Dm644 data/icons/hicolor/scalable/apps/{{app_id}}.svg {{datadir}}/icons/hicolor/scalable/apps/{{app_id}}.svg
     install -Dm644 data/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg {{datadir}}/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg
     for lang in $(cat po/LINGUAS); do install -d {{datadir}}/locale/$lang/LC_MESSAGES; msgfmt -o {{datadir}}/locale/$lang/LC_MESSAGES/blink.mo po/$lang.po; done
-    glib-compile-schemas {{datadir}}/glib-2.0/schemas
-    update-desktop-database -q {{datadir}}/applications || true
-    gtk4-update-icon-cache -qtf {{datadir}}/icons/hicolor || gtk-update-icon-cache -qtf {{datadir}}/icons/hicolor || true
+    # A staged install becomes a package, and the package manager rebuilds the caches on
+    # the system it is installed on; a cache shipped in the package collides with that one.
+    if [ -z "{{destdir}}" ]; then \
+        glib-compile-schemas {{datadir}}/glib-2.0/schemas; \
+        update-desktop-database -q {{datadir}}/applications || true; \
+        gtk4-update-icon-cache -qtf {{datadir}}/icons/hicolor || gtk-update-icon-cache -qtf {{datadir}}/icons/hicolor || true; \
+    fi
     @echo "installed to {{prefix}}"
 
 uninstall:
